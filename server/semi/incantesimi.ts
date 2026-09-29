@@ -1,4 +1,5 @@
 import type { SchedaIncantesimo } from "../../src/tipi.ts";
+import type { NomeClasse } from "../../src/dati/classi.ts";
 
 // Catalogo ufficiale (creato_da NULL): a ogni avvio aggiorna la tabella `incantesimi` dell'archivio.
 // Schede complete (D&D 5e 2014, testi e gittate come nel manuale italiano).
@@ -104,4 +105,42 @@ export const SCHEDE_INCANTESIMI: Record<string, SchedaIncantesimo> = {
     attacco: { numero: 3, perLivello: 1 },
     danni: { dado: "2d6", tipo: "da fuoco", perAttacco: true },
   },
+  // Trucchetti concessi dalle razze (descrizioni riassunte).
+  "Illusione Minore": {
+    livello: 0, scuola: "Illusione", tempo: "1 azione", gittata: "9 metri", componenti: "S, M (un pezzetto di vello)", durata: "1 minuto",
+    concentrazione: false, rituale: false,
+    descrizione: "Crea un suono o l'immagine di un oggetto (non più grande di un cubo di 1,5 m) entro gittata, per la durata. L'immagine non produce suoni, luce o odori e un'interazione fisica rivela che è un'illusione. Con un'azione, una prova di Intelligenza (Indagare) contro la CD degli incantesimi permette di capire che è falsa.",
+  },
+  "Luci Danzanti": {
+    livello: 0, scuola: "Invocazione", tempo: "1 azione", gittata: "36 metri", componenti: "V, S, M (un po' di fosforo)", durata: "Concentrazione, fino a 1 minuto",
+    concentrazione: true, rituale: false,
+    descrizione: "Crea fino a quattro luci simili a torce (o una figura luminosa vagamente umanoide) che fluttuano entro gittata e illuminano con luce fioca per 3 m. Con un'azione bonus le sposta fino a 18 m; una luce si spegne se esce dalla gittata.",
+  },
+  "Taumaturgia": {
+    livello: 0, scuola: "Trasmutazione", tempo: "1 azione", gittata: "9 metri", componenti: "V", durata: "Fino a 1 minuto",
+    concentrazione: false, rituale: false,
+    descrizione: "Manifesta un piccolo prodigio: voce tonante, fiamme che tremolano o cambiano colore, lievi scosse del terreno, un suono istantaneo, porte o finestre che si aprono o chiudono di scatto, occhi che cambiano aspetto. Fino a tre effetti attivi contemporaneamente.",
+  },
+};
+
+// Classi che hanno l'incantesimo nella propria lista (tabella `incantesimo_classi`).
+export const CLASSI_INCANTESIMI: Record<string, NomeClasse[]> = {
+  "Dardo di Fuoco": ["Mago", "Stregone"],
+  "Interdizione alle Lame": ["Bardo", "Mago", "Stregone", "Warlock"],
+  "Tocco Gelido": ["Mago", "Stregone", "Warlock"],
+  "Charm su Persone": ["Bardo", "Druido", "Mago", "Stregone", "Warlock"],
+  "Dardo Incantato": ["Mago", "Stregone"],
+  "Individuazione del Magico": ["Bardo", "Chierico", "Druido", "Mago", "Paladino", "Ranger", "Stregone"],
+  "Mani Brucianti": ["Mago", "Stregone"],
+  "Onda Tuonante": ["Bardo", "Druido", "Mago", "Stregone"],
+  "Raggio di Infermità": ["Mago", "Stregone"],
+  "Risata Incontenibile di Tasha": ["Bardo", "Mago"],
+  "Ritirata Rapida": ["Mago", "Stregone", "Warlock"],
+  "Scudo": ["Mago", "Stregone"],
+  "Blocca Persone": ["Bardo", "Chierico", "Druido", "Mago", "Stregone", "Warlock"],
+  "Immagine Speculare": ["Mago", "Stregone", "Warlock"],
+  "Raggio Rovente": ["Mago", "Stregone"],
+  "Illusione Minore": ["Bardo", "Mago", "Stregone", "Warlock"],
+  "Luci Danzanti": ["Bardo", "Mago", "Stregone"],
+  "Taumaturgia": ["Chierico"],
 };

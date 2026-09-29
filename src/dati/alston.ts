@@ -19,6 +19,7 @@ export const INITIAL_CHARACTER: CharacterData = {
     capelli: "Bianchi",
     carnagione: "Chiara",
     velocita: "7.5 m",
+    taglia: "Piccola",
     ispirazione: true
   },
   caratteristiche: {
@@ -31,6 +32,14 @@ export const INITIAL_CHARACTER: CharacterData = {
   },
   // Sapiente: Arcano, Storia. Mago: Religione, Intuizione.
   competenzeAbilita: ["arcano", "storia", "religione", "intuizione"],
+  competenzeAltre: {
+    lingue: ["Comune", "Gnomesco"],
+    strumenti: ["Strumenti da inventore"],
+    armi: ["Balestre leggere", "Bastoni ferrati", "Dardi", "Fionde", "Pugnali"],
+    armature: [],
+  },
+  armatura: null,
+  scudo: false,
   combattimento: {
     pfAttuali: 23,
     pfMassimi: 23,
@@ -59,8 +68,8 @@ export const INITIAL_CHARACTER: CharacterData = {
     ]
   },
   armi: [
-    { nome: "Bastone Ferrato", dado: "1d6", dadoVersatile: "1d8", tipoDanno: "Contundente", proprieta: "Versatile", accurata: false },
-    { nome: "Pugnale", dado: "1d4", tipoDanno: "Perforante", proprieta: "Accurata, Leggera, Lancio (6/18 m)", accurata: true }
+    { nome: "Bastone Ferrato", dado: "1d6", dadoVersatile: "1d8", tipoDanno: "Contundente", proprieta: "Versatile", accurata: false, categoria: "semplice" },
+    { nome: "Pugnale", dado: "1d4", tipoDanno: "Perforante", proprieta: "Accurata, Leggera, Lancio (6/18 m)", accurata: true, categoria: "semplice" }
   ],
   slotSpesi: [0, 0, 0, 0, 0, 0, 0, 0, 0],
   incantesimi: [

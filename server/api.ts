@@ -8,7 +8,7 @@ import {
   erroreRegistrazione, erroreUsername, leggiSessione, passwordDiUtente, verificaCredenziali,
 } from "./accesso.ts";
 import { apriArchivio, leggi, scrivi } from "./archivio.ts";
-import { elencoIncantesimi } from "./catalogo.ts";
+import { catalogoCreazione, elencoIncantesimi, privilegiDiClasse } from "./catalogo.ts";
 import { creaPersonaggio, elencoPersonaggi } from "./personaggi.ts";
 
 // DND_ARCHIVIO permette di usare un altro file, per esempio per le prove.
@@ -90,6 +90,8 @@ const impostaCookie = (res: ServerResponse, token: string, durata: number) =>
 //   GET  /personaggi/:id                       → { dati, revisione }; 404 se non è dell'utente
 //   PUT  /personaggi/:id { dati, revisione }   → { revisione }, 409 con la versione attuale, 404 se non è dell'utente
 //   GET  /incantesimi                          → catalogo degli incantesimi
+//   GET  /creazione                            → cataloghi per creare un personaggio (razze, background, armi...)
+//   GET  /classi/:classe/privilegi?livello=n&sottoclasse=… → privilegi di classe di quel livello
 export function apiPersonaggio(): Plugin {
   let db: ReturnType<typeof apriArchivio> | null = null;
   const archivio = () => (db ??= apriArchivio(PERCORSO_ARCHIVIO));
@@ -155,6 +157,17 @@ export function apiPersonaggio(): Plugin {
     }
 
     if (percorso === "/incantesimi" && metodo === "GET") return rispondi(res, 200, elencoIncantesimi(archivio()));
+    if (percorso === "/creazione" && metodo === "GET") return rispondi(res, 200, catalogoCreazione(archivio()));
+
+    const classe = /^\/classi\/([^/]+)\/privilegi$/.exec(percorso);
+    if (classe && metodo === "GET") {
+      const parametri = new URL(req.url ?? "", "http://x").searchParams;
+      const livello = Number(parametri.get("livello"));
+      if (!Number.isInteger(livello) || livello < 1 || livello > 20) return rispondi(res, 400, { errore: "Livello non valido" });
+      return rispondi(res, 200, privilegiDiClasse(archivio(), {
+        classe: decodeURIComponent(classe[1]), livello, sottoclasse: parametri.get("sottoclasse") ?? "",
+      }));
+    }
 
     if (percorso === "/personaggi" && metodo === "GET") return rispondi(res, 200, elencoPersonaggi(archivio(), utente.id));
     if (percorso === "/personaggi" && metodo === "POST") {

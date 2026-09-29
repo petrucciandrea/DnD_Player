@@ -70,6 +70,27 @@ export interface Arma {
   tipoDanno: string;
   proprieta: string;
   accurata: boolean;
+  categoria?: "semplice" | "guerra";
+  distanza?: boolean; // arma a distanza: si attacca con DES
+}
+
+// Armatura del catalogo (tabella `armature`). Lo scudo è a parte (+2 alla CA).
+export interface Armatura {
+  nome: string;
+  categoria: "leggera" | "media" | "pesante";
+  ca: number; // CA base
+  maxDes: number | null; // bonus massimo di DES (null = nessun limite, 0 = niente DES)
+  forzaMin: number; // 0 = nessun requisito
+  svantaggioFurtivita: boolean;
+  peso: number; // lb
+}
+
+// Competenze che non sono abilità né tiri salvezza.
+export interface CompetenzeAltre {
+  lingue: string[];
+  strumenti: string[];
+  armi: string[];
+  armature: string[];
 }
 
 export interface Privilegio {
@@ -98,10 +119,14 @@ export interface CharacterData {
     capelli: string;
     carnagione: string;
     velocita: string;
+    taglia: string; // "Piccola", "Media"...
     ispirazione: boolean;
   };
   caratteristiche: Record<Caratteristica, AbilityScore>;
   competenzeAbilita: string[];
+  competenzeAltre: CompetenzeAltre;
+  armatura: Armatura | null; // armatura indossata (dal catalogo)
+  scudo: boolean;
   combattimento: {
     pfAttuali: number;
     pfMassimi: number;
@@ -139,6 +164,63 @@ export interface CharacterData {
     difetti: string;
     backgroundBio: string;
   };
+}
+
+// --- Cataloghi per la creazione del personaggio (GET /api/creazione) ---
+
+export interface RazzaCatalogo {
+  nome: string;
+  madre: string | null; // sottorazza: si somma alla razza madre
+  taglia: string | null;
+  velocita: string | null;
+  bonus: Partial<Record<Caratteristica, number>>;
+  bonusAScelta: number;
+  abilita: string[]; // id di ABILITA
+  abilitaAScelta: number;
+  lingue: string[];
+  lingueAScelta: number;
+  armi: string[];
+  armature: string[];
+  strumentiAScelta: string[];
+  trucchetto: string | null; // "*" = uno a scelta dalla lista del mago
+  privilegi: Privilegio[];
+}
+
+export interface BackgroundCatalogo {
+  nome: string;
+  abilita: string[];
+  strumenti: string[];
+  strumentiAScelta: "artigiano" | "musicale" | "gioco" | null;
+  lingueAScelta: number;
+  equipaggiamento: Omit<InventoryItem, "id">[];
+  mo: number;
+  privilegio: Privilegio;
+}
+
+export interface PrivilegioClasse {
+  classe: string;
+  sottoclasse: string | null;
+  livello: number;
+  privilegio: Privilegio;
+}
+
+export interface IncantesimoCatalogo {
+  id: number;
+  nome: string;
+  livello: number;
+  scuola: string;
+  tempo: string;
+  scheda?: DettagliIncantesimo;
+  classi: string[];
+}
+
+export interface CatalogoCreazione {
+  razze: RazzaCatalogo[];
+  background: BackgroundCatalogo[];
+  armi: Arma[];
+  armature: Armatura[];
+  privilegiClasse: PrivilegioClasse[]; // 1° livello
+  incantesimi: IncantesimoCatalogo[];
 }
 
 export interface EsitoRiposoBreve {

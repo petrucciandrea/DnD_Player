@@ -8,9 +8,12 @@ import { transazione } from "./transazione.ts";
 // Versione dello schema, salvata in PRAGMA user_version.
 // 1 (implicita, user_version 0): una riga JSON per personaggio, utenti con un solo personaggio.
 // 2: dati del personaggio in tabelle, cataloghi condivisi, più personaggi per utente.
-export const VERSIONE_SCHEMA = 2;
+// 3: armature, razze, background, privilegi di classe, classi degli incantesimi; taglia, armatura e
+//    competenze (lingue, strumenti, armi, armature) del personaggio.
+export const VERSIONE_SCHEMA = 3;
 
-const SCHEMA = `
+// Esportato per i test della migrazione.
+export const SCHEMA_V2 = `
   CREATE TABLE utenti (
     id INTEGER PRIMARY KEY,
     username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -179,6 +182,111 @@ const SCHEMA = `
   );
 `;
 
+// Cosa aggiunge la versione 3 allo schema 2.
+const MIGRAZIONE_V3 = `
+  CREATE TABLE armature (
+    id INTEGER PRIMARY KEY,
+    nome TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    categoria TEXT NOT NULL,           -- leggera, media, pesante
+    ca INTEGER NOT NULL,
+    max_des INTEGER,                   -- NULL: nessun limite al bonus di DES
+    forza_min INTEGER NOT NULL DEFAULT 0,
+    svantaggio_furtivita INTEGER NOT NULL DEFAULT 0,
+    peso REAL NOT NULL,
+    creato_da INTEGER REFERENCES utenti(id)
+  );
+
+  ALTER TABLE armi ADD COLUMN categoria TEXT;   -- semplice, guerra
+  ALTER TABLE armi ADD COLUMN distanza INTEGER NOT NULL DEFAULT 0;
+
+  CREATE TABLE razze (
+    id INTEGER PRIMARY KEY,
+    nome TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    razza_madre_id INTEGER REFERENCES razze(id), -- sottorazza: si somma alla razza madre
+    taglia TEXT,
+    velocita TEXT,
+    bonus_for INTEGER NOT NULL DEFAULT 0,
+    bonus_des INTEGER NOT NULL DEFAULT 0,
+    bonus_cos INTEGER NOT NULL DEFAULT 0,
+    bonus_int INTEGER NOT NULL DEFAULT 0,
+    bonus_sag INTEGER NOT NULL DEFAULT 0,
+    bonus_car INTEGER NOT NULL DEFAULT 0,
+    bonus_a_scelta INTEGER NOT NULL DEFAULT 0,
+    abilita_a_scelta INTEGER NOT NULL DEFAULT 0,
+    lingue_a_scelta INTEGER NOT NULL DEFAULT 0,
+    trucchetto TEXT,
+    creato_da INTEGER REFERENCES utenti(id)
+  );
+  CREATE TABLE razza_competenze (
+    razza_id INTEGER NOT NULL REFERENCES razze(id) ON DELETE CASCADE,
+    tipo TEXT NOT NULL,                -- abilita, lingua, arma, armatura, strumento_a_scelta
+    nome TEXT NOT NULL,
+    PRIMARY KEY (razza_id, tipo, nome)
+  );
+  CREATE TABLE razza_privilegi (
+    razza_id INTEGER NOT NULL REFERENCES razze(id) ON DELETE CASCADE,
+    privilegio_id INTEGER NOT NULL REFERENCES privilegi(id),
+    ordine INTEGER NOT NULL,
+    PRIMARY KEY (razza_id, privilegio_id)
+  );
+
+  CREATE TABLE background (
+    id INTEGER PRIMARY KEY,
+    nome TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    strumenti_a_scelta TEXT,           -- artigiano, musicale, gioco
+    lingue_a_scelta INTEGER NOT NULL DEFAULT 0,
+    mo INTEGER NOT NULL DEFAULT 0,
+    privilegio_id INTEGER REFERENCES privilegi(id),
+    creato_da INTEGER REFERENCES utenti(id)
+  );
+  CREATE TABLE background_competenze (
+    background_id INTEGER NOT NULL REFERENCES background(id) ON DELETE CASCADE,
+    tipo TEXT NOT NULL,                -- abilita, strumento
+    nome TEXT NOT NULL,
+    PRIMARY KEY (background_id, tipo, nome)
+  );
+  CREATE TABLE background_oggetti (
+    background_id INTEGER NOT NULL REFERENCES background(id) ON DELETE CASCADE,
+    ordine INTEGER NOT NULL,
+    nome TEXT NOT NULL,
+    qta INTEGER NOT NULL,
+    peso REAL NOT NULL,
+    PRIMARY KEY (background_id, ordine)
+  );
+
+  -- Le classi sono regole nel codice (src/dati/classi.ts); qui i loro privilegi per livello.
+  CREATE TABLE classe_privilegi (
+    classe TEXT NOT NULL,
+    sottoclasse TEXT NOT NULL DEFAULT '', -- '' = privilegio della classe
+    livello INTEGER NOT NULL,
+    privilegio_id INTEGER NOT NULL REFERENCES privilegi(id),
+    ordine INTEGER NOT NULL,
+    PRIMARY KEY (classe, sottoclasse, privilegio_id)
+  );
+  CREATE TABLE incantesimo_classi (
+    incantesimo_id INTEGER NOT NULL REFERENCES incantesimi(id) ON DELETE CASCADE,
+    classe TEXT NOT NULL,
+    PRIMARY KEY (incantesimo_id, classe)
+  );
+
+  ALTER TABLE personaggi ADD COLUMN taglia TEXT NOT NULL DEFAULT 'Media';
+  ALTER TABLE personaggi ADD COLUMN armatura_id INTEGER REFERENCES armature(id);
+  ALTER TABLE personaggi ADD COLUMN scudo INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE personaggio_competenze (
+    personaggio_id INTEGER NOT NULL REFERENCES personaggi(id) ON DELETE CASCADE,
+    tipo TEXT NOT NULL,                -- lingua, strumento, arma, armatura
+    nome TEXT NOT NULL,
+    ordine INTEGER NOT NULL,
+    PRIMARY KEY (personaggio_id, tipo, nome)
+  );
+`;
+
+// Schema completo della versione attuale.
+const creaSchema = (db: DatabaseSync) => {
+  db.exec(SCHEMA_V2);
+  db.exec(MIGRAZIONE_V3);
+};
+
 // Utente che la versione 1 creava all'apertura dell'archivio, collegato ad Alston.
 // Serve solo a migrare un archivio v1 in cui la tabella `utenti` non esiste ancora.
 const UTENTE_V1 = {
@@ -191,29 +299,49 @@ const esisteTabella = (db: DatabaseSync, nome: string) =>
   db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(nome) !== undefined;
 
 // Prepara l'archivio all'apertura: crea lo schema o migra quello vecchio, poi aggiorna i cataloghi.
-// Prima di migrare un archivio su file ne salva una copia accanto (`percorso`.bak-v1).
+// Prima di migrare un archivio su file ne salva una copia accanto (`percorso`.bak-v1, .bak-v2...).
 export function preparaSchema(db: DatabaseSync, percorso: string) {
   const versione = Number(db.prepare("PRAGMA user_version").get()?.user_version ?? 0);
   if (versione > VERSIONE_SCHEMA) {
     throw new Error(`Archivio creato da una versione più recente dell'app (schema ${versione}).`);
   }
   if (versione < VERSIONE_SCHEMA) {
-    const v1 = esisteTabella(db, "personaggi");
-    if (v1 && percorso !== ":memory:") copiaDiSicurezza(percorso);
+    const v1 = versione === 0 && esisteTabella(db, "personaggi");
+    const daMigrare = v1 ? 1 : versione;
+    if (daMigrare > 0 && percorso !== ":memory:") copiaDiSicurezza(percorso, daMigrare);
     transazione(db, () => {
       if (v1) migraDaV1(db);
-      else db.exec(SCHEMA);
+      else if (versione === 0) creaSchema(db);
+      if (versione === 2) migraDaV2(db);
       db.exec(`PRAGMA user_version = ${VERSIONE_SCHEMA}`);
     });
   }
   transazione(db, () => aggiornaCataloghi(db));
 }
 
-function copiaDiSicurezza(percorso: string) {
-  let copia = `${percorso}.bak-v1`;
-  if (existsSync(copia)) copia = `${percorso}.bak-v1-${Date.now()}`;
+function copiaDiSicurezza(percorso: string, versione: number) {
+  let copia = `${percorso}.bak-v${versione}`;
+  if (existsSync(copia)) copia = `${copia}-${Date.now()}`;
   copyFileSync(percorso, copia);
-  console.info(`Archivio della versione 1 copiato in ${copia} prima della migrazione.`);
+  console.info(`Archivio della versione ${versione} copiato in ${copia} prima della migrazione.`);
+}
+
+// Versione 2 → 3: nuove tabelle e colonne. Per i personaggi esistenti taglia e lingue
+// si ricavano dalla razza, se è nel catalogo.
+function migraDaV2(db: DatabaseSync) {
+  db.exec(MIGRAZIONE_V3);
+  aggiornaCataloghi(db);
+  db.exec(`
+    UPDATE personaggi SET taglia = COALESCE((
+      SELECT COALESCE(r.taglia, m.taglia) FROM razze r LEFT JOIN razze m ON m.id = r.razza_madre_id
+      WHERE r.nome = personaggi.razza
+    ), taglia);
+    INSERT OR IGNORE INTO personaggio_competenze (personaggio_id, tipo, nome, ordine)
+      SELECT p.id, rc.tipo, rc.nome, rc.rowid
+      FROM personaggi p JOIN razze r ON r.nome = p.razza
+      JOIN razza_competenze rc ON rc.razza_id IN (r.id, r.razza_madre_id)
+      WHERE rc.tipo IN ('lingua', 'arma', 'armatura');
+  `);
 }
 
 // Versione 1: personaggi(id TEXT, dati JSON, revisione, aggiornato),
@@ -223,7 +351,7 @@ function migraDaV1(db: DatabaseSync) {
   db.exec("ALTER TABLE personaggi RENAME TO v1_personaggi");
   const conUtenti = esisteTabella(db, "utenti");
   if (conUtenti) db.exec("ALTER TABLE utenti RENAME TO v1_utenti");
-  db.exec(SCHEMA);
+  creaSchema(db);
   aggiornaCataloghi(db);
 
   const vecchiUtenti = conUtenti

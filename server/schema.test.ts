@@ -8,7 +8,8 @@ import { hashPassword, verificaCredenziali } from "./accesso.ts";
 import { apriArchivio, leggi } from "./archivio.ts";
 import { aggiornaCataloghi } from "./catalogo.ts";
 import { elencoPersonaggi } from "./personaggi.ts";
-import { preparaSchema, VERSIONE_SCHEMA } from "./schema.ts";
+import { preparaSchema, SCHEMA_V2, VERSIONE_SCHEMA } from "./schema.ts";
+import { componi } from "./personaggi.ts";
 
 // Archivio come lo lasciava la versione 1 dell'app.
 function archivioV1(db: DatabaseSync, { conUtenti = true } = {}) {
@@ -84,5 +85,40 @@ describe("schema e migrazione", () => {
     aggiornaCataloghi(db);
     expect(db.prepare("SELECT descrizione FROM incantesimi WHERE nome = 'Scudo'").get()?.descrizione).not.toBe("vecchia");
     expect(db.prepare("SELECT descrizione FROM incantesimi WHERE nome = 'Mani Brucianti'").get()?.descrizione).toBe("mia");
+  });
+});
+
+describe("migrazione dalla versione 2", () => {
+  const archivioV2 = () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(SCHEMA_V2);
+    db.exec("PRAGMA user_version = 2");
+    db.exec("INSERT INTO utenti (username, hash, creato) VALUES ('alan', 'h', 'oggi')");
+    db.exec(`INSERT INTO personaggi (utente_id, revisione, aggiornato, nome, razza, pf_attuali)
+             VALUES (1, 5, 'oggi', 'Alston il Breve', 'Gnomo delle Rocce', 17)`);
+    db.exec("INSERT INTO personaggi (utente_id, revisione, aggiornato, nome, razza) VALUES (1, 1, 'oggi', 'Senza razza', 'Boh')");
+    return db;
+  };
+
+  it("aggiunge tabelle e colonne senza toccare i dati", () => {
+    const db = archivioV2();
+    preparaSchema(db, ":memory:");
+    expect(db.prepare("PRAGMA user_version").get()?.user_version).toBe(3);
+    const alston = componi(db, 1)!;
+    expect(alston.combattimento.pfAttuali).toBe(17);
+    expect(db.prepare("SELECT revisione FROM personaggi WHERE id = 1").get()?.revisione).toBe(5);
+    expect(alston.armatura).toBeNull();
+    expect(alston.scudo).toBe(false);
+  });
+
+  it("ricava taglia e lingue dalla razza del catalogo", () => {
+    const db = archivioV2();
+    preparaSchema(db, ":memory:");
+    const alston = componi(db, 1)!;
+    expect(alston.info.taglia).toBe("Piccola"); // dalla razza madre Gnomo
+    expect(alston.competenzeAltre.lingue).toEqual(["Comune", "Gnomesco"]);
+    const altro = componi(db, 2)!;
+    expect(altro.info.taglia).toBe("Media");
+    expect(altro.competenzeAltre.lingue).toEqual([]);
   });
 });

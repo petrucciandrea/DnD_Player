@@ -1,4 +1,4 @@
-import type { CharacterData } from "./tipi";
+import type { Armatura, CharacterData } from "./tipi";
 import { CARATTERISTICHE } from "./regole";
 
 // Validazione e normalizzazione della scheda, senza dipendenze dal browser:
@@ -8,6 +8,21 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
 const obj = (v: unknown): Obj => (isObj(v) ? v : {});
+const stringhe = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+
+const CATEGORIE_ARMATURA = ["leggera", "media", "pesante"] as const;
+
+function armaturaDa(v: unknown): Armatura | null {
+  if (!isObj(v) || typeof v.nome !== "string" || typeof v.ca !== "number") return null;
+  const categoria = CATEGORIE_ARMATURA.find(c => c === v.categoria) ?? "leggera";
+  return {
+    nome: v.nome, categoria, ca: v.ca,
+    maxDes: typeof v.maxDes === "number" ? v.maxDes : null,
+    forzaMin: num(v.forzaMin, 0),
+    svantaggioFurtivita: v.svantaggioFurtivita === true,
+    peso: num(v.peso, 0),
+  };
+}
 
 // Modello generico: un personaggio di 1° livello senza dati. Completa le sezioni che mancano.
 export const personaggioVuoto = (): CharacterData => ({
@@ -15,7 +30,7 @@ export const personaggioVuoto = (): CharacterData => ({
   info: {
     nome: "", classe: "", sottoclasse: "", livello: 1, razza: "", background: "", allineamento: "",
     giocatore: "", eta: 0, altezza: "", peso: "", occhi: "", capelli: "", carnagione: "", velocita: "",
-    ispirazione: false,
+    taglia: "Media", ispirazione: false,
   },
   caratteristiche: {
     FOR: { valore: 10, compTS: false },
@@ -26,6 +41,9 @@ export const personaggioVuoto = (): CharacterData => ({
     CAR: { valore: 10, compTS: false },
   },
   competenzeAbilita: [],
+  competenzeAltre: { lingue: [], strumenti: [], armi: [], armature: [] },
+  armatura: null,
+  scudo: false,
   combattimento: {
     pfAttuali: 0, pfMassimi: 0, pfTemporanei: 0, dadiVitaRimanenti: 1,
     tsMorte: { successi: 0, fallimenti: 0 }, stabile: false,
@@ -69,7 +87,15 @@ function normalizza(d: Obj): CharacterData {
     versione: 2,
     info: sezione("info", base.info),
     caratteristiche,
-    competenzeAbilita: Array.isArray(d.competenzeAbilita) ? d.competenzeAbilita.filter(a => typeof a === "string") : [],
+    competenzeAbilita: stringhe(d.competenzeAbilita),
+    competenzeAltre: {
+      lingue: stringhe(obj(d.competenzeAltre).lingue),
+      strumenti: stringhe(obj(d.competenzeAltre).strumenti),
+      armi: stringhe(obj(d.competenzeAltre).armi),
+      armature: stringhe(obj(d.competenzeAltre).armature),
+    },
+    armatura: armaturaDa(d.armatura),
+    scudo: d.scudo === true,
     combattimento: sezione("combattimento", base.combattimento),
     concentrazione: typeof d.concentrazione === "string" ? d.concentrazione : null,
     divinazione: sezione("divinazione", base.divinazione),

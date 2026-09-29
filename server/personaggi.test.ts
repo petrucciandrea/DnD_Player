@@ -58,12 +58,13 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
   it("anche armi e privilegi nuovi finiscono nel catalogo, quelli noti no", () => {
     const { db, utente } = archivio();
     const c = alston();
-    c.armi.push({ nome: "Balestra Leggera", dado: "1d8", tipoDanno: "Perforante", proprieta: "Munizioni", accurata: false });
+    c.armi.push({ nome: "Lancia del Gnomo", dado: "1d8", tipoDanno: "Perforante", proprieta: "Speciale", accurata: false });
     c.privilegi.push({ nome: "Scurovisione", fonte: "Drow", descrizione: "Vede fino a 36 m." });
     const composta = componi(db, creaPersonaggio(db, utente.id, c))!;
-    expect(composta.armi.map(a => a.nome)).toEqual(["Bastone Ferrato", "Pugnale", "Balestra Leggera"]);
+    expect(composta.armi.map(a => a.nome)).toEqual(["Bastone Ferrato", "Pugnale", "Lancia del Gnomo"]);
     expect(composta.privilegi.filter(p => p.nome === "Scurovisione").map(p => p.fonte)).toEqual(["Gnomo", "Drow"]);
-    expect(db.prepare("SELECT COUNT(*) AS n FROM armi WHERE creato_da IS NULL").get()?.n).toBe(2);
+    expect(db.prepare("SELECT creato_da FROM armi WHERE nome = 'Lancia del Gnomo'").get()?.creato_da).toBe(utente.id);
+    expect(db.prepare("SELECT creato_da FROM armi WHERE nome = 'Pugnale'").get()?.creato_da).toBeNull();
   });
 
   it("scrivere di nuovo sostituisce le liste e conserva l'ordine", () => {
@@ -82,6 +83,21 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
     expect(composta.incantesimi.map(s => s.nome)).toEqual(["Dardo di Fuoco", "Interdizione alle Lame"]);
     expect(composta.competenzeAbilita).toEqual(["storia"]);
     expect(composta.concentrazione).toBe("Tocco Gelido");
+  });
+
+  it("taglia, competenze, armatura e scudo fanno andata e ritorno", () => {
+    const { db, utente } = archivio();
+    const c = alston();
+    c.info.taglia = "Media";
+    c.competenzeAltre = { lingue: ["Comune", "Nanico"], strumenti: ["Strumenti da fabbro"], armi: ["Armi da guerra"], armature: ["Scudi"] };
+    c.armatura = { nome: "Cotta di Maglia", categoria: "leggera", ca: 99, maxDes: null, forzaMin: 0, svantaggioFurtivita: false, peso: 1 };
+    c.scudo = true;
+    const composta = componi(db, creaPersonaggio(db, utente.id, c))!;
+    expect(composta.info.taglia).toBe("Media");
+    expect(composta.competenzeAltre).toEqual(c.competenzeAltre);
+    expect(composta.scudo).toBe(true);
+    // L'armatura è quella del catalogo, non i valori inviati dal client.
+    expect(composta.armatura).toMatchObject({ nome: "Cotta di Maglia", categoria: "pesante", ca: 16, maxDes: 0, forzaMin: 13 });
   });
 
   it("l'elenco mostra solo i personaggi dell'utente", () => {
