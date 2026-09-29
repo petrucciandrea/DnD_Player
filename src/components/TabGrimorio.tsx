@@ -208,7 +208,7 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
                       s.preparato ? "bg-indigo-600 text-white" : "bg-slate-800 hover:bg-slate-700 text-slate-400"
                     }`}
                   >
-                    {s.preparato ? "Preparato" : "Nel Grimorio"}
+                    {s.preparato ? "Preparato" : d.modoIncantesimi === "libro" ? "Nel Grimorio" : "Non preparato"}
                   </button>
                 )}
               </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { ChevronRight, LoaderCircle, LogOut, Sparkles, Upload, UserCog, UserRound } from "lucide-react";
+import { ChevronRight, LoaderCircle, LogOut, Sparkles, Upload, UserCog, UserPlus, UserRound } from "lucide-react";
 import { elencoPersonaggi, importaPersonaggio, type RiassuntoPersonaggio, type Utente } from "../accesso";
 import { daJSON } from "../scheda";
 
@@ -9,12 +9,13 @@ interface Props {
   utente: Utente;
   avviso?: string | null;
   onScegli: (id: number) => Promise<void>;
+  onCrea: () => void;
   onAccount: () => void;
   onEsci: () => void;
   onSessioneScaduta: () => void;
 }
 
-export default function SchermataPersonaggi({ utente, avviso, onScegli, onAccount, onEsci, onSessioneScaduta }: Props) {
+export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, onAccount, onEsci, onSessioneScaduta }: Props) {
   const [elenco, setElenco] = useState<RiassuntoPersonaggio[] | "caricamento" | "offline">("caricamento");
   const [inApertura, setInApertura] = useState<number | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
@@ -114,7 +115,7 @@ export default function SchermataPersonaggi({ utente, avviso, onScegli, onAccoun
               <div className="sm:col-span-2 bg-slate-900 border border-dashed border-slate-700 rounded-xl p-6 text-center space-y-1">
                 <p className="text-slate-300 font-semibold">Non hai ancora personaggi.</p>
                 <p className="text-sm text-slate-400">
-                  Importa una scheda esportata in JSON. La creazione di nuovi personaggi arriverà più avanti.
+                  Creane uno con la procedura guidata, oppure importa una scheda esportata in JSON.
                 </p>
               </div>
             )}
@@ -122,16 +123,23 @@ export default function SchermataPersonaggi({ utente, avviso, onScegli, onAccoun
         )}
 
         {Array.isArray(elenco) && (
-          <>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={onCrea}
+              disabled={inApertura !== null}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold transition"
+            >
+              <UserPlus className="w-4 h-4" /> Crea personaggio
+            </button>
             <button
               onClick={() => fileInput.current?.click()}
               disabled={inApertura !== null}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold transition"
+              className={`${pulsanteNeutro} px-4 py-2 text-sm`}
             >
               <Upload className="w-4 h-4" /> Importa personaggio (JSON)
             </button>
             <input ref={fileInput} type="file" accept="application/json,.json" onChange={importa} className="hidden" />
-          </>
+          </div>
         )}
       </div>
     </div>

@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import type { Connect, Plugin } from "vite";
 import type { CharacterData } from "../src/tipi.ts";
-import { daJSON } from "../src/scheda.ts";
+import { completaConEsistente, daJSON } from "../src/scheda.ts";
 import {
   apriSessione, cambiaPassword, cambiaUsername, chiudiSessione, creaUtente, DURATA_SESSIONE, errorePassword,
   erroreRegistrazione, erroreUsername, leggiSessione, passwordDiUtente, verificaCredenziali,
@@ -185,7 +185,9 @@ export function apiPersonaggio(): Plugin {
       if (metodo === "PUT") {
         const corpo = await leggiCorpo(req);
         if (typeof corpo.revisione !== "number") return rispondi(res, 400, { errore: "Servono dati e revisione" });
-        const esito = scrivi(archivio(), id, utente.id, schedaDa(corpo.dati), corpo.revisione);
+        // I campi che il client non invia (versione vecchia dell'app) restano quelli salvati.
+        const esistente = leggi(archivio(), id, utente.id)?.dati ?? null;
+        const esito = scrivi(archivio(), id, utente.id, schedaDa(completaConEsistente(corpo.dati, esistente)), corpo.revisione);
         if (esito.ok) return rispondi(res, 200, { revisione: esito.revisione });
         return esito.attuale ? rispondi(res, 409, esito.attuale) : rispondi(res, 404, { errore: "Personaggio inesistente" });
       }

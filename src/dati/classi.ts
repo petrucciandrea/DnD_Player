@@ -1,4 +1,4 @@
-import type { Caratteristica } from "../tipi";
+import type { Caratteristica } from "../tipi.ts";
 
 // Regole delle 12 classi del Manuale del Giocatore (D&D 5e 2014). I testi dei privilegi di classe
 // stanno nel catalogo `privilegi` dell'archivio; qui c'è solo ciò che serve ai calcoli e alla creazione.

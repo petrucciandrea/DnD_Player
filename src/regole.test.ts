@@ -6,7 +6,7 @@ import {
   dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, slotUtilizzabili,
   applicaCura, applicaDanno, cdConcentrazione, esitoTsMorte, statoVita, pfPerLivello, slotPatto,
 } from "./regole";
-import { daJSON } from "./scheda";
+import { completaConEsistente, daJSON } from "./scheda";
 import { SCHEDE_INCANTESIMI } from "../server/semi/incantesimi.ts";
 import type { CharacterData } from "./tipi";
 
@@ -134,6 +134,20 @@ describe("salvataggio", () => {
     expect(c.slotSpesi.slice(0, 3)).toEqual([3, 1, 0]);
     expect(c.incantesimi[0].scuola).toBe("Invocazione");
     expect("nelGrimorio" in c.incantesimi[0]).toBe(false);
+  });
+
+  it("i campi che un client vecchio non invia restano quelli salvati", () => {
+    const salvata = alston();
+    const vecchia = JSON.parse(JSON.stringify(salvata));
+    delete vecchia.competenzeAltre;
+    delete vecchia.info.taglia;
+    vecchia.combattimento.pfAttuali = 5; // la modifica fatta dal client vecchio
+    const unita = daJSON(completaConEsistente(vecchia, salvata));
+    expect(unita.info.taglia).toBe("Piccola");
+    expect(unita.competenzeAltre).toEqual(salvata.competenzeAltre);
+    expect(unita.combattimento.pfAttuali).toBe(5);
+    // Un campo inviato esplicitamente vince sempre, anche se vuoto.
+    expect(daJSON(completaConEsistente({ ...vecchia, armatura: null, scudo: false }, { ...salvata, scudo: true })).scudo).toBe(false);
   });
 
   it("rifiuta dati non validi", () => {

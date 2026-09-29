@@ -15,6 +15,7 @@ import { useSincronizzazione, type AvvisiSincronizzazione, type StatoSincronizza
 import { esci, sessioneAttuale, type Utente } from "./accesso";
 import SchermataAccesso from "./components/SchermataAccesso";
 import SchermataPersonaggi from "./components/SchermataPersonaggi";
+import SchermataCreazione from "./components/SchermataCreazione";
 import FinestraAccount from "./components/FinestraAccount";
 import { useRichiestaTiro } from "./tiroDadi";
 import DialogoTiro from "./components/DialogoTiro";
@@ -43,6 +44,7 @@ export default function App() {
   const [personaggio, setPersonaggio] = useState<number | null>(null);
   const [avviso, setAvviso] = useState<string | null>(null);
   const [accountAperto, setAccountAperto] = useState(false);
+  const [inCreazione, setInCreazione] = useState(false);
 
   const entra = useCallback((u: Utente) => {
     setSessione(u);
@@ -128,6 +130,15 @@ export default function App() {
       onChiudi={() => setAccountAperto(false)}
     />
   );
+  if (personaggio === null && inCreazione) {
+    return (
+      <SchermataCreazione
+        giocatore={sessione.username}
+        onCreato={id => { setInCreazione(false); apriPersonaggio(id); }}
+        onAnnulla={() => setInCreazione(false)}
+      />
+    );
+  }
   if (personaggio === null) {
     return (
       <>
@@ -135,6 +146,7 @@ export default function App() {
           utente={sessione}
           avviso={avviso}
           onScegli={apriPersonaggio}
+          onCrea={() => setInCreazione(true)}
           onAccount={() => setAccountAperto(true)}
           onEsci={uscita}
           onSessioneScaduta={sessioneScaduta}
@@ -309,12 +321,15 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
             <div>
               <div className="flex flex-wrap items-center gap-3">
                 <h1 className="text-3xl font-black tracking-tight text-white">{char.info.nome}</h1>
-                <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                  {char.info.sottoclasse}
-                </span>
+                {char.info.sottoclasse && (
+                  <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    {char.info.sottoclasse}
+                  </span>
+                )}
               </div>
               <p className="text-slate-400 text-sm mt-1">
-                {char.info.razza} • {char.info.classe} Liv. {char.info.livello} • {char.info.background} ({char.info.allineamento})
+                {char.info.razza} • {char.info.classe} Liv. {char.info.livello} • {char.info.background}
+                {char.info.allineamento && ` (${char.info.allineamento})`}
               </p>
             </div>
 

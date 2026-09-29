@@ -1,6 +1,6 @@
 // Regole D&D 5e (edizione 2014). Le regole delle singole classi stanno in dati/classi.ts.
-import type { Arma, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve } from "./tipi";
-import { CARATTERISTICA_MAGICA_RAZZIALE, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi";
+import type { Arma, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve } from "./tipi.ts";
+import { CARATTERISTICA_MAGICA_RAZZIALE, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi.ts";
 
 // Quanto serve per calcolare danni e attacchi di un incantesimo lanciato con un certo slot.
 type IncantesimoDaLanciare = { livello: number } & Pick<DettagliIncantesimo, "danni" | "attacco">;

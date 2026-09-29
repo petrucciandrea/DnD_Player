@@ -1,5 +1,5 @@
-import type { Armatura, CharacterData } from "./tipi";
-import { CARATTERISTICHE } from "./regole";
+import type { Armatura, CharacterData } from "./tipi.ts";
+import { CARATTERISTICHE } from "./regole.ts";
 
 // Validazione e normalizzazione della scheda, senza dipendenze dal browser:
 // la usano sia il client (import JSON, cache locale) sia il server (prima di salvare nell'archivio).
@@ -60,6 +60,16 @@ export const personaggioVuoto = (): CharacterData => ({
   privilegi: [],
   lore: { tratti: "", ideali: "", legami: "", difetti: "", backgroundBio: "" },
 });
+
+// Un client con una versione vecchia dell'app non conosce i campi aggiunti dopo (per esempio
+// taglia o competenzeAltre) e li ometterebbe: i campi assenti, anche dentro `info`, si prendono
+// dalla scheda già salvata invece che dai valori predefiniti.
+export function completaConEsistente(dati: unknown, esistente: CharacterData | null): unknown {
+  if (!isObj(dati) || !esistente) return dati;
+  const unito: Obj = { ...esistente, ...dati };
+  if (isObj(dati.info)) unito.info = { ...esistente.info, ...dati.info };
+  return unito;
+}
 
 // Accetta sia il formato attuale (versione 2) sia quello vecchio senza versione.
 export function daJSON(dati: unknown): CharacterData {
