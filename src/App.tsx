@@ -24,7 +24,7 @@ export default function DnDPlatform() {
   const [messaggio, setMessaggio] = useState<string | null>(null);
   const [riposoBreveAperto, setRiposoBreveAperto] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const { richiesta, chiediTiro, rispondi } = useRichiestaTiro();
+  const { richiesta, chiediTiro, chiediD20, rispondi } = useRichiestaTiro();
 
   useEffect(() => {
     salva(char);
@@ -235,7 +235,7 @@ export default function DnDPlatform() {
           })}
         </div>
 
-        {activeTab === "statistiche" && <TabStatistiche char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} />}
+        {activeTab === "statistiche" && <TabStatistiche char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
         {activeTab === "grimorio" && <TabGrimorio char={char} d={d} setChar={setChar} />}
         {activeTab === "zaino" && <TabZaino char={char} d={d} setChar={setChar} />}
         {activeTab === "xp" && <TabProgresso char={char} d={d} setChar={setChar} />}

@@ -1,17 +1,35 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Dices, X } from "lucide-react";
-import type { RichiestaTiro } from "../tiroDadi";
+import type { Dado, RichiestaTiro, RispostaTiro } from "../tiroDadi";
+import type { Modalita } from "../regole";
 import { segno, tiraD } from "../regole";
 
 interface Props {
   richiesta: RichiestaTiro;
-  onRisposta: (risultati: number[] | null) => void;
+  onRisposta: (risposta: RispostaTiro | null) => void;
 }
 
+const MODALITA: { id: Modalita; label: string }[] = [
+  { id: "normale", label: "Normale" },
+  { id: "vantaggio", label: "Vantaggio" },
+  { id: "svantaggio", label: "Svantaggio" },
+];
+
 export default function DialogoTiro({ richiesta, onRisposta }: Props) {
-  const [valori, setValori] = useState<string[]>(() => richiesta.dadi.map(() => ""));
+  const [modalita, setModalita] = useState<Modalita>(richiesta.modalita ?? "normale");
+  const [valori, setValori] = useState<string[]>([]);
+  const [totale, setTotale] = useState("");
   const [errore, setErrore] = useState<string | null>(null);
-  const { dadi, bonus = 0 } = richiesta;
+  const { bonus = 0 } = richiesta;
+
+  // Con vantaggio o svantaggio si tirano due d20.
+  const dadi: Dado[] = richiesta.d20 && modalita !== "normale"
+    ? [{ etichetta: "Primo d20", facce: 20 }, { etichetta: "Secondo d20", facce: 20 }]
+    : richiesta.dadi;
+  // Con più dadi si può inserire solo la somma (per i danni, dove conta solo il totale).
+  const ammettiTotale = !!richiesta.ammettiTotale && dadi.length > 1;
+  const minTotale = dadi.length;
+  const maxTotale = dadi.reduce((acc, d) => acc + d.facce, 0);
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onRisposta(null);
@@ -21,16 +39,27 @@ export default function DialogoTiro({ richiesta, onRisposta }: Props) {
 
   const confermaManuale = (e: FormEvent) => {
     e.preventDefault();
-    const numeri = valori.map(v => Number(v));
+    if (ammettiTotale && totale.trim() !== "") {
+      const t = Number(totale);
+      if (!Number.isInteger(t) || t < minTotale || t > maxTotale) {
+        setErrore(`Totale: inserisci un numero da ${minTotale} a ${maxTotale}.`);
+        return;
+      }
+      onRisposta({ tiri: [t], modalita });
+      return;
+    }
+    const numeri = dadi.map((_, i) => Number(valori[i] ?? ""));
     const invalido = dadi.findIndex((dado, i) => !Number.isInteger(numeri[i]) || numeri[i] < 1 || numeri[i] > dado.facce);
     if (invalido >= 0) {
       setErrore(`${dadi[invalido].etichetta}: inserisci un numero da 1 a ${dadi[invalido].facce}.`);
       return;
     }
-    onRisposta(numeri);
+    onRisposta({ tiri: numeri, modalita });
   };
 
-  const tiraApp = () => onRisposta(dadi.map(dado => tiraD(dado.facce)));
+  const tiraApp = () => onRisposta({ tiri: dadi.map(dado => tiraD(dado.facce)), modalita });
+
+  const campo = "w-20 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-center font-mono text-slate-100 outline-none focus:border-indigo-500";
 
   return (
     <div
@@ -41,7 +70,7 @@ export default function DialogoTiro({ richiesta, onRisposta }: Props) {
         noValidate
         onSubmit={confermaManuale}
         onClick={e => e.stopPropagation()}
-        className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4"
+        className="w-full max-w-sm max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4"
       >
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -54,6 +83,25 @@ export default function DialogoTiro({ richiesta, onRisposta }: Props) {
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {richiesta.d20 && (
+          <div className="grid grid-cols-3 gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800">
+            {MODALITA.map(m => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => { setModalita(m.id); setErrore(null); }}
+                className={`py-1.5 rounded-lg text-xs font-semibold transition ${
+                  modalita === m.id
+                    ? m.id === "vantaggio" ? "bg-emerald-600 text-white" : m.id === "svantaggio" ? "bg-rose-600 text-white" : "bg-slate-700 text-white"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <button
           type="button"
@@ -69,24 +117,38 @@ export default function DialogoTiro({ richiesta, onRisposta }: Props) {
 
         <div className="space-y-2">
           {dadi.map((dado, i) => (
-            <label key={i} className="flex items-center justify-between gap-3 text-sm text-slate-300">
+            <label key={`${modalita}-${i}`} className="flex items-center justify-between gap-3 text-sm text-slate-300">
               <span>{dado.etichetta} <span className="text-xs text-slate-500">(d{dado.facce})</span></span>
               <input
                 type="number"
                 min={1}
                 max={dado.facce}
                 autoFocus={i === 0}
-                value={valori[i]}
+                value={valori[i] ?? ""}
                 onChange={e => {
                   const copia = [...valori];
                   copia[i] = e.target.value;
                   setValori(copia);
+                  setTotale("");
                   setErrore(null);
                 }}
-                className="w-20 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-center font-mono text-slate-100 outline-none focus:border-indigo-500"
+                className={campo}
               />
             </label>
           ))}
+          {ammettiTotale && (
+            <label className="flex items-center justify-between gap-3 text-sm text-slate-300 pt-2 border-t border-slate-800">
+              <span>oppure solo il totale <span className="text-xs text-slate-500">({minTotale}–{maxTotale})</span></span>
+              <input
+                type="number"
+                min={minTotale}
+                max={maxTotale}
+                value={totale}
+                onChange={e => { setTotale(e.target.value); setErrore(null); }}
+                className={campo}
+              />
+            </label>
+          )}
           {bonus !== 0 && (
             <p className="text-xs text-slate-500">Il modificatore {segno(bonus)} viene aggiunto automaticamente.</p>
           )}

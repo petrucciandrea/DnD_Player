@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { Shield, Eye, Dices, Pencil, Check, Minus, Plus } from "lucide-react";
 import type { Caratteristica, CharacterData, SetChar } from "../tipi";
-import type { Derivate } from "../regole";
+import type { Derivate, Modalita } from "../regole";
 import { ABILITA, CARATTERISTICHE, formulaDanno, modificaCaratteristica, segno } from "../regole";
-import type { ChiediTiro } from "../tiroDadi";
+import type { ChiediD20, ChiediTiro } from "../tiroDadi";
 
 interface Tiro {
   etichetta: string;
   facce: number;
   risultato: number;
   bonus: number;
+  tiri?: number[];
+  modalita?: Modalita;
 }
 
 interface Props {
@@ -17,13 +19,21 @@ interface Props {
   d: Derivate;
   setChar: SetChar;
   chiediTiro: ChiediTiro;
+  chiediD20: ChiediD20;
 }
 
-export default function TabStatistiche({ char, d, setChar, chiediTiro }: Props) {
+export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20 }: Props) {
   const [ultimoTiro, setUltimoTiro] = useState<Tiro | null>(null);
   const [modifica, setModifica] = useState(false);
 
-  const tira = async (etichetta: string, facce: number, bonus = 0) => {
+  const astuziaGnomesca = char.privilegi.some(p => p.nome === "Astuzia Gnomesca");
+
+  const tira = async (etichetta: string, facce: number, bonus = 0, descrizione?: string) => {
+    if (facce === 20) {
+      const r = await chiediD20({ titolo: etichetta, bonus, descrizione });
+      if (r) setUltimoTiro({ etichetta, facce, risultato: r.risultato, bonus, tiri: r.tiri, modalita: r.modalita });
+      return;
+    }
     const tiri = await chiediTiro({ titolo: etichetta, dadi: [{ etichetta: "Risultato", facce }], bonus });
     if (tiri) setUltimoTiro({ etichetta, facce, risultato: tiri[0], bonus });
   };
@@ -91,7 +101,12 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro }: Props) 
                   )}
                 </div>
                 <button
-                  onClick={() => tira(`TS ${sigla}`, 20, ts)}
+                  onClick={() => tira(
+                    `TS ${sigla}`, 20, ts,
+                    astuziaGnomesca && ["INT", "SAG", "CAR"].includes(sigla)
+                      ? "Astuzia Gnomesca: vantaggio se il tiro salvezza è contro la magia."
+                      : undefined,
+                  )}
                   className="mt-3 pt-2 border-t border-slate-800/80 w-full text-xs text-slate-400 flex justify-between items-center px-1 hover:text-slate-200"
                 >
                   <span>Tiro Salvezza:</span>
@@ -213,7 +228,9 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro }: Props) 
               <span className="text-slate-400">
                 {ultimoTiro.etichetta}
                 <span className="block text-xs text-slate-500 font-mono">
-                  d{ultimoTiro.facce} = {ultimoTiro.risultato}
+                  {ultimoTiro.modalita && ultimoTiro.modalita !== "normale" && ultimoTiro.tiri
+                    ? `${ultimoTiro.modalita} (${ultimoTiro.tiri.join(", ")}) → ${ultimoTiro.risultato}`
+                    : `d${ultimoTiro.facce} = ${ultimoTiro.risultato}`}
                   {ultimoTiro.bonus !== 0 && ` ${segno(ultimoTiro.bonus)}`}
                   {ultimoTiro.facce === 20 && ultimoTiro.risultato === 20 && " · Critico!"}
                   {ultimoTiro.facce === 20 && ultimoTiro.risultato === 1 && " · 1 naturale"}

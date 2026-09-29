@@ -49,6 +49,12 @@ const LIVELLI_AUMENTO_CARATTERISTICHE = [4, 8, 12, 16, 19];
 
 export const tiraD = (facce: number) => Math.floor(Math.random() * facce) + 1;
 
+export type Modalita = "normale" | "vantaggio" | "svantaggio";
+
+// Con vantaggio si tiene il d20 più alto, con svantaggio il più basso.
+export const risultatoD20 = (tiri: number[], modalita: Modalita) =>
+  modalita === "vantaggio" ? Math.max(...tiri) : modalita === "svantaggio" ? Math.min(...tiri) : tiri[0];
+
 export const modificatore = (valore: number) => Math.floor((valore - 10) / 2);
 export const bonusCompetenza = (livello: number) => Math.ceil(livello / 4) + 1;
 export const segno = (n: number) => (n >= 0 ? `+${n}` : `${n}`);

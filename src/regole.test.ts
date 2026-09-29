@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { INITIAL_CHARACTER } from "./dati/alston";
 import {
   bonusCompetenza, derivate, formulaDanno, modificaCaratteristica, modificatore,
-  riposoBreve, riposoLungo, saliDiLivello,
+  riposoBreve, riposoLungo, risultatoD20, saliDiLivello,
 } from "./regole";
 import { daJSON } from "./salvataggio";
 import type { CharacterData } from "./tipi";
@@ -134,5 +134,13 @@ describe("salvataggio", () => {
   it("rifiuta dati non validi", () => {
     expect(() => daJSON({ a: 1 })).toThrow();
     expect(() => daJSON(null)).toThrow();
+  });
+});
+
+describe("vantaggio e svantaggio", () => {
+  it("tiene il d20 giusto", () => {
+    expect(risultatoD20([14], "normale")).toBe(14);
+    expect(risultatoD20([6, 14], "vantaggio")).toBe(14);
+    expect(risultatoD20([6, 14], "svantaggio")).toBe(6);
   });
 });
