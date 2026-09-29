@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef, type ChangeEvent } f
 import {
   Sparkles, RefreshCw, BookOpen, Backpack, Scroll, Award,
   Download, Upload, Users, Heart, Star, X, Coffee, Brain, Cloud, CloudCheck, CloudOff, CloudUpload, LoaderCircle, LogOut, UserCog,
+  NotebookPen,
 } from "lucide-react";
 import type { CharacterData, EsitoRiposoBreve } from "./tipi";
 import {
@@ -17,7 +18,8 @@ import SchermataAccesso from "./components/SchermataAccesso";
 import SchermataPersonaggi from "./components/SchermataPersonaggi";
 import SchermataCreazione from "./components/SchermataCreazione";
 import FinestraAccount from "./components/FinestraAccount";
-import { useRichiestaTiro } from "./tiroDadi";
+import { conSuggerimento, useRichiestaTiro } from "./tiroDadi";
+import { condizione, effetto } from "./dati/condizioni";
 import DialogoTiro from "./components/DialogoTiro";
 import PannelloRiposoBreve from "./components/PannelloRiposoBreve";
 import TiriMorte from "./components/TiriMorte";
@@ -26,8 +28,9 @@ import TabGrimorio from "./components/TabGrimorio";
 import TabZaino from "./components/TabZaino";
 import TabProgresso from "./components/TabProgresso";
 import TabLore from "./components/TabLore";
+import TabNote from "./components/TabNote";
 
-type Tab = "statistiche" | "grimorio" | "zaino" | "xp" | "lore";
+type Tab = "statistiche" | "grimorio" | "zaino" | "xp" | "note" | "lore";
 
 const SYNC: Record<StatoSincronizzazione, { icona: typeof Cloud; etichetta: string; descrizione: string; colore: string }> = {
   connessione: { icona: Cloud, etichetta: "Connessione…", descrizione: "Collegamento all'archivio in corso", colore: "text-slate-500" },
@@ -198,7 +201,9 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
   const verificaConcentrazione = async (incantesimo: string, danno: number) => {
     const cd = cdConcentrazione(danno);
     const bonus = d.ts("COS");
-    const r = await chiediD20({ titolo: `Concentrazione: ${incantesimo}`, descrizione: `Hai subito ${danno} danni: TS su COS con CD ${cd}.`, bonus });
+    const r = await chiediD20(conSuggerimento(char, { tipo: "ts", car: "COS" }, {
+      titolo: `Concentrazione: ${incantesimo}`, descrizione: `Hai subito ${danno} danni: TS su COS con CD ${cd}.`, bonus,
+    }));
     if (!r) return;
     const totale = r.risultato + bonus;
     if (totale >= cd) {
@@ -306,6 +311,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
     }] : []),
     { id: "zaino", label: `Zaino (${d.pesoTotale.toFixed(1)}/${d.capacitaCarico} lb)`, icon: Backpack },
     { id: "xp", label: `Progresso XP (${char.xp.totale})`, icon: Award },
+    { id: "note", label: char.note.length > 0 ? `Note (${char.note.length})` : "Note", icon: NotebookPen },
     { id: "lore", label: "Tratti & Background", icon: Scroll },
   ];
 
@@ -367,7 +373,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
             <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 text-center col-span-2">
               <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Punti Ferita</div>
               <div className={`text-2xl font-black mt-0.5 ${pf.pfAttuali === 0 ? "text-rose-500" : "text-emerald-400"}`}>
-                {pf.pfAttuali} / {pf.pfMassimi}
+                {pf.pfAttuali} / {d.pfMassimiEffettivi}
                 {pf.pfTemporanei > 0 && <span className="text-sky-400 text-lg"> +{pf.pfTemporanei}</span>}
               </div>
               {pf.pfAttuali === 0 && <TiriMorte char={char} setChar={setChar} chiediD20={chiediD20} onMessaggio={setMessaggio} />}
@@ -418,6 +424,21 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
                 </button>
               </span>
             )}
+            {char.condizioni.map(id => condizione(id)).filter(c => c !== undefined).map(c => (
+              <span key={c.id} title={c.descrizione} className="px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-200 border border-rose-500/40">
+                {c.nome}
+              </span>
+            ))}
+            {char.indebolimento > 0 && (
+              <span className="px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-200 border border-amber-500/40">
+                Indebolimento {char.indebolimento}
+              </span>
+            )}
+            {char.effetti.map(e => effetto(e.id)).filter(e => e !== undefined).map(e => (
+              <span key={e.id} title={e.descrizione} className="px-3 py-1.5 rounded-lg bg-indigo-500/15 text-indigo-200 border border-indigo-500/40">
+                {e.nome}{e.conteggio !== undefined && ` ×${char.effetti.find(x => x.id === e.id)?.valore ?? e.conteggio}`}
+              </span>
+            ))}
             <span className="px-3 py-1.5 rounded-lg bg-slate-800/60 text-slate-400 border border-slate-800">
               Percezione passiva <strong className="text-slate-200">{d.percezionePassiva}</strong>
             </span>
@@ -455,6 +476,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
         {activeTab === "grimorio" && d.haIncantesimi && <TabGrimorio char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
         {activeTab === "zaino" && <TabZaino char={char} d={d} setChar={setChar} />}
         {activeTab === "xp" && <TabProgresso char={char} d={d} setChar={setChar} />}
+        {activeTab === "note" && <TabNote char={char} setChar={setChar} />}
         {activeTab === "lore" && <TabLore char={char} setChar={setChar} />}
 
       </div>

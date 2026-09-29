@@ -3,10 +3,11 @@ import { Sparkles, X, Target, Flame, Hourglass, BookOpen } from "lucide-react";
 import type { CharacterData, SetChar, Spell } from "../tipi";
 import type { Danni, Derivate } from "../regole";
 import {
-  critico, dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, segno, slotUtilizzabili, testoDanni,
+  attivaEffetto, critico, dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, segno, slotUtilizzabili, testoDanni,
 } from "../regole";
 import type { ChiediD20, ChiediTiro } from "../tiroDadi";
-import { tiraDanni } from "../tiroDadi";
+import { conSuggerimento, tiraDanni } from "../tiroDadi";
+import { effettoDaIncantesimo } from "../dati/condizioni";
 
 interface Props {
   spell: Spell;
@@ -54,15 +55,20 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
     const concentrazione = scheda?.concentrazione ? spell.nome : undefined;
     if (concentrazione && char.concentrazione && char.concentrazione !== spell.nome
       && !confirm(`Stai mantenendo la concentrazione su ${char.concentrazione}. Lanciando ${spell.nome} la interrompi. Continuare?`)) return;
-    setChar(prev => lanciaIncantesimo(prev, livelloSlot, { concentrazione }));
+    // Gli incantesimi che danno un effetto con una durata (Scudo, Armatura Magica...) lo attivano da soli.
+    const effetto = effettoDaIncantesimo(spell.nome);
+    setChar(prev => {
+      const lanciato = lanciaIncantesimo(prev, livelloSlot, { concentrazione });
+      return effetto && lanciato !== prev ? attivaEffetto(lanciato, effetto.id) : lanciato;
+    });
     setLancio({ livelloSlot, rituale });
   };
 
   const tiraAttacco = async () => {
-    const r = await chiediD20({
+    const r = await chiediD20(conSuggerimento(char, { tipo: "attacco" }, {
       titolo: totAttacchi > 1 ? `${spell.nome}: attacco ${attacchi.length + 1}/${totAttacchi}` : `${spell.nome}: tiro per colpire`,
       bonus: attaccoMagico,
-    });
+    }));
     if (r) setAttacchi(prev => [...prev, { risultato: r.risultato, totale: r.risultato + attaccoMagico }]);
   };
 
@@ -189,6 +195,9 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
               <BookOpen className="w-4 h-4" />
               {lancio.rituale ? "Lanciato come rituale." : lancio.livelloSlot ? `Lanciato con uno slot di ${lancio.livelloSlot}° livello.` : "Lanciato."}
             </p>
+            {effettoDaIncantesimo(spell.nome) && (
+              <p className="text-xs text-indigo-300">Effetto attivo: {effettoDaIncantesimo(spell.nome)?.nome} (lo gestisci nella tab Statistiche).</p>
+            )}
 
             {totAttacchi > 0 && (
               <div className="space-y-2">

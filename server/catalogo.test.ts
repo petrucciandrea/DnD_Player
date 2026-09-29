@@ -86,10 +86,56 @@ describe("catalogo per la creazione", () => {
 
   it("i privilegi di classe si filtrano per livello e sottoclasse", () => {
     const mago2 = privilegiDiClasse(db, { classe: "Mago", livello: 2, sottoclasse: "Scuola di Divinazione" });
-    expect(mago2.map(p => p.privilegio.nome)).toEqual(["Esperto di Divinazione", "Presagio"]);
-    expect(privilegiDiClasse(db, { classe: "Mago", livello: 2, sottoclasse: "Scuola di Invocazione" })).toEqual([]);
+    expect(mago2.map(p => p.privilegio.nome)).toEqual(["Tradizione Arcana", "Esperto di Divinazione", "Presagio"]);
+    const invocazione = privilegiDiClasse(db, { classe: "Mago", livello: 2, sottoclasse: "Scuola di Invocazione" });
+    expect(invocazione.map(p => p.privilegio.nome)).toEqual(["Tradizione Arcana", "Esperto di Invocazione", "Scolpire Incantesimi"]);
     const chierico = privilegiDiClasse(db, { classe: "Chierico", livello: 1, sottoclasse: "Dominio della Vita" });
     expect(chierico.map(p => p.privilegio.nome)).toContain("Discepolo della Vita");
     expect(chierico.map(p => p.privilegio.nome)).not.toContain("Sacerdote Guerriero");
+  });
+
+  it("i privilegi si possono chiedere fino a un livello", () => {
+    const fino3 = privilegiDiClasse(db, { classe: "Guerriero", fino: 3, sottoclasse: "Campione" }).map(p => p.privilegio.nome);
+    expect(fino3).toContain("Recuperare Energie");
+    expect(fino3).toContain("Azione Impetuosa");
+    expect(fino3).toContain("Critico Migliorato");
+    expect(fino3).not.toContain("Indomito");
+    expect(fino3).not.toContain("Superiorità in Combattimento");
+  });
+});
+
+describe("privilegi di classe dal 2° al 20° livello", () => {
+  it("ogni classe ha privilegi di livello superiore e ogni sottoclasse ne ha al suo livello di scelta", () => {
+    for (const classe of NOMI_CLASSI) {
+      const livelli = new Set(PRIVILEGI_CLASSE.filter(p => p.classe === classe && !p.sottoclasse).map(p => p.livello));
+      expect(livelli.has(2) || livelli.has(3), classe).toBe(true);
+      expect(livelli.has(CLASSI[classe].livelloSottoclasse), `${classe}: privilegio di scelta della sottoclasse`).toBe(true);
+      for (const sottoclasse of CLASSI[classe].sottoclassi) {
+        const proprie = PRIVILEGI_CLASSE.filter(p => p.classe === classe && p.sottoclasse === sottoclasse);
+        expect(proprie.some(p => p.livello === CLASSI[classe].livelloSottoclasse), sottoclasse).toBe(true);
+        expect(proprie.length, sottoclasse).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it("classi, sottoclassi e livelli sono validi e nessun privilegio si ripete", () => {
+    const viste = new Set<string>();
+    for (const p of PRIVILEGI_CLASSE) {
+      const regole = CLASSI[p.classe];
+      expect(regole, p.classe).toBeDefined();
+      if (p.sottoclasse) expect(regole.sottoclassi, p.sottoclasse).toContain(p.sottoclasse);
+      expect(p.livello).toBeGreaterThanOrEqual(1);
+      expect(p.livello).toBeLessThanOrEqual(20);
+      expect(p.privilegio.fonte).toBe(p.sottoclasse ?? p.classe);
+      expect(p.privilegio.descrizione.length).toBeGreaterThan(20);
+      const chiave = `${p.privilegio.nome}|${p.privilegio.fonte}`.toLowerCase();
+      expect(viste.has(chiave), chiave).toBe(false);
+      viste.add(chiave);
+    }
+  });
+
+  it("i privilegi che cambiano i calcoli hanno ancora il nome riconosciuto dalle regole", () => {
+    const nomi = new Set(PRIVILEGI_CLASSE.map(p => p.privilegio.nome));
+    for (const nome of ["Resilienza Draconica", "Presagio", "Ira"]) expect(nomi.has(nome), nome).toBe(true);
   });
 });

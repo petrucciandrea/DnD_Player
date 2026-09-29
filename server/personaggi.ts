@@ -1,5 +1,7 @@
 import type { DatabaseSync, SQLOutputValue } from "node:sqlite";
-import type { Caratteristica, CharacterData, CompetenzeAltre, InventoryItem, Spell, XPRecord } from "../src/tipi.ts";
+import type {
+  CategoriaNota, Caratteristica, CharacterData, CompetenzeAltre, EffettoAttivo, InventoryItem, NotaSessione, Spell, XPRecord,
+} from "../src/tipi.ts";
 import { CARATTERISTICHE } from "../src/regole.ts";
 import { personaggioVuoto } from "../src/scheda.ts";
 import {
@@ -29,7 +31,7 @@ const vero = (v: SQLOutputValue) => v === 1;
 const TABELLE_FIGLIE = [
   "personaggio_caratteristiche", "personaggio_abilita", "personaggio_slot", "personaggio_presagio",
   "personaggio_xp", "personaggio_oggetti", "personaggio_incantesimi", "personaggio_armi", "personaggio_privilegi",
-  "personaggio_competenze",
+  "personaggio_competenze", "personaggio_risorse", "personaggio_condizioni", "personaggio_effetti", "personaggio_note",
 ];
 
 // Competenze diverse da abilità e TS: tipo nella tabella `personaggio_competenze` → campo di CompetenzeAltre.
@@ -95,7 +97,7 @@ export function scomponi(db: DatabaseSync, id: number, c: CharacterData, utenteI
         nome = :nome, classe = :classe, sottoclasse = :sottoclasse, livello = :livello, razza = :razza,
         background = :background, allineamento = :allineamento, giocatore = :giocatore, eta = :eta,
         altezza = :altezza, peso = :peso, occhi = :occhi, capelli = :capelli, carnagione = :carnagione,
-        velocita = :velocita, taglia = :taglia, ispirazione = :ispirazione, armatura_id = :armatura_id, scudo = :scudo,
+        velocita = :velocita, taglia = :taglia, ispirazione = :ispirazione, indebolimento = :indebolimento, armatura_id = :armatura_id, scudo = :scudo,
         pf_attuali = :pf_attuali, pf_massimi = :pf_massimi, pf_temporanei = :pf_temporanei,
         dadi_vita_rimanenti = :dadi_vita_rimanenti, ts_morte_successi = :ts_morte_successi,
         ts_morte_fallimenti = :ts_morte_fallimenti, stabile = :stabile,
@@ -110,7 +112,7 @@ export function scomponi(db: DatabaseSync, id: number, c: CharacterData, utenteI
       allineamento: testo(info.allineamento), giocatore: testo(info.giocatore), eta: intero(info.eta),
       altezza: testo(info.altezza), peso: testo(info.peso), occhi: testo(info.occhi), capelli: testo(info.capelli),
       carnagione: testo(info.carnagione), velocita: testo(info.velocita), taglia: testo(info.taglia) || "Media",
-      ispirazione: flag(info.ispirazione), armatura_id: armaturaId, scudo: flag(c.scudo),
+      ispirazione: flag(info.ispirazione), indebolimento: Math.max(0, Math.min(6, intero(c.indebolimento))), armatura_id: armaturaId, scudo: flag(c.scudo),
       pf_attuali: intero(pf.pfAttuali), pf_massimi: intero(pf.pfMassimi), pf_temporanei: intero(pf.pfTemporanei),
       dadi_vita_rimanenti: intero(pf.dadiVitaRimanenti), ts_morte_successi: intero(pf.tsMorte?.successi),
       ts_morte_fallimenti: intero(pf.tsMorte?.fallimenti), stabile: flag(pf.stabile),
@@ -140,6 +142,19 @@ export function scomponi(db: DatabaseSync, id: number, c: CharacterData, utenteI
     );
     c.xp.storico.forEach((r, i) => xp.run(id, i, intero(r.id, i + 1), testo(r.data), intero(r.valore), testo(r.motivo)));
 
+    const risorsa = db.prepare("INSERT OR IGNORE INTO personaggio_risorse (personaggio_id, risorsa, usati) VALUES (?, ?, ?)");
+    for (const [nomeRisorsa, usati] of Object.entries(c.risorseUsate)) {
+      if (intero(usati) > 0) risorsa.run(id, nomeRisorsa, intero(usati));
+    }
+    const condizione = db.prepare("INSERT OR IGNORE INTO personaggio_condizioni (personaggio_id, condizione, ordine) VALUES (?, ?, ?)");
+    c.condizioni.forEach((nomeCondizione, i) => condizione.run(id, testo(nomeCondizione), i));
+    const effetto = db.prepare("INSERT OR IGNORE INTO personaggio_effetti (personaggio_id, effetto, valore, ordine) VALUES (?, ?, ?, ?)");
+    c.effetti.forEach((e, i) => effetto.run(id, testo(e.id), typeof e.valore === "number" ? intero(e.valore) : null, i));
+    const nota = db.prepare(
+      "INSERT INTO personaggio_note (personaggio_id, ordine, id_locale, data, categoria, titolo, testo, fatto) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    );
+    c.note.forEach((n, i) => nota.run(id, i, intero(n.id, i + 1), testo(n.data), testo(n.categoria), testo(n.titolo), testo(n.testo), flag(n.fatto)));
+
     const oggetto = db.prepare(
       "INSERT INTO personaggio_oggetti (personaggio_id, ordine, id_locale, nome, qta, peso) VALUES (?, ?, ?, ?, ?, ?)",
     );
@@ -164,6 +179,17 @@ export function componi(db: DatabaseSync, id: number): CharacterData | null {
     occhi: testo(p.occhi), capelli: testo(p.capelli), carnagione: testo(p.carnagione), velocita: testo(p.velocita),
     taglia: testo(p.taglia), ispirazione: vero(p.ispirazione),
   };
+  c.indebolimento = Number(p.indebolimento);
+  c.risorseUsate = Object.fromEntries(
+    tutte("SELECT risorsa, usati FROM personaggio_risorse WHERE personaggio_id = ?").map(r => [testo(r.risorsa), Number(r.usati)]),
+  );
+  c.condizioni = tutte("SELECT condizione FROM personaggio_condizioni WHERE personaggio_id = ? ORDER BY ordine").map(r => testo(r.condizione));
+  c.effetti = tutte("SELECT effetto, valore FROM personaggio_effetti WHERE personaggio_id = ? ORDER BY ordine").map((r): EffettoAttivo =>
+    r.valore === null ? { id: testo(r.effetto) } : { id: testo(r.effetto), valore: Number(r.valore) });
+  c.note = tutte("SELECT * FROM personaggio_note WHERE personaggio_id = ? ORDER BY ordine").map((r): NotaSessione => ({
+    id: Number(r.id_locale), data: testo(r.data), categoria: testo(r.categoria) as CategoriaNota, titolo: testo(r.titolo),
+    testo: testo(r.testo), fatto: vero(r.fatto),
+  }));
   const armatura = p.armatura_id === null ? undefined : db.prepare("SELECT * FROM armature WHERE id = ?").get(p.armatura_id);
   c.armatura = armatura ? armaturaDaRiga(armatura) : null;
   c.scudo = vero(p.scudo);

@@ -160,6 +160,18 @@ export async function privilegiDiLivello(classe: string, livello: number, sottoc
   }
 }
 
+// Tutti i privilegi di classe (e di sottoclasse) fino a un livello; null se il catalogo non è raggiungibile.
+export async function privilegiFinoAlLivello(classe: string, livello: number, sottoclasse: string): Promise<PrivilegioClasse[] | null> {
+  try {
+    const parametri = new URLSearchParams({ fino: String(livello), sottoclasse });
+    const res = await fetch(`/api/classi/${encodeURIComponent(classe)}/privilegi?${parametri}`);
+    const corpo: unknown = res.ok ? await res.json() : null;
+    return Array.isArray(corpo) ? (corpo as PrivilegioClasse[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 // Catalogo condiviso degli incantesimi; null se non è raggiungibile.
 export async function catalogoIncantesimi(): Promise<VoceIncantesimo[] | null> {
   try {

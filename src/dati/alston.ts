@@ -54,6 +54,10 @@ export const INITIAL_CHARACTER: CharacterData = {
     usati: [false, false]
   },
   recuperoArcanoUsato: false,
+  risorseUsate: {},
+  condizioni: [],
+  indebolimento: 0,
+  effetti: [],
   monete: {
     mr: 228,
     ma: 557,
@@ -118,6 +122,7 @@ export const INITIAL_CHARACTER: CharacterData = {
     { nome: "Esperto di Divinazione", fonte: "Scuola di Divinazione", descrizione: "Oro e tempo necessari per copiare un incantesimo di divinazione nel libro sono dimezzati." },
     { nome: "Presagio", fonte: "Scuola di Divinazione", descrizione: "Dopo un riposo lungo tira 2d20 (3d20 dal 14° livello). Può sostituire un tiro per colpire, un tiro salvezza o una prova, propri o di una creatura visibile, con uno di questi risultati. Ognuno si usa una sola volta." }
   ],
+  note: [],
   lore: {
     tratti: "Il sapiente è disposto ad aiutare quelli meno intelligenti di lui, spiegando ogni cosa con infinita pazienza.",
     ideali: "Miglioramento: l'obiettivo di una vita di studio è il perfezionamento personale.",

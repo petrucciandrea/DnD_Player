@@ -6,7 +6,10 @@ import {
   ABILITA, CARATTERISTICHE, critico, dannoArma, formulaDanno, modificaCaratteristica, segno, testoDanni,
 } from "../regole";
 import type { ChiediD20, ChiediTiro, TiroDanni } from "../tiroDadi";
-import { tiraDanni } from "../tiroDadi";
+import { conSuggerimento, tiraDanni } from "../tiroDadi";
+import type { ContestoTiro } from "../dati/condizioni";
+import PannelloRisorse from "./PannelloRisorse";
+import PannelloCondizioni from "./PannelloCondizioni";
 
 interface OpzioneDanno {
   etichetta: string;
@@ -40,10 +43,11 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
 
   const tira = async (
     etichetta: string, facce: number, bonus = 0,
-    extra: { descrizione?: string; opzioniDanno?: OpzioneDanno[] } = {},
+    extra: { descrizione?: string; opzioniDanno?: OpzioneDanno[]; contesto?: ContestoTiro } = {},
   ) => {
     if (facce === 20) {
-      const r = await chiediD20({ titolo: etichetta, bonus, descrizione: extra.descrizione });
+      const richiesta = { titolo: etichetta, bonus, descrizione: extra.descrizione };
+      const r = await chiediD20(extra.contesto ? conSuggerimento(char, extra.contesto, richiesta) : richiesta);
       if (!r) return;
       setUltimoTiro({ etichetta, facce, risultato: r.risultato, bonus, tiri: r.tiri, modalita: r.modalita, opzioniDanno: extra.opzioniDanno });
     } else {
@@ -128,6 +132,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
                 </div>
                 <button
                   onClick={() => tira(`TS ${sigla}`, 20, ts, {
+                    contesto: { tipo: "ts", car: sigla },
                     descrizione: astuziaGnomesca && ["INT", "SAG", "CAR"].includes(sigla)
                       ? "Astuzia Gnomesca: vantaggio se il tiro salvezza è contro la magia."
                       : undefined,
@@ -156,7 +161,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
               return (
                 <button
                   key={a.id}
-                  onClick={() => (modifica ? toggleCompetenza(a.id) : tira(a.nome, 20, bonus))}
+                  onClick={() => (modifica ? toggleCompetenza(a.id) : tira(a.nome, 20, bonus, { contesto: { tipo: "prova", car: a.car } }))}
                   className="flex items-center justify-between px-2 py-1.5 rounded-lg text-sm hover:bg-slate-800/60 transition text-left"
                 >
                   <span className="flex items-center gap-2">
@@ -175,18 +180,18 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
           <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-3">Armi da Mischia / Distanza</h3>
           <div className="space-y-2">
             {char.armi.map((arma, idx) => {
-              const { bonus, mod } = d.attaccoArma(arma);
-              const danno = formulaDanno(arma.dado, mod) + (arma.dadoVersatile ? ` / ${formulaDanno(arma.dadoVersatile, mod)}` : "");
+              const { bonus, modDanno, mischiaFOR } = d.attaccoArma(arma);
+              const danno = formulaDanno(arma.dado, modDanno) + (arma.dadoVersatile ? ` / ${formulaDanno(arma.dadoVersatile, modDanno)}` : "");
               const opzioniDanno: OpzioneDanno[] = arma.dadoVersatile
                 ? [
-                    { etichetta: `${arma.nome} (una mano)`, danni: dannoArma(arma, mod) },
-                    { etichetta: `${arma.nome} (due mani)`, danni: dannoArma(arma, mod, true) },
+                    { etichetta: `${arma.nome} (una mano)`, danni: dannoArma(arma, modDanno) },
+                    { etichetta: `${arma.nome} (due mani)`, danni: dannoArma(arma, modDanno, true) },
                   ]
-                : [{ etichetta: arma.nome, danni: dannoArma(arma, mod) }];
+                : [{ etichetta: arma.nome, danni: dannoArma(arma, modDanno) }];
               return (
                 <button
                   key={idx}
-                  onClick={() => tira(`Attacco: ${arma.nome}`, 20, bonus, { opzioniDanno })}
+                  onClick={() => tira(`Attacco: ${arma.nome}`, 20, bonus, { opzioniDanno, contesto: { tipo: "attacco", mischiaFOR } })}
                   className="w-full flex flex-wrap justify-between items-center gap-2 p-3 bg-slate-950/60 hover:bg-slate-800/40 rounded-lg border border-slate-800 text-sm text-left transition"
                 >
                   <span>
@@ -206,6 +211,9 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
       </div>
 
       <div className="space-y-4">
+        <PannelloRisorse d={d} setChar={setChar} />
+        <PannelloCondizioni char={char} d={d} setChar={setChar} />
+
         {d.haPresagio && (
           <div className="bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-900/50 rounded-xl p-4 shadow-lg">
             <div className="flex items-center justify-between mb-2">

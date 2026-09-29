@@ -1,9 +1,10 @@
 import type { Privilegio } from "../../src/tipi.ts";
 import type { NomeClasse } from "../../src/dati/classi.ts";
+import { PRIVILEGI_AVANZATI } from "./classiAvanzate.ts";
 
 // Privilegi di classe e di sottoclasse per livello (tabella `classe_privilegi`).
-// Per ora ci sono il 1° livello di ogni classe, le sottoclassi scelte al 1° e ciò che serve ad Alston.
-// Le descrizioni sono riassunti brevi, non il testo del manuale.
+// Qui c'è il 1° livello di ogni classe, le sottoclassi scelte al 1° e ciò che serve ad Alston; i livelli
+// dal 2° al 20° sono in classiAvanzate.ts. Le descrizioni sono riassunti brevi, non il testo del manuale.
 
 export interface SemePrivilegioClasse {
   classe: NomeClasse;
@@ -18,7 +19,7 @@ const c = (classe: NomeClasse, livello: number, nome: string, descrizione: strin
 const s = (classe: NomeClasse, sottoclasse: string, livello: number, nome: string, descrizione: string): SemePrivilegioClasse =>
   ({ classe, sottoclasse, livello, privilegio: { nome, fonte: sottoclasse, descrizione } });
 
-export const PRIVILEGI_CLASSE: SemePrivilegioClasse[] = [
+const PRIMO_LIVELLO: SemePrivilegioClasse[] = [
   c("Barbaro", 1, "Ira", "Con un'azione bonus entra in ira per 1 minuto: vantaggio alle prove e ai TS di Forza, bonus ai danni in mischia con la Forza (+2 al 1°) e resistenza ai danni contundenti, perforanti e taglienti. Non può lanciare incantesimi. 2 volte per riposo lungo al 1° livello."),
   c("Barbaro", 1, "Difesa Senza Armatura (Barbaro)", "Senza armatura la CA è 10 + mod DES + mod COS; può comunque usare uno scudo."),
 
@@ -72,3 +73,5 @@ export const PRIVILEGI_CLASSE: SemePrivilegioClasse[] = [
   s("Warlock", "L'Immondo", 1, "Benedizione dell'Oscuro", "Quando riduce a 0 PF una creatura ostile, ottiene PF temporanei pari a mod CAR + livello da warlock (minimo 1)."),
   s("Warlock", "Il Grande Antico", 1, "Mente Risvegliata", "Comunica telepaticamente con qualsiasi creatura entro 9 m che capisca almeno una lingua."),
 ];
+
+export const PRIVILEGI_CLASSE: SemePrivilegioClasse[] = [...PRIMO_LIVELLO, ...PRIVILEGI_AVANZATI];

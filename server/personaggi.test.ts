@@ -109,4 +109,23 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
       { id, nome: "Alston il Breve", classe: "Mago", sottoclasse: "Scuola di Divinazione", livello: 3, razza: "Gnomo delle Rocce" },
     ]);
   });
+
+  it("risorse, condizioni, indebolimento, effetti e note fanno andata e ritorno", () => {
+    const { db, utente } = archivio();
+    const c = alston();
+    c.risorseUsate = { "punti-ki": 2, ira: 1 };
+    c.condizioni = ["prono", "avvelenato"];
+    c.indebolimento = 3;
+    c.effetti = [{ id: "ira" }, { id: "immagine-speculare", valore: 2 }];
+    c.note = [
+      { id: 7, data: "30/9/2026", categoria: "png", titolo: "Il locandiere", testo: "Sa dell'osservatorio.\nSecondo rigo.", fatto: false },
+      { id: 8, data: "30/9/2026", categoria: "obiettivo", titolo: "Trovare la chiave", testo: "", fatto: true },
+    ];
+    const id = creaPersonaggio(db, utente.id, c);
+    expect({ ...componi(db, id)!, incantesimi: [] }).toEqual({ ...c, incantesimi: [] });
+    // Riscrivere con meno dati sostituisce, non accumula.
+    const meno = { ...c, risorseUsate: {}, condizioni: [], effetti: [], note: [], indebolimento: 0 };
+    scomponi(db, id, meno, utente.id);
+    expect({ ...componi(db, id)!, incantesimi: [] }).toEqual({ ...meno, incantesimi: [] });
+  });
 });

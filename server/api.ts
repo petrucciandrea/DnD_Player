@@ -91,7 +91,7 @@ const impostaCookie = (res: ServerResponse, token: string, durata: number) =>
 //   PUT  /personaggi/:id { dati, revisione }   → { revisione }, 409 con la versione attuale, 404 se non è dell'utente
 //   GET  /incantesimi                          → catalogo degli incantesimi
 //   GET  /creazione                            → cataloghi per creare un personaggio (razze, background, armi...)
-//   GET  /classi/:classe/privilegi?livello=n&sottoclasse=… → privilegi di classe di quel livello
+//   GET  /classi/:classe/privilegi?livello=n&sottoclasse=… → privilegi di classe di quel livello (con fino=n: fino a quel livello)
 export function apiPersonaggio(): Plugin {
   let db: ReturnType<typeof apriArchivio> | null = null;
   const archivio = () => (db ??= apriArchivio(PERCORSO_ARCHIVIO));
@@ -162,10 +162,12 @@ export function apiPersonaggio(): Plugin {
     const classe = /^\/classi\/([^/]+)\/privilegi$/.exec(percorso);
     if (classe && metodo === "GET") {
       const parametri = new URL(req.url ?? "", "http://x").searchParams;
-      const livello = Number(parametri.get("livello"));
+      const cumulativo = parametri.has("fino");
+      const livello = Number(parametri.get(cumulativo ? "fino" : "livello"));
       if (!Number.isInteger(livello) || livello < 1 || livello > 20) return rispondi(res, 400, { errore: "Livello non valido" });
       return rispondi(res, 200, privilegiDiClasse(archivio(), {
-        classe: decodeURIComponent(classe[1]), livello, sottoclasse: parametri.get("sottoclasse") ?? "",
+        classe: decodeURIComponent(classe[1]), ...(cumulativo ? { fino: livello } : { livello }),
+        sottoclasse: parametri.get("sottoclasse") ?? "",
       }));
     }
 

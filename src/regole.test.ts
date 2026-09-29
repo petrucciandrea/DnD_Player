@@ -5,7 +5,9 @@ import {
   riposoBreve, riposoLungo, risultatoD20, saliDiLivello,
   dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, slotUtilizzabili,
   applicaCura, applicaDanno, cdConcentrazione, esitoTsMorte, statoVita, pfPerLivello, slotPatto,
+  aggiungiCondizione, attivaEffetto, cambiaConteggioEffetto, impostaIndebolimento, privilegiMancanti, rimuoviEffetto, usaRisorsa,
 } from "./regole";
+import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { completaConEsistente, daJSON } from "./scheda";
 import { SCHEDE_INCANTESIMI } from "../server/semi/incantesimi.ts";
 import type { CharacterData } from "./tipi";
@@ -50,8 +52,8 @@ describe("derivate di Alston (Mago 3)", () => {
     expect(d.slotMax).toEqual([4, 2]);
     expect(d.maxPreparabili).toBe(6);
     expect(d.maxTrucchetti).toBe(3);
-    expect(d.attaccoArma(INITIAL_CHARACTER.armi[0])).toEqual({ bonus: 1, mod: -1 }); // bastone: FOR
-    expect(d.attaccoArma(INITIAL_CHARACTER.armi[1])).toEqual({ bonus: 3, mod: 1 }); // pugnale: accurata
+    expect(d.attaccoArma(INITIAL_CHARACTER.armi[0])).toMatchObject({ bonus: 1, mod: -1 }); // bastone: FOR
+    expect(d.attaccoArma(INITIAL_CHARACTER.armi[1])).toMatchObject({ bonus: 3, mod: 1 }); // pugnale: accurata
   });
 
   it("progressione", () => {
@@ -382,7 +384,7 @@ describe("regole per classe", () => {
   it("armi a distanza con la DES", () => {
     const c = pg("Ranger", 1, { FOR: 10, DES: 16 });
     const arco = { nome: "Arco Lungo", dado: "1d8", tipoDanno: "Perforante", proprieta: "", accurata: false, distanza: true };
-    expect(derivate(c).attaccoArma(arco)).toEqual({ bonus: 5, mod: 3 });
+    expect(derivate(c).attaccoArma(arco)).toMatchObject({ bonus: 5, mod: 3, mischiaFOR: false });
   });
 
   it("salire di livello aggiunge i privilegi nuovi e la sottoclasse scelta", () => {
@@ -392,5 +394,253 @@ describe("regole per classe", () => {
     expect(dopo.info).toMatchObject({ livello: 2, sottoclasse: "Scuola di Divinazione" });
     expect(dopo.privilegi).toEqual([presagio]);
     expect(dopo.combattimento.pfMassimi).toBe(c.combattimento.pfMassimi + 6); // 3 + 1 + COS 2
+  });
+});
+
+describe("risorse di classe", () => {
+  const pg = (classe: string, livello: number, punteggi: Partial<Record<"FOR" | "DES" | "COS" | "INT" | "SAG" | "CAR", number>> = {}, sottoclasse = "", razza = "Umano"): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe, livello, sottoclasse, razza };
+    for (const [k, v] of Object.entries(punteggi)) c.caratteristiche[k as keyof typeof punteggi] = { valore: v, compTS: false };
+    return c;
+  };
+  const risorsa = (c: CharacterData, id: string) => derivate(c).risorse.find(r => r.id === id);
+
+  it("il massimo dipende da classe, livello e caratteristiche", () => {
+    expect([1, 3, 6, 12, 17, 20].map(l => risorsa(pg("Barbaro", l), "ira")?.max)).toEqual([2, 3, 4, 5, 6, null]);
+    expect(risorsa(pg("Monaco", 1), "punti-ki")).toBeUndefined();
+    expect(risorsa(pg("Monaco", 7), "punti-ki")?.max).toBe(7);
+    expect(risorsa(pg("Bardo", 3, { CAR: 16 }), "ispirazione-bardica")).toMatchObject({ max: 3, ricarica: "lunga", nota: "d6" });
+    expect(risorsa(pg("Bardo", 5, { CAR: 8 }), "ispirazione-bardica")).toMatchObject({ max: 1, ricarica: "breve", nota: "d8" });
+    expect(risorsa(pg("Paladino", 4), "imposizione-mani")?.max).toBe(20);
+    expect(risorsa(pg("Chierico", 6), "incanalare-divinita")?.max).toBe(2);
+    expect(risorsa(pg("Guerriero", 3, {}, "Maestro di Battaglia"), "dadi-superiorita")).toMatchObject({ max: 4, nota: "d8" });
+    expect(risorsa(pg("Guerriero", 3, {}, "Campione"), "dadi-superiorita")).toBeUndefined();
+    expect(risorsa(pg("Warlock", 11), "arcanum-6")?.max).toBe(1);
+    expect(risorsa(pg("Warlock", 11), "arcanum-7")).toBeUndefined();
+  });
+
+  it("alcune risorse vengono dalla razza o dal dominio", () => {
+    expect(risorsa(pg("Guerriero", 1, {}, "", "Dragonide"), "arma-a-soffio")).toBeDefined();
+    expect(risorsa(pg("Guerriero", 1), "arma-a-soffio")).toBeUndefined();
+    expect(risorsa(pg("Chierico", 1, { SAG: 16 }, "Dominio della Luce"), "bagliore-protettivo")?.max).toBe(3);
+    expect(risorsa(pg("Chierico", 1, { SAG: 16 }, "Dominio della Vita"), "bagliore-protettivo")).toBeUndefined();
+  });
+
+  it("si spendono e si recuperano senza uscire dai limiti", () => {
+    let c = pg("Monaco", 5);
+    c = usaRisorsa(c, "punti-ki", 3);
+    expect(risorsa(c, "punti-ki")).toMatchObject({ usati: 3, rimasti: 2 });
+    expect(usaRisorsa(c, "punti-ki", 10).risorseUsate["punti-ki"]).toBe(5);
+    expect(usaRisorsa(c, "punti-ki", -10).risorseUsate).toEqual({});
+    expect(usaRisorsa(c, "non-esiste")).toBe(c);
+    expect(usaRisorsa(pg("Barbaro", 20), "ira")).toEqual(pg("Barbaro", 20)); // illimitata
+  });
+
+  it("i riposi ricaricano le risorse giuste", () => {
+    let c = pg("Guerriero", 9, {}, "Maestro di Battaglia");
+    c = usaRisorsa(usaRisorsa(usaRisorsa(c, "recuperare-energie"), "indomito"), "dadi-superiorita", 2);
+    const breve = riposoBreve(c, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
+    expect(breve.risorseUsate).toEqual({ indomito: 1 }); // Indomito torna solo con il riposo lungo
+    expect(riposoLungo(c).risorseUsate).toEqual({});
+  });
+});
+
+describe("effetti attivi", () => {
+  const barbaro = (livello = 3): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe: "Barbaro", livello, sottoclasse: "", razza: "Umano" };
+    c.caratteristiche.FOR = { valore: 16, compTS: false };
+    c.caratteristiche.DES = { valore: 12, compTS: false };
+    c.armatura = null;
+    c.scudo = false;
+    c.concentrazione = "Tocco Gelido";
+    return c;
+  };
+  const mago = () => {
+    const c = alston();
+    c.armatura = null;
+    c.scudo = false;
+    return c;
+  };
+  const spada = { nome: "Spada Lunga", dado: "1d8", tipoDanno: "Tagliente", proprieta: "", accurata: false };
+
+  it("l'ira spende un uso, aggiunge danni in mischia con la Forza e interrompe la concentrazione", () => {
+    const ira = attivaEffetto(barbaro(), "ira");
+    expect(ira.effetti).toEqual([{ id: "ira" }]);
+    expect(ira.risorseUsate.ira).toBe(1);
+    expect(ira.concentrazione).toBeNull();
+    expect(derivate(ira).attaccoArma(spada)).toMatchObject({ mod: 3, modDanno: 5, bonus: 5 });
+    expect(derivate(barbaro()).attaccoArma(spada).modDanno).toBe(3);
+    // Non vale per le armi a distanza.
+    expect(derivate(ira).attaccoArma({ ...spada, distanza: true }).modDanno).toBe(derivate(ira).attaccoArma({ ...spada, distanza: true }).mod);
+    expect(derivate(barbaro(9)).attaccoArma(spada).modDanno).toBe(3);
+    expect(derivate(attivaEffetto(barbaro(9), "ira")).attaccoArma(spada).modDanno).toBe(6);
+  });
+
+  it("senza usi rimasti l'ira non si attiva, e chi non è barbaro non ce l'ha", () => {
+    let c = barbaro(1);
+    c = usaRisorsa(c, "ira", 2);
+    expect(attivaEffetto(c, "ira")).toBe(c);
+    expect(attivaEffetto(mago(), "ira")).toEqual(mago());
+  });
+
+  it("il riposo breve fa finire l'ira, quello lungo anche gli effetti di un'intera giornata", () => {
+    let c = attivaEffetto(attivaEffetto(mago(), "armatura-magica"), "scudo");
+    const breve = riposoBreve(c, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
+    expect(breve.effetti.map(e => e.id)).toEqual(["armatura-magica"]);
+    expect(riposoLungo(c).effetti).toEqual([]);
+    c = rimuoviEffetto(c, "scudo");
+    expect(c.effetti.map(e => e.id)).toEqual(["armatura-magica"]);
+  });
+
+  it("Armatura Magica, Scudo e Pelle Coriacea cambiano la CA", () => {
+    const base = derivate(mago()); // DES 13 → CA 11
+    expect(base.ca).toBe(11);
+    const armatura = derivate(attivaEffetto(mago(), "armatura-magica"));
+    expect(armatura.ca).toBe(14);
+    expect(armatura.notaCA).toContain("Armatura Magica");
+    expect(derivate(attivaEffetto(attivaEffetto(mago(), "armatura-magica"), "scudo")).ca).toBe(19);
+    expect(derivate(attivaEffetto(mago(), "pelle-coriacea")).ca).toBe(16);
+    // Con un'armatura indossata Armatura Magica non conta.
+    const c = mago();
+    c.armatura = { nome: "Cotta di Maglia", categoria: "pesante", ca: 16, maxDes: 0, forzaMin: 13, svantaggioFurtivita: true, peso: 55 };
+    expect(derivate(attivaEffetto(c, "armatura-magica")).ca).toBe(16);
+    expect(derivate(attivaEffetto(c, "scudo")).ca).toBe(21);
+  });
+
+  it("Immagine Speculare conta i duplicati e finisce a zero", () => {
+    let c = attivaEffetto(mago(), "immagine-speculare");
+    expect(c.effetti).toEqual([{ id: "immagine-speculare", valore: 3 }]);
+    c = cambiaConteggioEffetto(c, "immagine-speculare", -1);
+    expect(c.effetti[0].valore).toBe(2);
+    expect(cambiaConteggioEffetto(c, "immagine-speculare", 5).effetti[0].valore).toBe(3);
+    expect(cambiaConteggioEffetto(cambiaConteggioEffetto(c, "immagine-speculare", -1), "immagine-speculare", -1).effetti).toEqual([]);
+  });
+
+  it("un effetto non si attiva due volte e gli incantesimi li attivano per nome", () => {
+    const c = attivaEffetto(mago(), "scudo");
+    expect(attivaEffetto(c, "scudo")).toBe(c);
+    expect(attivaEffetto(c, "inesistente")).toBe(c);
+    expect(effettoDaIncantesimo(" scudo ")?.id).toBe("scudo");
+    expect(effettoDaIncantesimo("Dardo di Fuoco")).toBeUndefined();
+  });
+});
+
+describe("condizioni e indebolimento", () => {
+  const c0 = () => alston();
+
+  it("avvelenato dà svantaggio ad attacchi e prove ma non ai tiri salvezza", () => {
+    const c = aggiungiCondizione(c0(), "avvelenato");
+    expect(suggerimentoTiro(c, { tipo: "attacco" })).toMatchObject({ modalita: "svantaggio" });
+    expect(suggerimentoTiro(c, { tipo: "prova", car: "SAG" }).modalita).toBe("svantaggio");
+    expect(suggerimentoTiro(c, { tipo: "ts", car: "SAG" }).modalita).toBe("normale");
+  });
+
+  it("vantaggio e svantaggio si annullano", () => {
+    let c = aggiungiCondizione(aggiungiCondizione(c0(), "avvelenato"), "invisibile");
+    const s = suggerimentoTiro(c, { tipo: "attacco" });
+    expect(s.modalita).toBe("normale");
+    expect(s.note[0]).toContain("si annullano");
+    c = aggiungiCondizione(c0(), "invisibile");
+    expect(suggerimentoTiro(c, { tipo: "attacco" }).modalita).toBe("vantaggio");
+  });
+
+  it("paralizzato fallisce i TS di Forza e Destrezza, trattenuto ha svantaggio su Destrezza", () => {
+    const p = aggiungiCondizione(c0(), "paralizzato");
+    expect(suggerimentoTiro(p, { tipo: "ts", car: "DES" }).fallimentoAutomatico).toBe(true);
+    expect(suggerimentoTiro(p, { tipo: "ts", car: "SAG" }).fallimentoAutomatico).toBe(false);
+    const t = aggiungiCondizione(c0(), "trattenuto");
+    expect(suggerimentoTiro(t, { tipo: "ts", car: "DES" }).modalita).toBe("svantaggio");
+    expect(suggerimentoTiro(t, { tipo: "ts", car: "FOR" }).modalita).toBe("normale");
+  });
+
+  it("le condizioni che rendono incapaci interrompono la concentrazione", () => {
+    const c = c0();
+    c.concentrazione = "Tocco Gelido";
+    expect(aggiungiCondizione(c, "prono").concentrazione).toBe("Tocco Gelido");
+    expect(aggiungiCondizione(c, "stordito").concentrazione).toBeNull();
+    expect(aggiungiCondizione(c, "inesistente")).toBe(c);
+  });
+
+  it("l'ira dà vantaggio a prove e TS di Forza, l'attacco sconsiderato solo agli attacchi in mischia con la Forza", () => {
+    const c = alston();
+    c.info.classe = "Barbaro";
+    c.info.livello = 3;
+    const ira = attivaEffetto(c, "ira");
+    expect(suggerimentoTiro(ira, { tipo: "prova", car: "FOR" }).modalita).toBe("vantaggio");
+    expect(suggerimentoTiro(ira, { tipo: "ts", car: "FOR" }).modalita).toBe("vantaggio");
+    expect(suggerimentoTiro(ira, { tipo: "ts", car: "DES" }).modalita).toBe("normale");
+    const sconsiderato = attivaEffetto(c, "attacco-sconsiderato");
+    expect(suggerimentoTiro(sconsiderato, { tipo: "attacco", mischiaFOR: true }).modalita).toBe("vantaggio");
+    expect(suggerimentoTiro(sconsiderato, { tipo: "attacco", mischiaFOR: false }).modalita).toBe("normale");
+  });
+
+  it("l'indebolimento ha effetti crescenti", () => {
+    let c = impostaIndebolimento(c0(), 1);
+    expect(suggerimentoTiro(c, { tipo: "prova" }).modalita).toBe("svantaggio");
+    expect(suggerimentoTiro(c, { tipo: "attacco" }).modalita).toBe("normale");
+    c = impostaIndebolimento(c, 3);
+    expect(suggerimentoTiro(c, { tipo: "attacco" }).modalita).toBe("svantaggio");
+    expect(suggerimentoTiro(c, { tipo: "ts", car: "COS" }).modalita).toBe("svantaggio");
+  });
+
+  it("a 4 livelli i PF massimi si dimezzano: limite per la cura e per i PF attuali", () => {
+    const c = c0();
+    c.combattimento.pfMassimi = 20;
+    c.combattimento.pfAttuali = 18;
+    const stanco = impostaIndebolimento(c, 4);
+    expect(derivate(stanco).pfMassimiEffettivi).toBe(10);
+    expect(stanco.combattimento.pfAttuali).toBe(10);
+    expect(applicaCura({ ...stanco, combattimento: { ...stanco.combattimento, pfAttuali: 5 } }, 50).combattimento.pfAttuali).toBe(10);
+    expect(impostaIndebolimento(c, 99).indebolimento).toBe(6);
+    expect(impostaIndebolimento(c, -2).indebolimento).toBe(0);
+  });
+
+  it("il riposo lungo toglie un livello di indebolimento e cura fino ai PF massimi effettivi", () => {
+    const c = c0();
+    c.combattimento.pfMassimi = 20;
+    c.combattimento.pfAttuali = 3;
+    const riposato = riposoLungo(impostaIndebolimento(c, 5));
+    expect(riposato.indebolimento).toBe(4);
+    expect(riposato.combattimento.pfAttuali).toBe(10);
+    const dopo = riposoLungo(riposato);
+    expect(dopo.indebolimento).toBe(3);
+    expect(dopo.combattimento.pfAttuali).toBe(20);
+  });
+
+  it("condizioni, effetti e risorse sopravvivono alla normalizzazione", () => {
+    const c = c0();
+    c.condizioni = ["prono"];
+    c.indebolimento = 2;
+    c.effetti = [{ id: "immagine-speculare", valore: 2 }];
+    c.risorseUsate = { "punti-ki": 2 };
+    expect(daJSON(JSON.parse(JSON.stringify(c)))).toEqual(c);
+    const sporca = daJSON({ ...c, indebolimento: 99, condizioni: ["prono", "prono", 3], effetti: [{ id: "scudo" }, { id: "scudo" }, "x"], risorseUsate: { a: -1, b: 2.7, c: "x" } });
+    expect(sporca).toMatchObject({ indebolimento: 6, condizioni: ["prono"], effetti: [{ id: "scudo" }], risorseUsate: { b: 2 } });
+  });
+});
+
+describe("privilegi mancanti", () => {
+  const catalogo = [
+    { classe: "Mago", sottoclasse: null, livello: 1, privilegio: { nome: "Recupero Arcano", fonte: "Mago", descrizione: "x" } },
+    { classe: "Mago", sottoclasse: null, livello: 2, privilegio: { nome: "Tradizione Arcana", fonte: "Mago", descrizione: "x" } },
+    { classe: "Mago", sottoclasse: "Scuola di Divinazione", livello: 6, privilegio: { nome: "Divinazione Esperta", fonte: "Scuola di Divinazione", descrizione: "x" } },
+    { classe: "Mago", sottoclasse: "Scuola di Invocazione", livello: 2, privilegio: { nome: "Scolpire Incantesimi", fonte: "Scuola di Invocazione", descrizione: "x" } },
+    { classe: "Mago", sottoclasse: null, livello: 18, privilegio: { nome: "Maestria negli Incantesimi", fonte: "Mago", descrizione: "x" } },
+    { classe: "Bardo", sottoclasse: null, livello: 2, privilegio: { nome: "Factotum", fonte: "Bardo", descrizione: "x" } },
+  ];
+
+  it("restituisce solo quelli di classe e sottoclasse fino al livello attuale che la scheda non ha", () => {
+    const c = alston(); // Mago 3, Divinazione
+    expect(privilegiMancanti(c, catalogo).map(p => p.nome)).toEqual(["Tradizione Arcana"]);
+    c.info.livello = 6;
+    expect(privilegiMancanti(c, catalogo).map(p => p.nome)).toEqual(["Tradizione Arcana", "Divinazione Esperta"]);
+  });
+
+  it("non ripropone quelli già presenti, anche con maiuscole diverse", () => {
+    const c = alston();
+    c.privilegi.push({ nome: "tradizione arcana", fonte: "MAGO", descrizione: "" });
+    expect(privilegiMancanti(c, catalogo)).toEqual([]);
   });
 });

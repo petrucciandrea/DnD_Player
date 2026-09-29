@@ -308,19 +308,21 @@ function elencoBackground(db: DatabaseSync): BackgroundCatalogo[] {
   });
 }
 
-// Privilegi di classe; con `livello` solo quelli di quel livello, con `sottoclasse` anche i suoi.
+// Privilegi di classe; con `livello` solo quelli di quel livello, con `fino` tutti quelli fino a quel livello,
+// con `sottoclasse` anche i suoi.
 export function privilegiDiClasse(
-  db: DatabaseSync, filtro: { classe?: string; livello?: number; sottoclasse?: string } = {},
+  db: DatabaseSync, filtro: { classe?: string; livello?: number; fino?: number; sottoclasse?: string } = {},
 ): PrivilegioClasse[] {
   const condizioni: string[] = [];
   const valori: SQLInputValue[] = [];
   if (filtro.classe !== undefined) { condizioni.push("cp.classe = ?"); valori.push(filtro.classe); }
   if (filtro.livello !== undefined) { condizioni.push("cp.livello = ?"); valori.push(filtro.livello); }
+  if (filtro.fino !== undefined) { condizioni.push("cp.livello <= ?"); valori.push(filtro.fino); }
   if (filtro.sottoclasse !== undefined) { condizioni.push("(cp.sottoclasse = '' OR cp.sottoclasse = ?)"); valori.push(filtro.sottoclasse); }
   const dove = condizioni.length ? `WHERE ${condizioni.join(" AND ")}` : "";
   return db.prepare(`
     SELECT cp.classe, cp.sottoclasse, cp.livello, p.nome, p.fonte, p.descrizione
-    FROM classe_privilegi cp JOIN privilegi p ON p.id = cp.privilegio_id ${dove} ORDER BY cp.ordine
+    FROM classe_privilegi cp JOIN privilegi p ON p.id = cp.privilegio_id ${dove} ORDER BY cp.livello, cp.sottoclasse <> '', cp.ordine
   `).all(...valori).map(r => ({
     classe: testo(r.classe), sottoclasse: r.sottoclasse === "" ? null : testo(r.sottoclasse), livello: Number(r.livello),
     privilegio: privilegioDaRiga(r),

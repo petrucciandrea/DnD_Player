@@ -2,9 +2,9 @@ import { useState, type FormEvent } from "react";
 import { Plus, Trash2, ArrowUpCircle, LoaderCircle, X } from "lucide-react";
 import type { CharacterData, Privilegio, SetChar, XPRecord } from "../tipi";
 import type { Derivate } from "../regole";
-import { haAumentoCaratteristiche, pfPerLivello, saliDiLivello, slotMassimi } from "../regole";
+import { haAumentoCaratteristiche, pfPerLivello, privilegiMancanti, saliDiLivello, slotMassimi } from "../regole";
 import { incantatoreDi, regoleClasse } from "../dati/classi";
-import { privilegiDiLivello } from "../accesso";
+import { privilegiDiLivello, privilegiFinoAlLivello } from "../accesso";
 
 interface Props {
   char: CharacterData;
@@ -21,6 +21,7 @@ interface Salita {
 export default function TabProgresso({ char, d, setChar }: Props) {
   const [newXpInput, setNewXpInput] = useState({ valore: "", motivo: "" });
   const [salita, setSalita] = useState<Salita | null>(null);
+  const [verifica, setVerifica] = useState<"attesa" | "offline" | Privilegio[] | null>(null);
   const livello = char.info.livello;
   const nuovo = livello + 1;
   const regole = regoleClasse(char.info.classe);
@@ -64,6 +65,21 @@ export default function TabProgresso({ char, d, setChar }: Props) {
     const privilegi = Array.isArray(salita.privilegi) ? salita.privilegi : [];
     setChar(prev => saliDiLivello(prev, { privilegi, sottoclasse: serveSottoclasse ? salita.sottoclasse : undefined }));
     setSalita(null);
+  };
+
+  // Un personaggio salito di livello quando il catalogo era parziale può recuperare i privilegi che gli mancano.
+  const cercaMancanti = async () => {
+    setVerifica("attesa");
+    const catalogo = await privilegiFinoAlLivello(char.info.classe, livello, char.info.sottoclasse);
+    setVerifica(catalogo ? privilegiMancanti(char, catalogo) : "offline");
+  };
+
+  const aggiungiMancanti = (privilegi: Privilegio[]) => {
+    setChar(prev => ({
+      ...prev,
+      privilegi: [...prev.privilegi, ...privilegi.filter(p => !prev.privilegi.some(x => x.nome === p.nome && x.fonte === p.fonte))],
+    }));
+    setVerifica(null);
   };
 
   // Cosa cambia al nuovo livello, per il riepilogo.
@@ -168,6 +184,44 @@ export default function TabProgresso({ char, d, setChar }: Props) {
           </div>
         )}
       </div>
+
+      {livello > 1 && regole && (
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-2 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-bold text-slate-200">Privilegi di classe</h3>
+              <p className="text-xs text-slate-500">Controlla se alla scheda mancano privilegi di classe o sottoclasse fino al livello {livello}.</p>
+            </div>
+            <button
+              onClick={cercaMancanti}
+              disabled={verifica === "attesa"}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold disabled:opacity-50"
+            >
+              {verifica === "attesa" ? "Controllo..." : "Cerca privilegi mancanti"}
+            </button>
+          </div>
+          {verifica === "offline" && <p className="text-xs text-amber-300">Catalogo non raggiungibile: riprova più tardi.</p>}
+          {Array.isArray(verifica) && (verifica.length === 0 ? (
+            <p className="text-xs text-emerald-400">Nessun privilegio mancante.</p>
+          ) : (
+            <div className="space-y-2">
+              <ul className="space-y-1">
+                {verifica.map(p => (
+                  <li key={`${p.nome}|${p.fonte}`} className="text-xs text-slate-400">
+                    <strong className="text-slate-200">{p.nome}</strong> ({p.fonte}): {p.descrizione}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => aggiungiMancanti(verifica)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
+              >
+                <Plus className="w-3.5 h-3.5" /> Aggiungi {verifica.length} {verifica.length === 1 ? "privilegio" : "privilegi"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <form onSubmit={aggiungiXp} className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-wrap gap-2">
         <input

@@ -10,7 +10,8 @@ import { transazione } from "./transazione.ts";
 // 2: dati del personaggio in tabelle, cataloghi condivisi, più personaggi per utente.
 // 3: armature, razze, background, privilegi di classe, classi degli incantesimi; taglia, armatura e
 //    competenze (lingue, strumenti, armi, armature) del personaggio.
-export const VERSIONE_SCHEMA = 3;
+// 4: risorse di classe usate, condizioni, indebolimento, effetti attivi e note di sessione del personaggio.
+export const VERSIONE_SCHEMA = 4;
 
 // Esportato per i test della migrazione.
 export const SCHEMA_V2 = `
@@ -182,8 +183,8 @@ export const SCHEMA_V2 = `
   );
 `;
 
-// Cosa aggiunge la versione 3 allo schema 2.
-const MIGRAZIONE_V3 = `
+// Cosa aggiunge la versione 3 allo schema 2 (esportato per i test della migrazione).
+export const MIGRAZIONE_V3 = `
   CREATE TABLE armature (
     id INTEGER PRIMARY KEY,
     nome TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -281,10 +282,46 @@ const MIGRAZIONE_V3 = `
   );
 `;
 
+// Cosa aggiunge la versione 4 allo schema 3.
+const MIGRAZIONE_V4 = `
+  ALTER TABLE personaggi ADD COLUMN indebolimento INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE personaggio_risorse (
+    personaggio_id INTEGER NOT NULL REFERENCES personaggi(id) ON DELETE CASCADE,
+    risorsa TEXT NOT NULL,             -- id della risorsa (src/dati/risorse.ts)
+    usati INTEGER NOT NULL,
+    PRIMARY KEY (personaggio_id, risorsa)
+  );
+  CREATE TABLE personaggio_condizioni (
+    personaggio_id INTEGER NOT NULL REFERENCES personaggi(id) ON DELETE CASCADE,
+    condizione TEXT NOT NULL,          -- id della condizione (src/dati/condizioni.ts)
+    ordine INTEGER NOT NULL,
+    PRIMARY KEY (personaggio_id, condizione)
+  );
+  CREATE TABLE personaggio_effetti (
+    personaggio_id INTEGER NOT NULL REFERENCES personaggi(id) ON DELETE CASCADE,
+    effetto TEXT NOT NULL,             -- id dell'effetto (src/dati/condizioni.ts)
+    valore INTEGER,                    -- contatore, per gli effetti che ne hanno uno
+    ordine INTEGER NOT NULL,
+    PRIMARY KEY (personaggio_id, effetto)
+  );
+  CREATE TABLE personaggio_note (
+    personaggio_id INTEGER NOT NULL REFERENCES personaggi(id) ON DELETE CASCADE,
+    ordine INTEGER NOT NULL,
+    id_locale INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    categoria TEXT NOT NULL,           -- sessione, png, obiettivo, altro
+    titolo TEXT NOT NULL,
+    testo TEXT NOT NULL,
+    fatto INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (personaggio_id, ordine)
+  );
+`;
+
 // Schema completo della versione attuale.
 const creaSchema = (db: DatabaseSync) => {
   db.exec(SCHEMA_V2);
   db.exec(MIGRAZIONE_V3);
+  db.exec(MIGRAZIONE_V4);
 };
 
 // Utente che la versione 1 creava all'apertura dell'archivio, collegato ad Alston.
@@ -313,6 +350,7 @@ export function preparaSchema(db: DatabaseSync, percorso: string) {
       if (v1) migraDaV1(db);
       else if (versione === 0) creaSchema(db);
       if (versione === 2) migraDaV2(db);
+      if (versione === 2 || versione === 3) db.exec(MIGRAZIONE_V4);
       db.exec(`PRAGMA user_version = ${VERSIONE_SCHEMA}`);
     });
   }

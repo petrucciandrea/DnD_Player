@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import type { Danni, Modalita } from "./regole";
 import { risultatoD20, testoDanni, totaleDanni } from "./regole";
+import type { CharacterData } from "./tipi";
+import { suggerimentoTiro, type ContestoTiro } from "./dati/condizioni";
 
 export interface Dado {
   etichetta: string;
@@ -31,6 +33,15 @@ export interface TiroD20 {
 // Risultati dei dadi nello stesso ordine di `dadi`, oppure null se l'utente annulla.
 export type ChiediTiro = (richiesta: RichiestaTiro) => Promise<number[] | null>;
 export type ChiediD20 = (richiesta: Omit<RichiestaTiro, "dadi" | "d20">) => Promise<TiroD20 | null>;
+
+// Aggiunge alla richiesta di un d20 vantaggio o svantaggio e note che vengono da condizioni ed effetti attivi.
+export function conSuggerimento(
+  char: CharacterData, contesto: ContestoTiro, richiesta: Omit<RichiestaTiro, "dadi" | "d20">,
+): Omit<RichiestaTiro, "dadi" | "d20"> {
+  const { modalita, note } = suggerimentoTiro(char, contesto);
+  const descrizione = [richiesta.descrizione, ...note].filter(Boolean).join(" ");
+  return { ...richiesta, modalita, descrizione: descrizione || undefined };
+}
 
 export interface TiroDanni {
   tiri: number[];

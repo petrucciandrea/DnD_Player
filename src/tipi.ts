@@ -99,6 +99,24 @@ export interface Privilegio {
   descrizione: string;
 }
 
+// Effetto attivo (incantesimo o privilegio con una durata), definito in dati/condizioni.ts.
+export interface EffettoAttivo {
+  id: string;
+  valore?: number; // per gli effetti con un contatore (duplicati di Immagine Speculare)
+}
+
+export type CategoriaNota = "sessione" | "png" | "obiettivo" | "altro";
+
+// Nota di sessione: appunti, personaggi incontrati, obiettivi (con `fatto`).
+export interface NotaSessione {
+  id: number;
+  data: string;
+  categoria: CategoriaNota;
+  titolo: string;
+  testo: string;
+  fatto: boolean;
+}
+
 // Solo i dati "grezzi": tutto ciò che si può calcolare (modificatori, TS, CA,
 // bonus competenza, slot massimi...) sta in regole.ts.
 export interface CharacterData {
@@ -141,6 +159,10 @@ export interface CharacterData {
     usati: boolean[];
   };
   recuperoArcanoUsato: boolean;
+  risorseUsate: Record<string, number>; // usi spesi per id di risorsa (dati/risorse.ts)
+  condizioni: string[]; // id delle condizioni attive (dati/condizioni.ts)
+  indebolimento: number; // livello da 0 a 6
+  effetti: EffettoAttivo[];
   monete: {
     mr: number;
     ma: number;
@@ -157,6 +179,7 @@ export interface CharacterData {
   incantesimi: Spell[];
   inventario: InventoryItem[];
   privilegi: Privilegio[];
+  note: NotaSessione[];
   lore: {
     tratti: string;
     ideali: string;

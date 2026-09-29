@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Coffee, Clock, Heart, Music, RotateCcw, Minus, Plus, X, Dices } from "lucide-react";
+import { Coffee, Clock, Heart, Music, RotateCcw, Minus, Plus, X, Dices, Zap } from "lucide-react";
 import type { CharacterData, EsitoRiposoBreve } from "../tipi";
 import type { Derivate } from "../regole";
 import { segno } from "../regole";
@@ -37,6 +37,8 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
   const [recupero, setRecupero] = useState<number[]>([]);
 
   const modCOS = d.mod("COS");
+  // Le risorse a ricarica breve che hanno usi spesi tornano piene alla fine del riposo.
+  const ricaricabili = d.risorse.filter(r => r.ricarica === "breve" && r.usati > 0);
   const { pfAttuali, pfMassimi, dadiVitaRimanenti } = char.combattimento;
   const dadiDisponibili = dadiVitaRimanenti - tiriDadiVita.length;
 
@@ -101,6 +103,7 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
     if (pfCanto > 0) parti.push(`Canto di Riposo +${pfCanto}`);
     if (pfStabile > 0) parti.push("stabilizzato +1");
     if (pfTotali > 0) parti.push(`+${pfFinali - pfAttuali} PF`);
+    if (ricaricabili.length > 0) parti.push(`Risorse ricaricate: ${ricaricabili.map(r => r.nome).join(", ")}`);
     if (livelliScelti > 0) {
       const slot = slotRecuperati.flatMap((n, i) => (n > 0 ? [`${n}× ${i + 1}°`] : [])).join(", ");
       parti.push(`Recupero Arcano: ${slot}`);
@@ -243,6 +246,16 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
               </div>
             )}
             <p className="text-[11px] text-slate-500">Una volta al giorno, fino al 5° livello di slot.</p>
+          </div>
+        )}
+
+        {/* RISORSE CHE TORNANO */}
+        {ricaricabili.length > 0 && (
+          <div className={sezione}>
+            <h3 className={titoloSezione}><Zap className="w-4 h-4 text-amber-400" /> Risorse che tornano disponibili</h3>
+            <p className="text-xs text-slate-300">
+              {ricaricabili.map(r => `${r.nome} (${r.usati} ${r.unita ?? (r.usati === 1 ? "uso" : "usi")})`).join(", ")}.
+            </p>
           </div>
         )}
 

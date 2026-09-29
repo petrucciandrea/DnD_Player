@@ -8,7 +8,7 @@ import { hashPassword, verificaCredenziali } from "./accesso.ts";
 import { apriArchivio, leggi } from "./archivio.ts";
 import { aggiornaCataloghi } from "./catalogo.ts";
 import { elencoPersonaggi } from "./personaggi.ts";
-import { preparaSchema, SCHEMA_V2, VERSIONE_SCHEMA } from "./schema.ts";
+import { MIGRAZIONE_V3, preparaSchema, SCHEMA_V2, VERSIONE_SCHEMA } from "./schema.ts";
 import { componi } from "./personaggi.ts";
 
 // Archivio come lo lasciava la versione 1 dell'app.
@@ -103,7 +103,7 @@ describe("migrazione dalla versione 2", () => {
   it("aggiunge tabelle e colonne senza toccare i dati", () => {
     const db = archivioV2();
     preparaSchema(db, ":memory:");
-    expect(db.prepare("PRAGMA user_version").get()?.user_version).toBe(3);
+    expect(db.prepare("PRAGMA user_version").get()?.user_version).toBe(VERSIONE_SCHEMA);
     const alston = componi(db, 1)!;
     expect(alston.combattimento.pfAttuali).toBe(17);
     expect(db.prepare("SELECT revisione FROM personaggi WHERE id = 1").get()?.revisione).toBe(5);
@@ -120,5 +120,28 @@ describe("migrazione dalla versione 2", () => {
     const altro = componi(db, 2)!;
     expect(altro.info.taglia).toBe("Media");
     expect(altro.competenzeAltre.lingue).toEqual([]);
+  });
+});
+
+describe("migrazione dalla versione 3", () => {
+  const archivioV3 = () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(SCHEMA_V2);
+    db.exec(MIGRAZIONE_V3);
+    db.exec("PRAGMA user_version = 3");
+    db.exec("INSERT INTO utenti (username, hash, creato) VALUES ('alan', 'h', 'oggi')");
+    db.exec(`INSERT INTO personaggi (utente_id, revisione, aggiornato, nome, classe, livello, pf_attuali)
+             VALUES (1, 4, 'oggi', 'Alston il Breve', 'Mago', 3, 17)`);
+    return db;
+  };
+
+  it("aggiunge risorse, condizioni, effetti e note vuoti senza toccare i dati", () => {
+    const db = archivioV3();
+    preparaSchema(db, ":memory:");
+    expect(db.prepare("PRAGMA user_version").get()?.user_version).toBe(VERSIONE_SCHEMA);
+    const alston = componi(db, 1)!;
+    expect(alston.combattimento.pfAttuali).toBe(17);
+    expect(alston).toMatchObject({ risorseUsate: {}, condizioni: [], indebolimento: 0, effetti: [], note: [] });
+    expect(db.prepare("SELECT revisione FROM personaggi WHERE id = 1").get()?.revisione).toBe(4);
   });
 });

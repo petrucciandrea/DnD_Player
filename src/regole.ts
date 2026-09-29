@@ -1,6 +1,8 @@
 // Regole D&D 5e (edizione 2014). Le regole delle singole classi stanno in dati/classi.ts.
-import type { Arma, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve } from "./tipi.ts";
+import type { Arma, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, Privilegio, PrivilegioClasse } from "./tipi.ts";
 import { CARATTERISTICA_MAGICA_RAZZIALE, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi.ts";
+import { bonusIra, risorseDelPersonaggio } from "./dati/risorse.ts";
+import { condizione, effetto } from "./dati/condizioni.ts";
 
 // Quanto serve per calcolare danni e attacchi di un incantesimo lanciato con un certo slot.
 type IncantesimoDaLanciare = { livello: number } & Pick<DettagliIncantesimo, "danni" | "attacco">;
@@ -204,6 +206,10 @@ export function applicaDanno(c: CharacterData, danno: number): CharacterData {
   };
 }
 
+// Con 4 livelli di indebolimento i PF massimi sono dimezzati.
+export const pfMassimiEffettivi = (c: CharacterData) =>
+  c.indebolimento >= 4 ? Math.floor(c.combattimento.pfMassimi / 2) : c.combattimento.pfMassimi;
+
 export function applicaCura(c: CharacterData, cura: number): CharacterData {
   const cb = c.combattimento;
   if (cura <= 0 || statoVita(c) === "morto") return c;
@@ -211,7 +217,7 @@ export function applicaCura(c: CharacterData, cura: number): CharacterData {
     ...c,
     combattimento: {
       ...cb,
-      pfAttuali: Math.min(cb.pfMassimi, cb.pfAttuali + cura),
+      pfAttuali: Math.min(pfMassimiEffettivi(c), cb.pfAttuali + cura),
       stabile: false,
       tsMorte: TS_MORTE_AZZERATI,
     },
@@ -253,17 +259,30 @@ export function pfPrimoLivello(c: CharacterData, dadoVita: number): number {
 function classeArmatura(c: CharacterData, mod: (k: Caratteristica) => number) {
   const des = mod("DES");
   const scudo = c.scudo ? 2 : 0;
+  const attivi = c.effetti.flatMap(e => effetto(e.id) ?? []);
+  let base: { ca: number; nota: string };
   if (c.armatura) {
     const bonusDes = c.armatura.maxDes === null ? des : Math.min(des, c.armatura.maxDes);
-    return { ca: c.armatura.ca + bonusDes + scudo, nota: `${c.armatura.nome}${c.scudo ? " e scudo" : ""}` };
+    base = { ca: c.armatura.ca + bonusDes + scudo, nota: `${c.armatura.nome}${c.scudo ? " e scudo" : ""}` };
+  } else {
+    const opzioni = [{ ca: 10 + des + scudo, nota: c.scudo ? "Senza armatura, con scudo" : "Senza armatura" }];
+    const difesa = regoleClasse(c.info.classe)?.difesaSenzaArmatura;
+    if (difesa && !(difesa === "SAG" && c.scudo)) {
+      opzioni.push({ ca: 10 + des + mod(difesa) + scudo, nota: "Difesa Senza Armatura" });
+    }
+    if (haPrivilegio(c, "Resilienza Draconica")) opzioni.push({ ca: 13 + des + scudo, nota: "Resilienza Draconica" });
+    for (const e of attivi) if (e.caBase !== undefined) opzioni.push({ ca: e.caBase + des + scudo, nota: e.nome });
+    base = opzioni.reduce((a, b) => (b.ca > a.ca ? b : a));
   }
-  const opzioni = [{ ca: 10 + des + scudo, nota: c.scudo ? "Senza armatura, con scudo" : "Senza armatura" }];
-  const difesa = regoleClasse(c.info.classe)?.difesaSenzaArmatura;
-  if (difesa && !(difesa === "SAG" && c.scudo)) {
-    opzioni.push({ ca: 10 + des + mod(difesa) + scudo, nota: "Difesa Senza Armatura" });
+  // Pelle Coriacea fissa un minimo prima dei bonus temporanei come Scudo.
+  for (const e of attivi) {
+    if (e.caMinima !== undefined && base.ca < e.caMinima) base = { ca: e.caMinima, nota: e.nome };
   }
-  if (haPrivilegio(c, "Resilienza Draconica")) opzioni.push({ ca: 13 + des + scudo, nota: "Resilienza Draconica" });
-  return opzioni.reduce((a, b) => (b.ca > a.ca ? b : a));
+  const bonus = attivi.filter(e => e.caBonus);
+  return {
+    ca: base.ca + bonus.reduce((acc, e) => acc + (e.caBonus ?? 0), 0),
+    nota: [base.nota, ...bonus.map(e => `${e.nome} ${segno(e.caBonus ?? 0)}`)].join(", "),
+  };
 }
 
 export function derivate(c: CharacterData) {
@@ -282,9 +301,12 @@ export function derivate(c: CharacterData) {
     return mod(a.car) + (c.competenzeAbilita.includes(id) ? comp : 0);
   };
   // Armi a distanza con la DES, accurate con la migliore tra FOR e DES, le altre con la FOR.
+  // Mentre è in ira il bonus ai danni si aggiunge alle armi da mischia usate con la Forza.
+  const iraAttiva = c.effetti.some(e => e.id === "ira");
   const attaccoArma = (arma: Arma) => {
     const m = arma.distanza && !arma.accurata ? mod("DES") : arma.accurata ? Math.max(mod("FOR"), mod("DES")) : mod("FOR");
-    return { bonus: m + comp, mod: m };
+    const conForza = !arma.distanza && m === mod("FOR");
+    return { bonus: m + comp, mod: m, modDanno: m + (iraAttiva && conForza ? bonusIra(liv) : 0), mischiaFOR: conForza };
   };
   const prossimaSoglia = liv < 20 ? SOGLIE_XP[liv] : null;
   const { ca, nota: notaCA } = classeArmatura(c, mod);
@@ -334,19 +356,26 @@ export function derivate(c: CharacterData) {
     haRecuperoArcano: c.info.classe === "Mago",
     budgetRecuperoArcano: Math.ceil(liv / 2),
     dadiVitaRecuperati: Math.max(1, Math.floor(liv / 2)),
+    risorse: risorseDelPersonaggio(c.info, mod, c.risorseUsate),
+    pfMassimiEffettivi: pfMassimiEffettivi(c),
   };
 }
 
 export type Derivate = ReturnType<typeof derivate>;
 
 // `presagio`: i nuovi d20 del Presagio, solo per chi ce l'ha (Scuola di Divinazione).
+// Il riposo lungo toglie anche un livello di indebolimento e fa terminare tutti gli effetti attivi.
 export function riposoLungo(c: CharacterData, presagio?: number[]): CharacterData {
   const d = derivate(c);
+  const riposato = { ...c, indebolimento: Math.max(0, c.indebolimento - 1) };
   return {
     ...c,
+    indebolimento: riposato.indebolimento,
+    effetti: [],
+    risorseUsate: {},
     combattimento: {
       ...c.combattimento,
-      pfAttuali: c.combattimento.pfMassimi,
+      pfAttuali: pfMassimiEffettivi(riposato),
       dadiVitaRimanenti: Math.min(c.info.livello, c.combattimento.dadiVitaRimanenti + d.dadiVitaRecuperati),
       tsMorte: TS_MORTE_AZZERATI,
       stabile: false,
@@ -363,8 +392,13 @@ export function riposoBreve(c: CharacterData, esito: EsitoRiposoBreve): Characte
   const usaRecupero = esito.slotRecuperati.some(n => n > 0);
   const patto = incantatoreDi(c.info.classe, c.info.sottoclasse)?.tipo === "patto";
   const curato = applicaCura(c, esito.pfRecuperati);
+  // Si ricaricano le risorse "breve" e scadono gli effetti di breve durata.
+  const risorseUsate = { ...c.risorseUsate };
+  for (const r of derivate(c).risorse) if (r.ricarica === "breve") delete risorseUsate[r.id];
   return {
     ...curato,
+    risorseUsate,
+    effetti: c.effetti.filter(e => effetto(e.id)?.finisce === "lunga"),
     combattimento: {
       ...curato.combattimento,
       dadiVitaRimanenti: Math.max(0, c.combattimento.dadiVitaRimanenti - esito.dadiVitaSpesi),
@@ -420,4 +454,94 @@ export function modificaCaratteristica(c: CharacterData, k: Caratteristica, delt
     caratteristiche: { ...c.caratteristiche, [k]: { ...c.caratteristiche[k], valore: nuovo } },
     combattimento,
   };
+}
+
+// --- Risorse di classe (Ira, Ki, Incanalare Divinità...) ---
+
+// `quantita` positiva spende usi, negativa li recupera; il risultato resta tra 0 e il massimo.
+// Le risorse illimitate o inesistenti non cambiano.
+export function usaRisorsa(c: CharacterData, id: string, quantita = 1): CharacterData {
+  const r = derivate(c).risorse.find(x => x.id === id);
+  if (!r || r.max === null) return c;
+  const usati = Math.max(0, Math.min(r.max, r.usati + quantita));
+  if (usati === r.usati) return c;
+  const risorseUsate = { ...c.risorseUsate, [id]: usati };
+  if (usati === 0) delete risorseUsate[id];
+  return { ...c, risorseUsate };
+}
+
+// --- Effetti attivi ---
+
+// Attivare un effetto che consuma una risorsa (l'Ira) richiede un uso disponibile.
+export function attivaEffetto(c: CharacterData, id: string): CharacterData {
+  const def = effetto(id);
+  if (!def || c.effetti.some(e => e.id === id)) return c;
+  let prossimo = c;
+  if (def.consuma) {
+    const r = derivate(c).risorse.find(x => x.id === def.consuma);
+    if (!r || (r.rimasti !== null && r.rimasti <= 0)) return c;
+    prossimo = usaRisorsa(c, def.consuma);
+  }
+  return {
+    ...prossimo,
+    concentrazione: def.finisceConcentrazione ? null : prossimo.concentrazione,
+    effetti: [...prossimo.effetti, def.conteggio === undefined ? { id } : { id, valore: def.conteggio }],
+  };
+}
+
+export const rimuoviEffetto = (c: CharacterData, id: string): CharacterData =>
+  c.effetti.some(e => e.id === id) ? { ...c, effetti: c.effetti.filter(e => e.id !== id) } : c;
+
+// Cambia il contatore di un effetto (i duplicati di Immagine Speculare): a 0 l'effetto termina.
+export function cambiaConteggioEffetto(c: CharacterData, id: string, delta: number): CharacterData {
+  const attuale = c.effetti.find(e => e.id === id);
+  const massimo = effetto(id)?.conteggio;
+  if (!attuale || massimo === undefined) return c;
+  const valore = Math.min(massimo, (attuale.valore ?? massimo) + delta);
+  if (valore <= 0) return rimuoviEffetto(c, id);
+  return { ...c, effetti: c.effetti.map(e => (e.id === id ? { ...e, valore } : e)) };
+}
+
+// --- Condizioni e indebolimento ---
+
+// Le condizioni che rendono incapaci di agire interrompono la concentrazione.
+export function aggiungiCondizione(c: CharacterData, id: string): CharacterData {
+  const def = condizione(id);
+  if (!def || c.condizioni.includes(id)) return c;
+  return {
+    ...c,
+    condizioni: [...c.condizioni, id],
+    concentrazione: def.finisceConcentrazione ? null : c.concentrazione,
+  };
+}
+
+export const rimuoviCondizione = (c: CharacterData, id: string): CharacterData =>
+  c.condizioni.includes(id) ? { ...c, condizioni: c.condizioni.filter(x => x !== id) } : c;
+
+// A 4 livelli i PF massimi si dimezzano: i PF attuali non possono superarli.
+export function impostaIndebolimento(c: CharacterData, livello: number): CharacterData {
+  const nuovo = Math.max(0, Math.min(6, Math.trunc(livello)));
+  const prossimo = { ...c, indebolimento: nuovo };
+  return {
+    ...prossimo,
+    combattimento: {
+      ...c.combattimento,
+      pfAttuali: Math.min(c.combattimento.pfAttuali, pfMassimiEffettivi(prossimo)),
+    },
+  };
+}
+
+// --- Privilegi di classe ---
+
+// Privilegi di classe (e della sottoclasse scelta) fino al livello attuale che la scheda non ha ancora:
+// servono a chi aveva già salito di livello quando il catalogo conteneva solo il 1° livello.
+export function privilegiMancanti(c: CharacterData, catalogo: PrivilegioClasse[]): Privilegio[] {
+  const chiave = (p: Privilegio) => `${p.nome}|${p.fonte}`.toLowerCase();
+  const posseduti = new Set(c.privilegi.map(chiave));
+  return catalogo
+    .filter(x => x.classe === c.info.classe && x.livello <= c.info.livello
+      && (x.sottoclasse === null || x.sottoclasse === c.info.sottoclasse))
+    .sort((a, b) => a.livello - b.livello)
+    .map(x => x.privilegio)
+    .filter(p => !posseduti.has(chiave(p)));
 }

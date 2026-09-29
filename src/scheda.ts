@@ -1,4 +1,4 @@
-import type { Armatura, CharacterData } from "./tipi.ts";
+import type { Armatura, CategoriaNota, CharacterData, EffettoAttivo, NotaSessione } from "./tipi.ts";
 import { CARATTERISTICHE } from "./regole.ts";
 
 // Validazione e normalizzazione della scheda, senza dipendenze dal browser:
@@ -11,6 +11,36 @@ const obj = (v: unknown): Obj => (isObj(v) ? v : {});
 const stringhe = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 
 const CATEGORIE_ARMATURA = ["leggera", "media", "pesante"] as const;
+const CATEGORIE_NOTA: CategoriaNota[] = ["sessione", "png", "obiettivo", "altro"];
+
+const intero = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? Math.trunc(v) : fallback);
+
+// Usi spesi per id di risorsa: solo interi positivi.
+function risorseUsate(v: unknown): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(obj(v)).flatMap(([id, n]) => (typeof n === "number" && Number.isFinite(n) && n > 0 ? [[id, Math.trunc(n)]] : [])),
+  );
+}
+
+function effettiAttivi(v: unknown): EffettoAttivo[] {
+  const visti = new Set<string>();
+  return (Array.isArray(v) ? v : []).flatMap((e): EffettoAttivo[] => {
+    if (!isObj(e) || typeof e.id !== "string" || visti.has(e.id)) return [];
+    visti.add(e.id);
+    return [typeof e.valore === "number" && Number.isFinite(e.valore) ? { id: e.id, valore: Math.trunc(e.valore) } : { id: e.id }];
+  });
+}
+
+function noteSessione(v: unknown): NotaSessione[] {
+  return (Array.isArray(v) ? v : []).filter(isObj).map((n, i): NotaSessione => ({
+    id: intero(n.id, i + 1),
+    data: typeof n.data === "string" ? n.data : "",
+    categoria: CATEGORIE_NOTA.find(c => c === n.categoria) ?? "altro",
+    titolo: typeof n.titolo === "string" ? n.titolo : "",
+    testo: typeof n.testo === "string" ? n.testo : "",
+    fatto: n.fatto === true,
+  }));
+}
 
 function armaturaDa(v: unknown): Armatura | null {
   if (!isObj(v) || typeof v.nome !== "string" || typeof v.ca !== "number") return null;
@@ -51,6 +81,10 @@ export const personaggioVuoto = (): CharacterData => ({
   concentrazione: null,
   divinazione: { presagio: [], usati: [] },
   recuperoArcanoUsato: false,
+  risorseUsate: {},
+  condizioni: [],
+  indebolimento: 0,
+  effetti: [],
   monete: { mr: 0, ma: 0, me: 0, mo: 0, mp: 0 },
   xp: { totale: 0, storico: [] },
   armi: [],
@@ -58,6 +92,7 @@ export const personaggioVuoto = (): CharacterData => ({
   incantesimi: [],
   inventario: [],
   privilegi: [],
+  note: [],
   lore: { tratti: "", ideali: "", legami: "", difetti: "", backgroundBio: "" },
 });
 
@@ -110,6 +145,10 @@ function normalizza(d: Obj): CharacterData {
     concentrazione: typeof d.concentrazione === "string" ? d.concentrazione : null,
     divinazione: sezione("divinazione", base.divinazione),
     recuperoArcanoUsato: d.recuperoArcanoUsato === true,
+    risorseUsate: risorseUsate(d.risorseUsate),
+    condizioni: [...new Set(stringhe(d.condizioni))],
+    indebolimento: Math.max(0, Math.min(6, intero(d.indebolimento, 0))),
+    effetti: effettiAttivi(d.effetti),
     monete: sezione("monete", base.monete),
     xp: { ...xp, storico: Array.isArray(xp.storico) ? xp.storico.filter(isObj) : [] } as CharacterData["xp"],
     armi: lista("armi", base.armi),
@@ -117,6 +156,7 @@ function normalizza(d: Obj): CharacterData {
     incantesimi: lista("incantesimi", base.incantesimi),
     inventario: lista("inventario", base.inventario),
     privilegi: lista("privilegi", base.privilegi),
+    note: noteSessione(d.note),
     lore: sezione("lore", base.lore),
   };
 }
