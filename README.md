@@ -1,75 +1,25 @@
-# React + TypeScript + Vite
+# DnD_Player
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Scheda personaggio interattiva per giocare a **Dungeons & Dragons 5e** (edizione 2014). Per ora gestisce Alston il Breve, Gnomo delle Rocce, Mago della Scuola di Divinazione.
 
-Currently, two official plugins are available:
+## Funzionalità
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Caratteristiche, tiri salvezza e abilità calcolati dal livello e dai punteggi.
+- Tiri di dado con vantaggio e svantaggio. Per ogni tiro scegli se tirare con i tuoi dadi e inserire il risultato, oppure lasciar tirare l'app.
+- Attacchi e danni delle armi, con i critici.
+- Grimorio con schede degli incantesimi, slot, lancio a livelli superiori e come rituale.
+- Concentrazione e tiri salvezza contro morte.
+- Riposo breve (Dadi Vita, Recupero Arcano, Canto di Riposo) e riposo lungo (Presagio).
+- Zaino con monete e carico, esperienza con salita di livello.
+- Salvataggio automatico nel browser, con import ed export in JSON.
 
-## React Compiler
+## Avvio
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+Altri comandi: `npm test` (Vitest), `npm run lint`, `npm run build`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+Realizzato con React, TypeScript, Vite e Tailwind CSS.

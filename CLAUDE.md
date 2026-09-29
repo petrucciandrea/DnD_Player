@@ -1,4 +1,4 @@
-# CLAUDE.md
+# CLAUDE.md — DnD_Player
 
 Scheda personaggio interattiva per D&D 5e (**edizione 2014**), solo frontend: React 19, TypeScript (strict), Vite 8, Tailwind CSS v4. Non c'è backend. I test (Vitest) coprono le regole. Repository git: `main` è il ramo stabile e si sviluppa sul branch `sviluppo`. Per ora gestisce un solo personaggio: Alston il Breve, Gnomo delle Rocce, Mago (Scuola di Divinazione).
 
