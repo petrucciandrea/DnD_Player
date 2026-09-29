@@ -19,15 +19,19 @@ Prima di dichiarare finito un lavoro, esegui `npm test`, `npm run lint` e `npm r
 | File | Contenuto |
 |---|---|
 | `src/tipi.ts` | Tipi: `CharacterData` (versione 2), `Spell`, `Arma`, `Privilegio`, `SetChar`… |
-| `src/regole.ts` | Regole pure: tabelle di XP, slot del Mago, abilità e scuole; `derivate()`, `riposoLungo()`, `saliDiLivello()`, `modificaCaratteristica()`, `tiraD()` |
+| `src/regole.ts` | Regole pure: tabelle di XP, slot del Mago, abilità e scuole; `derivate()`, riposi, livelli, danni (`Danni`, `critico`, `dannoArma`, `dannoIncantesimo`), lancio (`lanciaIncantesimo`), PF (`applicaDanno`, `applicaCura`, `esitoTsMorte`, `statoVita`), `risultatoD20`, `tiraD()` |
+| `src/regole.test.ts` | Test Vitest delle regole e della migrazione dei salvataggi |
 | `src/dati/alston.ts` | `INITIAL_CHARACTER`, i dati iniziali di Alston |
+| `src/dati/incantesimi.ts` | `SCHEDE_INCANTESIMI`: schede sintetiche degli incantesimi (gittata, durata, concentrazione, rituale, attacco, TS, danni e come scalano), collegate agli incantesimi del personaggio **per nome** |
+| `src/tiroDadi.ts` | `useRichiestaTiro()` → `chiediTiro`, `chiediD20` (normale / vantaggio / svantaggio), `tiraDanni` |
 | `src/salvataggio.ts` | Caricamento e salvataggio su `localStorage`, import/export JSON, migrazione dal vecchio formato |
 | `src/App.tsx` | Intestazione (PF, riposi, import/export) e navigazione tra le tab |
 | `src/components/Tab*.tsx` | Una tab ciascuno: Statistiche, Grimorio, Zaino, Progresso, Lore |
+| `src/components/` (altri) | `DialogoTiro` (finestra di ogni tiro), `FinestraIncantesimo` (scheda e lancio), `PannelloRiposoBreve`, `TiriMorte` (card PF a 0 PF) |
 
 - **Dati grezzi e valori derivati.** `CharacterData` contiene solo dati grezzi. Tutto ciò che si calcola (modificatori, TS, abilità, CA, iniziativa, CD e attacco magico, bonus competenza, slot massimi, limite di preparazione, soglia XP, attacco e danno delle armi) viene da `derivate(char)`, calcolata a ogni render in `App` e passata alle tab come `d`. **Non memorizzare nello stato un valore derivabile e non scriverlo a mano nel JSX:** aggiungilo a `derivate()`.
 - **Stato.** Un solo `useState<CharacterData>` in `App`, aggiornato in modo immutabile con `setChar(prev => ...)`. Le tab ricevono `char`, `d` e `setChar`. Lo stato solo di interfaccia (input dei form, ultimo tiro) resta locale nella tab.
-- **Tiri di dado.** Ogni tiro passa da `chiediTiro()` (`src/tiroDadi.ts`), che apre `components/DialogoTiro.tsx`. L'utente sceglie se inserire i risultati dei propri dadi fisici o se far tirare l'app. È una richiesta esplicita dell'utente: **non chiamare mai `tiraD` direttamente in una funzionalità**. `chiediTiro` restituisce una Promise con i risultati (`null` se l'utente annulla), quindi gli handler sono `async`. Il tiro avviene **fuori** dall'updater di `setChar`, perché in StrictMode React chiama l'updater due volte, e gli esiti vengono passati alle funzioni pure (vedi `riposoLungo(c, presagio)`). `App` crea `chiediTiro` con `useRichiestaTiro()` e lo passa alle tab che ne hanno bisogno.
+- **Tiri di dado.** Ogni tiro passa da `chiediTiro()` o, per i d20, da `chiediD20()` (`src/tiroDadi.ts`); per i danni c'è `tiraDanni()`. Tutti aprono `components/DialogoTiro.tsx`. L'utente sceglie se inserire i risultati dei propri dadi fisici o se far tirare l'app. È una richiesta esplicita dell'utente: **non chiamare mai `tiraD` direttamente in una funzionalità**. `chiediTiro` restituisce una Promise con i risultati (`null` se l'utente annulla), quindi gli handler sono `async`. Il tiro avviene **fuori** dall'updater di `setChar`, perché in StrictMode React chiama l'updater due volte, e gli esiti vengono passati alle funzioni pure (vedi `riposoLungo(c, presagio)`). `App` crea `chiediTiro` e `chiediD20` con `useRichiestaTiro()` e li passa alle tab che ne hanno bisogno.
 - **Slot.** `slotSpesi` è un array di 9 elementi (indice 0 = slot di 1° livello). I massimi vengono da `SLOT_MAGO[livello - 1]`.
 
 ## Salvataggio
@@ -57,7 +61,12 @@ Prima di dichiarare finito un lavoro, esegui `npm test`, `npm run lint` e `npm r
 - Riposo breve: un unico pannello (`components/PannelloRiposoBreve.tsx`), aperto dal pulsante nell'intestazione. Contiene la durata in ore (minimo 1), i Dadi Vita (d6 + COS ciascuno, tirabili a più riprese), il Canto di Riposo di un bardo del gruppo (solo se si spende almeno un Dado Vita), il recupero di 1 PF dopo 1d4 ore se si è stabilizzati a 0 PF, e il Recupero Arcano (slot per ⌈livello/2⌉ livelli complessivi, massimo il 5° livello, una volta al giorno). Nulla viene applicato finché non si preme "Completa riposo": allora `riposoBreve()` applica l'esito. Il Recupero Arcano si usa solo da qui; la tab Grimorio ne mostra solo lo stato.
 - Divinazione: Presagio con 2d20, che diventano 3d20 dal 14° livello.
 - PF: il danno consuma prima i PF temporanei. Cambiare la COS modifica retroattivamente i PF massimi.
+- Tiri d20: normale, vantaggio o svantaggio. I TS di INT, SAG e CAR ricordano l'Astuzia Gnomesca.
+- Danni: dopo un tiro per colpire con un'arma si tirano i danni (una o due mani per le armi versatili). Su un 20 naturale si raddoppiano i dadi, non il modificatore. Il totale non scende sotto 0.
+- Incantesimi: cliccando il nome nel grimorio si apre `FinestraIncantesimo`. Si lancia con uno slot di livello pari o superiore (solo se preparato), come rituale senza slot, oppure come trucchetto. Lo slot viene speso e si tirano attacchi e danni, con il danno che scala per slot o per livello del personaggio. Un 1 naturale non fa danni. Un incantesimo aggiunto senza scheda nel catalogo si può lanciare ugualmente, ma solo per spendere lo slot.
+- Concentrazione: lanciare un incantesimo con `concentrazione` la imposta (con conferma se ne interrompe un'altra). Ogni danno richiede un TS su COS con CD max(10, danno/2). Si perde a 0 PF e con i riposi.
+- 0 PF (`statoVita`: in piedi / morente / stabile / morto): i TS contro morte (10+ successo, 1 = due fallimenti, 20 = 1 PF) si tirano nella card dei PF. Un danno a 0 PF vale un fallimento. Se il danno oltre lo 0 raggiunge i PF massimi è morte istantanea. La cura azzera i tiri. Il riposo lungo richiede almeno 1 PF.
 - Salita di livello: disponibile quando gli XP raggiungono la soglia. Aggiunge PF medi e un Dado Vita. Gli aumenti di caratteristica si fanno a mano con "Modifica" nella tab Statistiche.
 - La CA è calcolata senza armatura (10 + DES): Armatura Magica e altri oggetti non sono gestiti.
 
-Non ancora implementati: tiri salvezza contro morte, condizioni, concentrazione, armature, più personaggi, classi e razze diverse. Per aggiungere un'altra classe bisogna rendere generiche `SLOT_MAGO`, il Dado Vita d6 e le regole di preparazione in `regole.ts`.
+Non ancora implementati: effetti attivi (Scudo, Armatura Magica, Immagine Speculare), condizioni e indebolimento, armature, note di sessione, modifica di tratti/armi dall'interfaccia, più personaggi, classi e razze diverse. Per aggiungere un'altra classe bisogna rendere generiche `SLOT_MAGO`, il Dado Vita d6 e le regole di preparazione in `regole.ts`.
