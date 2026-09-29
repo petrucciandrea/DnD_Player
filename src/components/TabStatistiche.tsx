@@ -1,9 +1,17 @@
 import { useState } from "react";
 import { Shield, Eye, Dices, Pencil, Check, Minus, Plus } from "lucide-react";
 import type { Caratteristica, CharacterData, SetChar } from "../tipi";
-import type { Derivate, Modalita } from "../regole";
-import { ABILITA, CARATTERISTICHE, formulaDanno, modificaCaratteristica, segno } from "../regole";
-import type { ChiediD20, ChiediTiro } from "../tiroDadi";
+import type { Danni, Derivate, Modalita } from "../regole";
+import {
+  ABILITA, CARATTERISTICHE, critico, dannoArma, formulaDanno, modificaCaratteristica, segno, testoDanni,
+} from "../regole";
+import type { ChiediD20, ChiediTiro, TiroDanni } from "../tiroDadi";
+import { tiraDanni } from "../tiroDadi";
+
+interface OpzioneDanno {
+  etichetta: string;
+  danni: Danni;
+}
 
 interface Tiro {
   etichetta: string;
@@ -12,6 +20,7 @@ interface Tiro {
   bonus: number;
   tiri?: number[];
   modalita?: Modalita;
+  opzioniDanno?: OpzioneDanno[];
 }
 
 interface Props {
@@ -24,18 +33,35 @@ interface Props {
 
 export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20 }: Props) {
   const [ultimoTiro, setUltimoTiro] = useState<Tiro | null>(null);
+  const [ultimoDanno, setUltimoDanno] = useState<(TiroDanni & { etichetta: string; danni: Danni }) | null>(null);
   const [modifica, setModifica] = useState(false);
 
   const astuziaGnomesca = char.privilegi.some(p => p.nome === "Astuzia Gnomesca");
 
-  const tira = async (etichetta: string, facce: number, bonus = 0, descrizione?: string) => {
+  const tira = async (
+    etichetta: string, facce: number, bonus = 0,
+    extra: { descrizione?: string; opzioniDanno?: OpzioneDanno[] } = {},
+  ) => {
     if (facce === 20) {
-      const r = await chiediD20({ titolo: etichetta, bonus, descrizione });
-      if (r) setUltimoTiro({ etichetta, facce, risultato: r.risultato, bonus, tiri: r.tiri, modalita: r.modalita });
-      return;
+      const r = await chiediD20({ titolo: etichetta, bonus, descrizione: extra.descrizione });
+      if (!r) return;
+      setUltimoTiro({ etichetta, facce, risultato: r.risultato, bonus, tiri: r.tiri, modalita: r.modalita, opzioniDanno: extra.opzioniDanno });
+    } else {
+      const tiri = await chiediTiro({ titolo: etichetta, dadi: [{ etichetta: "Risultato", facce }], bonus });
+      if (!tiri) return;
+      setUltimoTiro({ etichetta, facce, risultato: tiri[0], bonus });
     }
-    const tiri = await chiediTiro({ titolo: etichetta, dadi: [{ etichetta: "Risultato", facce }], bonus });
-    if (tiri) setUltimoTiro({ etichetta, facce, risultato: tiri[0], bonus });
+    setUltimoDanno(null);
+  };
+
+  // Con un 20 naturale sul tiro per colpire i dadi dei danni raddoppiano.
+  const colpoCritico = ultimoTiro?.facce === 20 && ultimoTiro.risultato === 20;
+
+  const tiraDanniArma = async (o: OpzioneDanno) => {
+    const danni = colpoCritico ? critico(o.danni) : o.danni;
+    const etichetta = `Danni${colpoCritico ? " critici" : ""}: ${o.etichetta}`;
+    const r = await tiraDanni(chiediTiro, etichetta, danni);
+    if (r) setUltimoDanno({ ...r, etichetta, danni });
   };
 
   const cambiaValore = (k: Caratteristica, delta: number) =>
@@ -101,12 +127,11 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
                   )}
                 </div>
                 <button
-                  onClick={() => tira(
-                    `TS ${sigla}`, 20, ts,
-                    astuziaGnomesca && ["INT", "SAG", "CAR"].includes(sigla)
+                  onClick={() => tira(`TS ${sigla}`, 20, ts, {
+                    descrizione: astuziaGnomesca && ["INT", "SAG", "CAR"].includes(sigla)
                       ? "Astuzia Gnomesca: vantaggio se il tiro salvezza è contro la magia."
                       : undefined,
-                  )}
+                  })}
                   className="mt-3 pt-2 border-t border-slate-800/80 w-full text-xs text-slate-400 flex justify-between items-center px-1 hover:text-slate-200"
                 >
                   <span>Tiro Salvezza:</span>
@@ -152,10 +177,16 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
             {char.armi.map((arma, idx) => {
               const { bonus, mod } = d.attaccoArma(arma);
               const danno = formulaDanno(arma.dado, mod) + (arma.dadoVersatile ? ` / ${formulaDanno(arma.dadoVersatile, mod)}` : "");
+              const opzioniDanno: OpzioneDanno[] = arma.dadoVersatile
+                ? [
+                    { etichetta: `${arma.nome} (una mano)`, danni: dannoArma(arma, mod) },
+                    { etichetta: `${arma.nome} (due mani)`, danni: dannoArma(arma, mod, true) },
+                  ]
+                : [{ etichetta: arma.nome, danni: dannoArma(arma, mod) }];
               return (
                 <button
                   key={idx}
-                  onClick={() => tira(`Attacco: ${arma.nome}`, 20, bonus)}
+                  onClick={() => tira(`Attacco: ${arma.nome}`, 20, bonus, { opzioniDanno })}
                   className="w-full flex flex-wrap justify-between items-center gap-2 p-3 bg-slate-950/60 hover:bg-slate-800/40 rounded-lg border border-slate-800 text-sm text-left transition"
                 >
                   <span>
@@ -237,6 +268,34 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
                 </span>
               </span>
               <span className="text-xl font-black text-amber-400 font-mono">{ultimoTiro.risultato + ultimoTiro.bonus}</span>
+            </div>
+          )}
+          {ultimoTiro?.opzioniDanno && (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {ultimoTiro.opzioniDanno.map(o => (
+                <button
+                  key={o.etichetta}
+                  onClick={() => tiraDanniArma(o)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border text-left transition ${
+                    colpoCritico
+                      ? "bg-amber-500/20 border-amber-500/40 text-amber-200 hover:bg-amber-500/30"
+                      : "bg-slate-950 border-slate-800 text-slate-300 hover:border-indigo-500/50"
+                  }`}
+                >
+                  {colpoCritico ? "Danni critici" : "Danni"}{o.etichetta.includes("(") && ` ${o.etichetta.slice(o.etichetta.indexOf("("))}`}: <span className="font-mono">{testoDanni(colpoCritico ? critico(o.danni) : o.danni)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {ultimoDanno && (
+            <div className="mt-2 p-3 bg-slate-950 rounded-lg border border-amber-900/50 flex justify-between items-center text-sm gap-2">
+              <span className="text-slate-400">
+                {ultimoDanno.etichetta}
+                <span className="block text-xs text-slate-500 font-mono">
+                  {ultimoDanno.tiri.join(" + ")}{ultimoDanno.danni.mod !== 0 && ` ${segno(ultimoDanno.danni.mod)}`} · {ultimoDanno.danni.tipo}
+                </span>
+              </span>
+              <span className="text-xl font-black text-rose-400 font-mono">{ultimoDanno.totale}</span>
             </div>
           )}
         </div>

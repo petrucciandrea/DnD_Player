@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { INITIAL_CHARACTER } from "./dati/alston";
 import {
-  bonusCompetenza, derivate, formulaDanno, modificaCaratteristica, modificatore,
+  bonusCompetenza, critico, dannoArma, derivate, formulaDanno, modificaCaratteristica, modificatore, parseDado, testoDanni, totaleDanni,
   riposoBreve, riposoLungo, risultatoD20, saliDiLivello,
 } from "./regole";
 import { daJSON } from "./salvataggio";
@@ -142,5 +142,26 @@ describe("vantaggio e svantaggio", () => {
     expect(risultatoD20([14], "normale")).toBe(14);
     expect(risultatoD20([6, 14], "vantaggio")).toBe(14);
     expect(risultatoD20([6, 14], "svantaggio")).toBe(6);
+  });
+});
+
+describe("danni", () => {
+  const [bastone, pugnale] = INITIAL_CHARACTER.armi;
+
+  it("armi, versatile e critico", () => {
+    expect(dannoArma(pugnale, 1)).toEqual({ numero: 1, facce: 4, mod: 1, tipo: "perforanti" });
+    expect(dannoArma(bastone, -1, true)).toEqual({ numero: 1, facce: 8, mod: -1, tipo: "contundenti" });
+    expect(critico(dannoArma(pugnale, 1))).toEqual({ numero: 2, facce: 4, mod: 1, tipo: "perforanti" });
+    expect(testoDanni({ numero: 3, facce: 4, mod: 3, tipo: "forza" })).toBe("3d4 + 3");
+  });
+
+  it("il totale non scende sotto 0", () => {
+    expect(totaleDanni([3, 4], 1)).toBe(8);
+    expect(totaleDanni([1], -1)).toBe(0);
+  });
+
+  it("parseDado rifiuta formati non validi", () => {
+    expect(parseDado("2d6")).toEqual({ numero: 2, facce: 6 });
+    expect(() => parseDado("d6+1")).toThrow();
   });
 });

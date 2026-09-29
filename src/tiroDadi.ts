@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import type { Modalita } from "./regole";
-import { risultatoD20 } from "./regole";
+import type { Danni, Modalita } from "./regole";
+import { risultatoD20, testoDanni, totaleDanni } from "./regole";
 
 export interface Dado {
   etichetta: string;
@@ -31,6 +31,25 @@ export interface TiroD20 {
 // Risultati dei dadi nello stesso ordine di `dadi`, oppure null se l'utente annulla.
 export type ChiediTiro = (richiesta: RichiestaTiro) => Promise<number[] | null>;
 export type ChiediD20 = (richiesta: Omit<RichiestaTiro, "dadi" | "d20">) => Promise<TiroD20 | null>;
+
+export interface TiroDanni {
+  tiri: number[];
+  totale: number;
+}
+
+export async function tiraDanni(chiediTiro: ChiediTiro, titolo: string, danni: Danni): Promise<TiroDanni | null> {
+  const tiri = await chiediTiro({
+    titolo,
+    descrizione: `${testoDanni(danni)} danni ${danni.tipo}`,
+    dadi: Array.from({ length: danni.numero }, (_, i) => ({
+      etichetta: danni.numero === 1 ? "Risultato" : `${i + 1}° dado`,
+      facce: danni.facce,
+    })),
+    bonus: danni.mod,
+    ammettiTotale: true,
+  });
+  return tiri && { tiri, totale: totaleDanni(tiri, danni.mod) };
+}
 
 // Ogni tiro passa di qui: il dialogo chiede se tirare con dadi fisici
 // (inserendo i risultati) o lasciar tirare l'app.

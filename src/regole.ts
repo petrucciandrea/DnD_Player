@@ -61,6 +61,33 @@ export const segno = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 export const formulaDanno = (dado: string, mod: number) =>
   mod === 0 ? dado : `${dado} ${mod > 0 ? "+" : "-"} ${Math.abs(mod)}`;
 
+export interface Danni {
+  numero: number;
+  facce: number;
+  mod: number;
+  tipo: string;
+}
+
+export function parseDado(espressione: string) {
+  const m = /^(\d+)d(\d+)$/.exec(espressione.trim());
+  if (!m) throw new Error(`Dado non valido: ${espressione}`);
+  return { numero: Number(m[1]), facce: Number(m[2]) };
+}
+
+export const testoDanni = (x: Danni) => formulaDanno(`${x.numero}d${x.facce}`, x.mod);
+
+// Con un colpo critico si tirano il doppio dei dadi (il modificatore no).
+export const critico = (x: Danni): Danni => ({ ...x, numero: x.numero * 2 });
+
+export function dannoArma(arma: Arma, mod: number, dueMani = false): Danni {
+  const dado = parseDado(dueMani && arma.dadoVersatile ? arma.dadoVersatile : arma.dado);
+  // "Contundente" → "danni contundenti"
+  return { ...dado, mod, tipo: arma.tipoDanno.toLowerCase().replace(/e$/, "i") };
+}
+
+// Il danno non scende mai sotto 0.
+export const totaleDanni = (tiri: number[], mod: number) => Math.max(0, tiri.reduce((a, b) => a + b, 0) + mod);
+
 // PF guadagnati a ogni livello dal 2° in poi (media del d6 = 4).
 const pfPerLivello = (modCOS: number) => Math.max(1, 4 + modCOS);
 
