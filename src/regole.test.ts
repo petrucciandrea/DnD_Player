@@ -3,8 +3,10 @@ import { INITIAL_CHARACTER } from "./dati/alston";
 import {
   bonusCompetenza, critico, dannoArma, derivate, formulaDanno, modificaCaratteristica, modificatore, parseDado, testoDanni, totaleDanni,
   riposoBreve, riposoLungo, risultatoD20, saliDiLivello,
+  dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, slotUtilizzabili,
 } from "./regole";
 import { daJSON } from "./salvataggio";
+import { SCHEDE_INCANTESIMI } from "./dati/incantesimi";
 import type { CharacterData } from "./tipi";
 
 const alston = (): CharacterData => structuredClone(INITIAL_CHARACTER);
@@ -163,5 +165,35 @@ describe("danni", () => {
   it("parseDado rifiuta formati non validi", () => {
     expect(parseDado("2d6")).toEqual({ numero: 2, facce: 6 });
     expect(() => parseDado("d6+1")).toThrow();
+  });
+});
+
+describe("incantesimi", () => {
+  const s = (nome: string) => SCHEDE_INCANTESIMI[nome];
+
+  it("trucchetti crescono con il livello del personaggio", () => {
+    expect(dannoIncantesimo(s("Dardo di Fuoco"), 0, 3)).toMatchObject({ numero: 1, facce: 10 });
+    expect(dannoIncantesimo(s("Dardo di Fuoco"), 0, 5)).toMatchObject({ numero: 2, facce: 10 });
+    expect(dannoIncantesimo(s("Tocco Gelido"), 0, 17)).toMatchObject({ numero: 4, facce: 8 });
+  });
+
+  it("slot di livello superiore", () => {
+    expect(dannoIncantesimo(s("Dardo Incantato"), 1, 3)).toMatchObject({ numero: 3, facce: 4, mod: 3 });
+    expect(dannoIncantesimo(s("Dardo Incantato"), 2, 3)).toMatchObject({ numero: 4, facce: 4, mod: 4 });
+    expect(dannoIncantesimo(s("Mani Brucianti"), 2, 3)).toMatchObject({ numero: 4, facce: 6, mod: 0 });
+    expect(numeroAttacchi(s("Raggio Rovente"), 2)).toBe(3);
+    expect(numeroAttacchi(s("Raggio Rovente"), 3)).toBe(4);
+    expect(dannoIncantesimo(s("Scudo"), 1, 3)).toBeNull();
+  });
+
+  it("lanciare spende uno slot solo se disponibile", () => {
+    const c = alston();
+    expect(slotUtilizzabili(c, 1)).toEqual([1, 2]);
+    expect(slotUtilizzabili(c, 2)).toEqual([2]);
+    const dopo = lanciaIncantesimo(lanciaIncantesimo(c, 2), 2);
+    expect(dopo.slotSpesi.slice(0, 2)).toEqual([0, 2]);
+    expect(slotUtilizzabili(dopo, 2)).toEqual([]);
+    expect(lanciaIncantesimo(dopo, 2)).toBe(dopo); // nessuno slot libero
+    expect(lanciaIncantesimo(c, null)).toBe(c); // trucchetto o rituale
   });
 });

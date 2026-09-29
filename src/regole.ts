@@ -1,5 +1,6 @@
 // Regole D&D 5e (edizione 2014) per il Mago.
 import type { Arma, Caratteristica, CharacterData, EsitoRiposoBreve } from "./tipi";
+import type { SchedaIncantesimo } from "./dati/incantesimi";
 
 export const CARATTERISTICHE: Caratteristica[] = ["FOR", "DES", "COS", "INT", "SAG", "CAR"];
 
@@ -83,6 +84,41 @@ export function dannoArma(arma: Arma, mod: number, dueMani = false): Danni {
   const dado = parseDado(dueMani && arma.dadoVersatile ? arma.dadoVersatile : arma.dado);
   // "Contundente" → "danni contundenti"
   return { ...dado, mod, tipo: arma.tipoDanno.toLowerCase().replace(/e$/, "i") };
+}
+
+// Trucchetti: 1 dado, 2 dal 5° livello, 3 dall'11°, 4 dal 17°.
+const moltiplicatoreTrucchetto = (livello: number) => (livello >= 17 ? 4 : livello >= 11 ? 3 : livello >= 5 ? 2 : 1);
+
+export function dannoIncantesimo(s: SchedaIncantesimo, livelloSlot: number, livelloPersonaggio: number): Danni | null {
+  if (!s.danni) return null;
+  const base = parseDado(s.danni.dado);
+  let numero = s.danni.trucchetto ? base.numero * moltiplicatoreTrucchetto(livelloPersonaggio) : base.numero;
+  let mod = s.danni.mod ?? 0;
+  const sopra = Math.max(0, livelloSlot - s.livello);
+  if (s.danni.perLivello && s.livello > 0) numero += parseDado(s.danni.perLivello).numero * sopra;
+  if (s.danni.modPerLivello && s.livello > 0) mod += s.danni.modPerLivello * sopra;
+  return { numero, facce: base.facce, mod, tipo: s.danni.tipo };
+}
+
+export const numeroAttacchi = (s: SchedaIncantesimo, livelloSlot: number) =>
+  s.attacco ? s.attacco.numero + (s.attacco.perLivello ?? 0) * Math.max(0, livelloSlot - s.livello) : 0;
+
+// Livelli di slot con almeno uno slot libero, a partire dal livello dell'incantesimo.
+export function slotUtilizzabili(c: CharacterData, livelloIncantesimo: number): number[] {
+  const { slotMax } = derivate(c);
+  return slotMax
+    .map((max, i) => ({ livello: i + 1, liberi: max - Math.min(c.slotSpesi[i] ?? 0, max) }))
+    .filter(x => x.livello >= livelloIncantesimo && x.liberi > 0)
+    .map(x => x.livello);
+}
+
+// livelloSlot null = trucchetto o rituale: nessuno slot speso.
+export function lanciaIncantesimo(c: CharacterData, livelloSlot: number | null): CharacterData {
+  if (livelloSlot === null) return c;
+  if (!slotUtilizzabili(c, livelloSlot).includes(livelloSlot)) return c;
+  const slotSpesi = [...c.slotSpesi];
+  slotSpesi[livelloSlot - 1] = (slotSpesi[livelloSlot - 1] ?? 0) + 1;
+  return { ...c, slotSpesi };
 }
 
 // Il danno non scende mai sotto 0.

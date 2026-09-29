@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { CheckCircle2, Circle, AlertCircle, Plus, Trash2, RotateCcw } from "lucide-react";
 import type { CharacterData, SetChar, Spell } from "../tipi";
+import type { ChiediD20, ChiediTiro } from "../tiroDadi";
+import { schedaDi } from "../dati/incantesimi";
+import FinestraIncantesimo from "./FinestraIncantesimo";
 import type { Derivate } from "../regole";
 import { SCUOLE, derivate } from "../regole";
 
@@ -8,11 +11,15 @@ interface Props {
   char: CharacterData;
   d: Derivate;
   setChar: SetChar;
+  chiediTiro: ChiediTiro;
+  chiediD20: ChiediD20;
 }
 
 const nomeLivello = (livello: number) => (livello === 0 ? "Trucchetto" : `${livello}° Livello`);
 
-export default function TabGrimorio({ char, d, setChar }: Props) {
+export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }: Props) {
+  const [aperto, setAperto] = useState<number | null>(null); // id dell'incantesimo nella finestra
+  const spellAperto = char.incantesimi.find(s => s.id === aperto);
   const [nuovo, setNuovo] = useState({ nome: "", livello: 1, scuola: "Invocazione", tempo: "1 Azione" });
 
   const spesi = (i: number) => Math.min(char.slotSpesi[i] ?? 0, d.slotMax[i] ?? 0);
@@ -111,6 +118,7 @@ export default function TabGrimorio({ char, d, setChar }: Props) {
         </span>
       </div>
 
+      <p className="text-xs text-slate-500 -mb-4">Clicca il nome di un incantesimo per aprirne la scheda e lanciarlo.</p>
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
         <div className="grid grid-cols-12 bg-slate-950/80 p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
           <div className="col-span-5 sm:col-span-4">Incantesimo</div>
@@ -129,7 +137,11 @@ export default function TabGrimorio({ char, d, setChar }: Props) {
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
-                {s.nome}
+                <button onClick={() => setAperto(s.id)} className="text-left hover:text-indigo-300 underline decoration-slate-700 underline-offset-4 hover:decoration-indigo-400">
+                  {s.nome}
+                </button>
+                {schedaDi(s.nome)?.concentrazione && <span title="Concentrazione" className="text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">C</span>}
+                {schedaDi(s.nome)?.rituale && <span title="Rituale" className="text-[10px] px-1 rounded bg-sky-500/20 text-sky-300">R</span>}
               </div>
               <div className="col-span-2 text-xs font-mono text-indigo-300">{nomeLivello(s.livello)}</div>
               <div className="col-span-3 text-xs text-slate-400">{s.scuola} • {s.tempo}</div>
@@ -187,6 +199,19 @@ export default function TabGrimorio({ char, d, setChar }: Props) {
           <Plus className="w-4 h-4" /> Aggiungi
         </button>
       </form>
+
+      {spellAperto && (
+        <FinestraIncantesimo
+          key={spellAperto.id}
+          spell={spellAperto}
+          char={char}
+          d={d}
+          setChar={setChar}
+          chiediTiro={chiediTiro}
+          chiediD20={chiediD20}
+          onChiudi={() => setAperto(null)}
+        />
+      )}
     </div>
   );
 }
