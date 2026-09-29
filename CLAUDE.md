@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Scheda personaggio interattiva per D&D 5e (**edizione 2014**), solo frontend: React 19, TypeScript (strict), Vite 8, Tailwind CSS v4. Non c'è backend e non ci sono test. Repository git: `main` è il ramo stabile e si sviluppa sul branch `sviluppo`. Per ora gestisce un solo personaggio: Alston il Breve, Gnomo delle Rocce, Mago (Scuola di Divinazione).
+Scheda personaggio interattiva per D&D 5e (**edizione 2014**), solo frontend: React 19, TypeScript (strict), Vite 8, Tailwind CSS v4. Non c'è backend. I test (Vitest) coprono le regole. Repository git: `main` è il ramo stabile e si sviluppa sul branch `sviluppo`. Per ora gestisce un solo personaggio: Alston il Breve, Gnomo delle Rocce, Mago (Scuola di Divinazione).
 
 ## Comandi
 
@@ -8,10 +8,11 @@ Scheda personaggio interattiva per D&D 5e (**edizione 2014**), solo frontend: Re
 npm run dev      # dev server Vite (http://localhost:5173)
 npm run build    # tsc -b (type check) + vite build → dist/
 npm run lint     # ESLint (typescript-eslint + react-hooks + react-refresh)
+npm test         # Vitest (src/**/*.test.ts)
 npm run preview  # serve la build di produzione
 ```
 
-Prima di dichiarare finito un lavoro, esegui `npm run lint` e `npm run build`: devono passare entrambi senza errori.
+Prima di dichiarare finito un lavoro, esegui `npm test`, `npm run lint` e `npm run build`: devono passare tutti senza errori. Ogni nuova regola in `regole.ts` va accompagnata da un test in `src/regole.test.ts`.
 
 ## Architettura
 
