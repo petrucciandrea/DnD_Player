@@ -5,7 +5,7 @@ import type { ChiediD20, ChiediTiro } from "../tiroDadi";
 import { catalogoIncantesimi, type VoceIncantesimo } from "../accesso";
 import FinestraIncantesimo from "./FinestraIncantesimo";
 import type { Derivate } from "../regole";
-import { SCUOLE, derivate } from "../regole";
+import { SCUOLE, derivate, segno } from "../regole";
 
 interface Props {
   char: CharacterData;
@@ -58,7 +58,7 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
         ...prev,
         incantesimi: prev.incantesimi.map(s => {
           if (s.id !== id) return s;
-          if (!s.preparato && preparatiAttuali >= maxPreparabili) return s;
+          if (!s.preparato && maxPreparabili !== null && preparatiAttuali >= maxPreparabili) return s;
           return { ...s, preparato: !s.preparato };
         }),
       };
@@ -100,10 +100,12 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {d.slotMax.map((max, i) => (
+        {d.slotMax.map((max, i) => max > 0 && (
           <div key={i} className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between gap-3">
             <div>
-              <div className="text-sm font-bold text-slate-200">Slot Incantesimi di {i + 1}° Livello</div>
+              <div className="text-sm font-bold text-slate-200">
+                {d.pattoMagico ? "Slot del Patto" : "Slot Incantesimi"} di {i + 1}° Livello
+              </div>
               <div className="text-xs text-slate-400">Disponibili: {max - spesi(i)} / {max}</div>
             </div>
             <div className="flex flex-wrap gap-2 justify-end">
@@ -125,25 +127,47 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs">
-        <span className="flex items-center gap-2 text-slate-300">
-          <RotateCcw className="w-4 h-4 text-emerald-400" />
-          <strong>Recupero Arcano</strong> ({d.budgetRecuperoArcano} livelli di slot, una volta al giorno)
-        </span>
-        <span className={char.recuperoArcanoUsato ? "text-slate-500" : "text-emerald-400 font-semibold"}>
-          {char.recuperoArcanoUsato ? "Già usato: torna con il riposo lungo" : "Disponibile: usalo con il pulsante Riposo Breve"}
-        </span>
-      </div>
+      {d.slotMax.every(n => n === 0) && d.incantatore && (
+        <p className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-slate-400">
+          Nessuno slot incantesimo a questo livello: arrivano con i livelli successivi.
+        </p>
+      )}
+      {d.pattoMagico && (
+        <p className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-slate-400">
+          Gli slot del patto si recuperano con un riposo breve o lungo.
+        </p>
+      )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-indigo-950/30 border border-indigo-900/40 p-3 rounded-xl text-xs text-indigo-300">
-        <span className="flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-indigo-400" />
-          Limite preparazione: <strong>{d.maxPreparabili} incantesimi</strong> (Livello {char.info.livello} + Mod INT {d.mod("INT")}).
-        </span>
-        <span className="font-bold">
-          {d.preparatiAttuali} / {d.maxPreparabili} preparati · Trucchetti {d.trucchettiAttuali} / {d.maxTrucchetti}
-        </span>
-      </div>
+      {d.haRecuperoArcano && (
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs">
+          <span className="flex items-center gap-2 text-slate-300">
+            <RotateCcw className="w-4 h-4 text-emerald-400" />
+            <strong>Recupero Arcano</strong> ({d.budgetRecuperoArcano} livelli di slot, una volta al giorno)
+          </span>
+          <span className={char.recuperoArcanoUsato ? "text-slate-500" : "text-emerald-400 font-semibold"}>
+            {char.recuperoArcanoUsato ? "Già usato: torna con il riposo lungo" : "Disponibile: usalo con il pulsante Riposo Breve"}
+          </span>
+        </div>
+      )}
+
+      {d.incantatore && d.caratteristicaMagica && (
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-indigo-950/30 border border-indigo-900/40 p-3 rounded-xl text-xs text-indigo-300">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-indigo-400" />
+            {d.maxPreparabili !== null ? (
+              <>Limite preparazione: <strong>{d.maxPreparabili} incantesimi</strong> ({d.modoIncantesimi === "libro" ? "dal libro" : "dall'intera lista della classe"}, mod {d.caratteristicaMagica} {segno(d.mod(d.caratteristicaMagica))}).</>
+            ) : (
+              <>Incantesimi conosciuti: <strong>{d.maxConosciuti}</strong> al {char.info.livello}° livello. Si lanciano senza prepararli.</>
+            )}
+          </span>
+          <span className="font-bold">
+            {d.maxPreparabili !== null
+              ? `${d.preparatiAttuali} / ${d.maxPreparabili} preparati`
+              : `${d.conosciutiAttuali} / ${d.maxConosciuti} conosciuti`}
+            {" · "}Trucchetti {d.trucchettiAttuali} / {d.maxTrucchetti}
+          </span>
+        </div>
+      )}
 
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
         <p className="px-3 py-2 text-xs text-slate-500 border-b border-slate-800">Clicca il nome di un incantesimo per aprirne la scheda e lanciarlo.</p>
@@ -175,6 +199,8 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
               <div className="col-span-2 sm:col-span-3 text-right">
                 {s.livello === 0 ? (
                   <span className="text-xs text-emerald-400 font-semibold">Sempre attivo</span>
+                ) : !d.prepara ? (
+                  <span className="text-xs text-emerald-400 font-semibold">Conosciuto</span>
                 ) : (
                   <button
                     onClick={() => togglePreparato(s.id)}

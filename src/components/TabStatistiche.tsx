@@ -206,38 +206,40 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
       </div>
 
       <div className="space-y-4">
-        <div className="bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-900/50 rounded-xl p-4 shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-base font-bold text-indigo-300 flex items-center gap-2">
-              <Eye className="w-5 h-5 text-indigo-400" /> Presagio (Divinazione)
-            </h3>
-            <span className="text-xs bg-indigo-900/60 px-2 py-0.5 rounded text-indigo-200">{d.dadiPresagio}d20 al Riposo Lungo</span>
+        {d.haPresagio && (
+          <div className="bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-900/50 rounded-xl p-4 shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-base font-bold text-indigo-300 flex items-center gap-2">
+                <Eye className="w-5 h-5 text-indigo-400" /> Presagio (Divinazione)
+              </h3>
+              <span className="text-xs bg-indigo-900/60 px-2 py-0.5 rounded text-indigo-200">{d.dadiPresagio}d20 al Riposo Lungo</span>
+            </div>
+            <p className="text-xs text-slate-400 mb-4">
+              Sostituisci qualsiasi tiro per colpire, TS o prova con uno di questi risultati.
+            </p>
+            <div className={`grid gap-3 ${char.divinazione.presagio.length > 2 ? "grid-cols-3" : "grid-cols-2"}`}>
+              {char.divinazione.presagio.map((tiro, idx) => {
+                const usato = char.divinazione.usati[idx];
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => togglePresagio(idx)}
+                    className={`p-3 rounded-xl border flex flex-col items-center justify-center transition ${
+                      usato
+                        ? "bg-slate-950/40 border-slate-800 text-slate-600 line-through"
+                        : "bg-indigo-950/80 border-indigo-500 text-indigo-200 shadow-md shadow-indigo-500/10 hover:border-indigo-400"
+                    }`}
+                  >
+                    <span className="text-2xl font-black font-mono">{tiro}</span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider mt-0.5">
+                      {usato ? "Usato" : "Disponibile"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <p className="text-xs text-slate-400 mb-4">
-            Sostituisci qualsiasi tiro per colpire, TS o prova con uno di questi risultati.
-          </p>
-          <div className={`grid gap-3 ${char.divinazione.presagio.length > 2 ? "grid-cols-3" : "grid-cols-2"}`}>
-            {char.divinazione.presagio.map((tiro, idx) => {
-              const usato = char.divinazione.usati[idx];
-              return (
-                <button
-                  key={idx}
-                  onClick={() => togglePresagio(idx)}
-                  className={`p-3 rounded-xl border flex flex-col items-center justify-center transition ${
-                    usato
-                      ? "bg-slate-950/40 border-slate-800 text-slate-600 line-through"
-                      : "bg-indigo-950/80 border-indigo-500 text-indigo-200 shadow-md shadow-indigo-500/10 hover:border-indigo-400"
-                  }`}
-                >
-                  <span className="text-2xl font-black font-mono">{tiro}</span>
-                  <span className="text-[10px] uppercase font-bold tracking-wider mt-0.5">
-                    {usato ? "Usato" : "Disponibile"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        )}
 
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
           <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-2">

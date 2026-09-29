@@ -225,10 +225,16 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
     setMessaggio(riepilogo);
   };
 
-  // Il dialogo del tiro fa anche da conferma: annullarlo annulla il riposo.
+  // Con il Presagio il dialogo del tiro fa anche da conferma: annullarlo annulla il riposo.
   const eseguiRiposoLungo = async () => {
     if (pf.pfAttuali === 0) {
       alert("Serve almeno 1 PF per iniziare un riposo lungo.");
+      return;
+    }
+    if (!d.haPresagio) {
+      if (!confirm("Completare un riposo lungo? PF, Dadi Vita e slot tornano disponibili.")) return;
+      setChar(prev => riposoLungo(prev));
+      setMessaggio("Riposo lungo completato.");
       return;
     }
     const presagio = await chiediTiro({
@@ -269,17 +275,23 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
   const pulsanteNeutro = `${pulsante} bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700`;
 
   const statistiche = [
-    { label: "Classe Armatura", valore: d.ca, nota: "Senza armatura", colore: "text-amber-400" },
+    { label: "Classe Armatura", valore: d.ca, nota: d.notaCA, colore: "text-amber-400" },
     { label: "Iniziativa", valore: segno(d.iniziativa), nota: "Destrezza", colore: "text-sky-400" },
-    { label: "Velocità", valore: char.info.velocita, nota: "Piccola Taglia", colore: "text-indigo-400" },
+    { label: "Velocità", valore: char.info.velocita, nota: `Taglia ${char.info.taglia}`, colore: "text-indigo-400" },
     { label: "Bonus Comp.", valore: segno(d.comp), nota: `Livello ${char.info.livello}`, colore: "text-purple-400" },
-    { label: "CD Magia", valore: d.cdMagia, nota: "8 + Comp + INT", colore: "text-violet-400" },
-    { label: "Attacco Magico", valore: segno(d.attaccoMagico), nota: "Comp + INT", colore: "text-cyan-400" },
+    ...(d.cdMagia !== null && d.attaccoMagico !== null ? [
+      { label: "CD Magia", valore: d.cdMagia, nota: `8 + Comp + ${d.caratteristicaMagica}`, colore: "text-violet-400" },
+      { label: "Attacco Magico", valore: segno(d.attaccoMagico), nota: `Comp + ${d.caratteristicaMagica}`, colore: "text-cyan-400" },
+    ] : []),
   ];
 
   const tabs: { id: Tab; label: string; icon: typeof Sparkles }[] = [
-    { id: "statistiche", label: "Statistiche & Presagio", icon: Sparkles },
-    { id: "grimorio", label: `Grimorio (${d.preparatiAttuali}/${d.maxPreparabili})`, icon: BookOpen },
+    { id: "statistiche", label: d.haPresagio ? "Statistiche & Presagio" : "Statistiche", icon: Sparkles },
+    ...(d.haIncantesimi ? [{
+      id: "grimorio" as const,
+      label: d.maxPreparabili !== null ? `Grimorio (${d.preparatiAttuali}/${d.maxPreparabili})` : "Incantesimi",
+      icon: BookOpen,
+    }] : []),
     { id: "zaino", label: `Zaino (${d.pesoTotale.toFixed(1)}/${d.capacitaCarico} lb)`, icon: Backpack },
     { id: "xp", label: `Progresso XP (${char.xp.totale})`, icon: Award },
     { id: "lore", label: "Tratti & Background", icon: Scroll },
@@ -336,7 +348,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
             </div>
           </div>
 
-          <div className="relative grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mt-5">
+          <div className={`relative grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 ${statistiche.length > 4 ? "lg:grid-cols-8" : "lg:grid-cols-6"}`}>
             <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 text-center col-span-2">
               <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Punti Ferita</div>
               <div className={`text-2xl font-black mt-0.5 ${pf.pfAttuali === 0 ? "text-rose-500" : "text-emerald-400"}`}>
@@ -371,7 +383,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
 
           <div className="relative flex flex-wrap items-center gap-2 mt-3 text-xs">
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 text-slate-400 border border-slate-800">
-              <Heart className="w-3.5 h-3.5 text-rose-400" /> Dadi Vita <strong className="text-slate-200">{pf.dadiVitaRimanenti}/{char.info.livello}</strong> d6
+              <Heart className="w-3.5 h-3.5 text-rose-400" /> Dadi Vita <strong className="text-slate-200">{pf.dadiVitaRimanenti}/{char.info.livello}</strong> d{d.dadoVita}
             </span>
             <button
               onClick={() => setChar(prev => ({ ...prev, info: { ...prev.info, ispirazione: !prev.info.ispirazione } }))}
@@ -425,10 +437,10 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
         </div>
 
         {activeTab === "statistiche" && <TabStatistiche char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
-        {activeTab === "grimorio" && <TabGrimorio char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
+        {activeTab === "grimorio" && d.haIncantesimi && <TabGrimorio char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
         {activeTab === "zaino" && <TabZaino char={char} d={d} setChar={setChar} />}
         {activeTab === "xp" && <TabProgresso char={char} d={d} setChar={setChar} />}
-        {activeTab === "lore" && <TabLore char={char} />}
+        {activeTab === "lore" && <TabLore char={char} setChar={setChar} />}
 
       </div>
 

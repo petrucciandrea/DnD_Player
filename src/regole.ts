@@ -1,5 +1,6 @@
-// Regole D&D 5e (edizione 2014) per il Mago.
+// Regole D&D 5e (edizione 2014). Le regole delle singole classi stanno in dati/classi.ts.
 import type { Arma, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve } from "./tipi";
+import { CARATTERISTICA_MAGICA_RAZZIALE, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi";
 
 // Quanto serve per calcolare danni e attacchi di un incantesimo lanciato con un certo slot.
 type IncantesimoDaLanciare = { livello: number } & Pick<DettagliIncantesimo, "danni" | "attacco">;
@@ -39,8 +40,9 @@ const SOGLIE_XP = [
   85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000,
 ];
 
-// Slot incantesimo del Mago per livello del personaggio (indice = livello - 1).
-const SLOT_MAGO: number[][] = [
+// Slot incantesimo per livello del personaggio (indice = livello - 1).
+// Incantatori completi: Bardo, Chierico, Druido, Mago, Stregone.
+const SLOT_COMPLETO: number[][] = [
   [2], [3], [4, 2], [4, 3], [4, 3, 2], [4, 3, 3], [4, 3, 3, 1], [4, 3, 3, 2],
   [4, 3, 3, 3, 1], [4, 3, 3, 3, 2], [4, 3, 3, 3, 2, 1], [4, 3, 3, 3, 2, 1],
   [4, 3, 3, 3, 2, 1, 1], [4, 3, 3, 3, 2, 1, 1], [4, 3, 3, 3, 2, 1, 1, 1],
@@ -48,7 +50,44 @@ const SLOT_MAGO: number[][] = [
   [4, 3, 3, 3, 3, 2, 1, 1, 1], [4, 3, 3, 3, 3, 2, 2, 1, 1],
 ];
 
+// Mezzi incantatori (Paladino, Ranger): niente slot al 1° livello.
+const SLOT_MEZZO: number[][] = [
+  [], [2], [3], [3], [4, 2], [4, 2], [4, 3], [4, 3], [4, 3, 2], [4, 3, 2],
+  [4, 3, 3], [4, 3, 3], [4, 3, 3, 1], [4, 3, 3, 1], [4, 3, 3, 2], [4, 3, 3, 2],
+  [4, 3, 3, 3, 1], [4, 3, 3, 3, 1], [4, 3, 3, 3, 2], [4, 3, 3, 3, 2],
+];
+
+// Terzi incantatori (Cavaliere Mistico, Mistificatore Arcano): dal 3° livello.
+const SLOT_TERZO: number[][] = [
+  [], [], [2], [3], [3], [3], [4, 2], [4, 2], [4, 2], [4, 3],
+  [4, 3], [4, 3], [4, 3, 2], [4, 3, 2], [4, 3, 2], [4, 3, 3],
+  [4, 3, 3], [4, 3, 3], [4, 3, 3, 1], [4, 3, 3, 1],
+];
+
+// Magia del patto (Warlock): pochi slot, tutti dello stesso livello, recuperati anche con il riposo breve.
+export function slotPatto(livello: number) {
+  const numero = livello >= 17 ? 4 : livello >= 11 ? 3 : livello >= 2 ? 2 : 1;
+  const livelloSlot = Math.min(5, Math.ceil(livello / 2));
+  return { numero, livelloSlot };
+}
+
+// Slot massimi per livello di slot (indice 0 = 1° livello). Per il patto solo il livello degli slot ne ha.
+export function slotMassimi(inc: Incantatore | null, livello: number): number[] {
+  if (!inc) return [];
+  if (inc.tipo === "patto") {
+    const { numero, livelloSlot } = slotPatto(livello);
+    return Array.from({ length: livelloSlot }, (_, i) => (i === livelloSlot - 1 ? numero : 0));
+  }
+  const tabella = inc.tipo === "completo" ? SLOT_COMPLETO : inc.tipo === "mezzo" ? SLOT_MEZZO : SLOT_TERZO;
+  return tabella[livello - 1] ?? [];
+}
+
 const LIVELLI_AUMENTO_CARATTERISTICHE = [4, 8, 12, 16, 19];
+
+export const PESO_SCUDO = 6; // lb
+
+// Privilegi che cambiano i calcoli, riconosciuti per nome.
+const haPrivilegio = (c: CharacterData, nome: string) => c.privilegi.some(p => p.nome === nome);
 
 export const tiraD = (facce: number) => Math.floor(Math.random() * facce) + 1;
 
@@ -195,24 +234,62 @@ export function esitoTsMorte(c: CharacterData, d20: number): CharacterData {
 // Il danno non scende mai sotto 0.
 export const totaleDanni = (tiri: number[], mod: number) => Math.max(0, tiri.reduce((a, b) => a + b, 0) + mod);
 
-// PF guadagnati a ogni livello dal 2° in poi (media del d6 = 4).
-const pfPerLivello = (modCOS: number) => Math.max(1, 4 + modCOS);
+// PF a ogni livello dal 2° in poi: media del Dado Vita (arrotondata per eccesso) + COS, almeno 1.
+// Robustezza Nanica e Resilienza Draconica aggiungono 1 PF per livello.
+export function pfPerLivello(c: CharacterData, dadoVita: number): number {
+  const extra = (haPrivilegio(c, "Robustezza Nanica") ? 1 : 0) + (haPrivilegio(c, "Resilienza Draconica") ? 1 : 0);
+  return Math.max(1, dadoVita / 2 + 1 + modificatore(c.caratteristiche.COS.valore)) + extra;
+}
+
+// PF al 1° livello: Dado Vita al massimo + COS (+ i bonus per livello di razza e origine).
+export function pfPrimoLivello(c: CharacterData, dadoVita: number): number {
+  const extra = (haPrivilegio(c, "Robustezza Nanica") ? 1 : 0) + (haPrivilegio(c, "Resilienza Draconica") ? 1 : 0);
+  return Math.max(1, dadoVita + modificatore(c.caratteristiche.COS.valore)) + extra;
+}
+
+// CA: armatura indossata (con il limite di DES) o, senza armatura, la migliore tra 10 + DES,
+// Difesa Senza Armatura della classe e Resilienza Draconica (13 + DES). Lo scudo dà +2
+// (il Monaco perde la sua Difesa Senza Armatura se lo usa).
+function classeArmatura(c: CharacterData, mod: (k: Caratteristica) => number) {
+  const des = mod("DES");
+  const scudo = c.scudo ? 2 : 0;
+  if (c.armatura) {
+    const bonusDes = c.armatura.maxDes === null ? des : Math.min(des, c.armatura.maxDes);
+    return { ca: c.armatura.ca + bonusDes + scudo, nota: `${c.armatura.nome}${c.scudo ? " e scudo" : ""}` };
+  }
+  const opzioni = [{ ca: 10 + des + scudo, nota: c.scudo ? "Senza armatura, con scudo" : "Senza armatura" }];
+  const difesa = regoleClasse(c.info.classe)?.difesaSenzaArmatura;
+  if (difesa && !(difesa === "SAG" && c.scudo)) {
+    opzioni.push({ ca: 10 + des + mod(difesa) + scudo, nota: "Difesa Senza Armatura" });
+  }
+  if (haPrivilegio(c, "Resilienza Draconica")) opzioni.push({ ca: 13 + des + scudo, nota: "Resilienza Draconica" });
+  return opzioni.reduce((a, b) => (b.ca > a.ca ? b : a));
+}
 
 export function derivate(c: CharacterData) {
   const liv = c.info.livello;
   const comp = bonusCompetenza(liv);
   const mod = (k: Caratteristica) => modificatore(c.caratteristiche[k].valore);
+  const classe = regoleClasse(c.info.classe);
+  const inc = incantatoreDi(c.info.classe, c.info.sottoclasse);
+  // Chi non incanta per classe può avere trucchetti di razza (Alto Elfo, Tiefling...).
+  const caratteristicaMagica: Caratteristica | null = inc?.caratteristica ?? CARATTERISTICA_MAGICA_RAZZIALE[c.info.razza] ?? null;
+  const modMagia = caratteristicaMagica ? mod(caratteristicaMagica) : 0;
   const ts = (k: Caratteristica) => mod(k) + (c.caratteristiche[k].compTS ? comp : 0);
   const abilita = (id: string) => {
     const a = ABILITA.find(x => x.id === id);
     if (!a) return 0;
     return mod(a.car) + (c.competenzeAbilita.includes(id) ? comp : 0);
   };
+  // Armi a distanza con la DES, accurate con la migliore tra FOR e DES, le altre con la FOR.
   const attaccoArma = (arma: Arma) => {
-    const m = arma.accurata ? Math.max(mod("FOR"), mod("DES")) : mod("FOR");
+    const m = arma.distanza && !arma.accurata ? mod("DES") : arma.accurata ? Math.max(mod("FOR"), mod("DES")) : mod("FOR");
     return { bonus: m + comp, mod: m };
   };
   const prossimaSoglia = liv < 20 ? SOGLIE_XP[liv] : null;
+  const { ca, nota: notaCA } = classeArmatura(c, mod);
+  const modoIncantesimi = inc?.modo ?? null;
+  const prepara = modoIncantesimi === "preparati" || modoIncantesimi === "libro";
 
   return {
     comp,
@@ -220,21 +297,41 @@ export function derivate(c: CharacterData) {
     ts,
     abilita,
     attaccoArma,
-    ca: 10 + mod("DES"), // senza armatura
+    ca,
+    notaCA,
     iniziativa: mod("DES"),
     percezionePassiva: 10 + abilita("percezione"),
-    cdMagia: 8 + comp + mod("INT"),
-    attaccoMagico: comp + mod("INT"),
-    maxPreparabili: Math.max(1, liv + mod("INT")),
+    dadoVita: classe?.dadoVita ?? 8,
+    caratteristicaMagica,
+    incantatore: inc !== null,
+    // Grimorio visibile a chi incanta per classe o ha incantesimi (per esempio trucchetti di razza).
+    haIncantesimi: inc !== null || c.incantesimi.length > 0,
+    modoIncantesimi,
+    prepara, // chi prepara gli incantesimi ogni giorno (dall'intera lista o dal libro)
+    cdMagia: caratteristicaMagica ? 8 + comp + modMagia : null,
+    attaccoMagico: caratteristicaMagica ? comp + modMagia : null,
+    maxPreparabili: prepara
+      ? Math.max(1, (inc?.preparatiMetaLivello ? Math.floor(liv / 2) : liv) + modMagia)
+      : null,
     preparatiAttuali: c.incantesimi.filter(s => s.livello > 0 && s.preparato).length,
-    maxTrucchetti: liv >= 10 ? 5 : liv >= 4 ? 4 : 3,
+    maxConosciuti: inc?.modo === "conosciuti" ? (inc.conosciuti?.[liv - 1] ?? 0) : null,
+    conosciutiAttuali: c.incantesimi.filter(s => s.livello > 0).length,
+    maxTrucchetti: inc?.trucchetti[liv - 1] ?? 0,
     trucchettiAttuali: c.incantesimi.filter(s => s.livello === 0).length,
-    slotMax: SLOT_MAGO[liv - 1] ?? [],
-    pesoTotale: c.inventario.reduce((acc, it) => acc + it.peso * it.qta, 0),
+    slotMax: slotMassimi(inc, liv),
+    pattoMagico: inc?.tipo === "patto",
+    // L'armatura e lo scudo indossati pesano anche se non sono nello zaino.
+    pesoTotale: c.inventario.reduce((acc, it) => acc + it.peso * it.qta, 0) + (c.armatura?.peso ?? 0) + (c.scudo ? PESO_SCUDO : 0),
+    avvisiArmatura: [
+      c.armatura?.svantaggioFurtivita && "Svantaggio alle prove di Destrezza (Furtività).",
+      c.armatura && c.armatura.forzaMin > c.caratteristiche.FOR.valore && `Forza inferiore a ${c.armatura.forzaMin}: velocità ridotta di 3 m.`,
+    ].filter((x): x is string => typeof x === "string"),
     capacitaCarico: c.caratteristiche.FOR.valore * 15,
     prossimaSoglia,
     puoSalire: prossimaSoglia !== null && c.xp.totale >= prossimaSoglia,
+    haPresagio: c.info.sottoclasse === "Scuola di Divinazione" && liv >= 2,
     dadiPresagio: liv >= 14 ? 3 : 2, // Presagio Superiore al 14°
+    haRecuperoArcano: c.info.classe === "Mago",
     budgetRecuperoArcano: Math.ceil(liv / 2),
     dadiVitaRecuperati: Math.max(1, Math.floor(liv / 2)),
   };
@@ -242,7 +339,8 @@ export function derivate(c: CharacterData) {
 
 export type Derivate = ReturnType<typeof derivate>;
 
-export function riposoLungo(c: CharacterData, presagio: number[]): CharacterData {
+// `presagio`: i nuovi d20 del Presagio, solo per chi ce l'ha (Scuola di Divinazione).
+export function riposoLungo(c: CharacterData, presagio?: number[]): CharacterData {
   const d = derivate(c);
   return {
     ...c,
@@ -254,14 +352,16 @@ export function riposoLungo(c: CharacterData, presagio: number[]): CharacterData
       stabile: false,
     },
     slotSpesi: c.slotSpesi.map(() => 0),
-    divinazione: { presagio, usati: presagio.map(() => false) },
+    divinazione: presagio ? { presagio, usati: presagio.map(() => false) } : c.divinazione,
     recuperoArcanoUsato: false,
     concentrazione: null,
   };
 }
 
+// Il riposo breve recupera tutti gli slot della magia del patto (Warlock).
 export function riposoBreve(c: CharacterData, esito: EsitoRiposoBreve): CharacterData {
   const usaRecupero = esito.slotRecuperati.some(n => n > 0);
+  const patto = incantatoreDi(c.info.classe, c.info.sottoclasse)?.tipo === "patto";
   const curato = applicaCura(c, esito.pfRecuperati);
   return {
     ...curato,
@@ -269,17 +369,26 @@ export function riposoBreve(c: CharacterData, esito: EsitoRiposoBreve): Characte
       ...curato.combattimento,
       dadiVitaRimanenti: Math.max(0, c.combattimento.dadiVitaRimanenti - esito.dadiVitaSpesi),
     },
-    slotSpesi: c.slotSpesi.map((s, i) => Math.max(0, s - (esito.slotRecuperati[i] ?? 0))),
+    slotSpesi: patto ? c.slotSpesi.map(() => 0) : c.slotSpesi.map((s, i) => Math.max(0, s - (esito.slotRecuperati[i] ?? 0))),
     recuperoArcanoUsato: c.recuperoArcanoUsato || usaRecupero,
-    concentrazione: null, // almeno 1 ora: gli incantesimi di concentrazione di Alston durano meno
+    concentrazione: null, // semplificazione: dopo almeno 1 ora di riposo la concentrazione si considera finita
   };
 }
 
-export function saliDiLivello(c: CharacterData): CharacterData {
-  const pf = pfPerLivello(modificatore(c.caratteristiche.COS.valore));
+// Aggiunge PF medi, un Dado Vita e i privilegi del nuovo livello (letti dal catalogo prima di salire),
+// ed eventualmente la sottoclasse scelta a quel livello.
+export function saliDiLivello(
+  c: CharacterData, extra: { privilegi?: CharacterData["privilegi"]; sottoclasse?: string } = {},
+): CharacterData {
+  const pf = pfPerLivello(c, regoleClasse(c.info.classe)?.dadoVita ?? 8);
+  const nuovi: CharacterData["privilegi"] = [];
+  for (const p of extra.privilegi ?? []) {
+    if (![...c.privilegi, ...nuovi].some(x => x.nome === p.nome && x.fonte === p.fonte)) nuovi.push(p);
+  }
   return {
     ...c,
-    info: { ...c.info, livello: c.info.livello + 1 },
+    info: { ...c.info, livello: c.info.livello + 1, sottoclasse: extra.sottoclasse ?? c.info.sottoclasse },
+    privilegi: [...c.privilegi, ...nuovi],
     combattimento: {
       ...c.combattimento,
       pfMassimi: c.combattimento.pfMassimi + pf,

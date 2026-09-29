@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from "react";
-import { Plus, Trash2, ArrowUpCircle } from "lucide-react";
-import type { CharacterData, SetChar, XPRecord } from "../tipi";
+import { Plus, Trash2, ArrowUpCircle, LoaderCircle, X } from "lucide-react";
+import type { CharacterData, Privilegio, SetChar, XPRecord } from "../tipi";
 import type { Derivate } from "../regole";
-import { haAumentoCaratteristiche, modificatore, saliDiLivello } from "../regole";
+import { haAumentoCaratteristiche, pfPerLivello, saliDiLivello, slotMassimi } from "../regole";
+import { incantatoreDi, regoleClasse } from "../dati/classi";
+import { privilegiDiLivello } from "../accesso";
 
 interface Props {
   char: CharacterData;
@@ -10,9 +12,20 @@ interface Props {
   setChar: SetChar;
 }
 
+// Stato del pannello di salita di livello: privilegi null = in caricamento, "offline" = non disponibili.
+interface Salita {
+  sottoclasse: string;
+  privilegi: Privilegio[] | null | "offline";
+}
+
 export default function TabProgresso({ char, d, setChar }: Props) {
   const [newXpInput, setNewXpInput] = useState({ valore: "", motivo: "" });
+  const [salita, setSalita] = useState<Salita | null>(null);
   const livello = char.info.livello;
+  const nuovo = livello + 1;
+  const regole = regoleClasse(char.info.classe);
+  // La sottoclasse si sceglie al suo livello, se non c'è già.
+  const serveSottoclasse = !!regole && nuovo >= regole.livelloSottoclasse && !regole.sottoclassi.includes(char.info.sottoclasse);
 
   const aggiungiXp = (e: FormEvent) => {
     e.preventDefault();
@@ -39,18 +52,37 @@ export default function TabProgresso({ char, d, setChar }: Props) {
     }));
   };
 
-  const sali = () => {
-    const pf = Math.max(1, 4 + modificatore(char.caratteristiche.COS.valore));
-    const nuovo = livello + 1;
-    const note = [
-      `+${pf} PF massimi e +1 Dado Vita.`,
-      "Aggiungi 2 incantesimi al grimorio (tab Grimorio).",
-      haAumentoCaratteristiche(nuovo) && "Aumento dei punteggi di caratteristica: usa \"Modifica\" nella tab Statistiche.",
-      nuovo === 4 || nuovo === 10 ? "Puoi imparare un nuovo trucchetto." : null,
-    ].filter(Boolean);
-    if (!confirm(`Salire al livello ${nuovo}?\n\n${note.join("\n")}`)) return;
-    setChar(saliDiLivello);
+  // Privilegi del nuovo livello dal catalogo (con quelli della sottoclasse, se c'è).
+  const caricaPrivilegi = async (sottoclasse: string) => {
+    setSalita({ sottoclasse, privilegi: null });
+    const r = await privilegiDiLivello(char.info.classe, nuovo, sottoclasse);
+    setSalita(prev => (prev?.sottoclasse === sottoclasse ? { sottoclasse, privilegi: r ? r.map(x => x.privilegio) : "offline" } : prev));
   };
+
+  const confermaSalita = () => {
+    if (!salita || (serveSottoclasse && !salita.sottoclasse)) return;
+    const privilegi = Array.isArray(salita.privilegi) ? salita.privilegi : [];
+    setChar(prev => saliDiLivello(prev, { privilegi, sottoclasse: serveSottoclasse ? salita.sottoclasse : undefined }));
+    setSalita(null);
+  };
+
+  // Cosa cambia al nuovo livello, per il riepilogo.
+  const sottoclasseDopo = serveSottoclasse ? (salita?.sottoclasse ?? "") : char.info.sottoclasse;
+  const incPrima = incantatoreDi(char.info.classe, char.info.sottoclasse);
+  const incDopo = incantatoreDi(char.info.classe, sottoclasseDopo);
+  const slotPrima = slotMassimi(incPrima, livello);
+  const slotDopo = slotMassimi(incDopo, nuovo);
+  const nuoviSlot = slotDopo.flatMap((n, i) => (n > (slotPrima[i] ?? 0) ? [`${n - (slotPrima[i] ?? 0)}× ${i + 1}°`] : []));
+  const trucchettiInPiu = (incDopo?.trucchetti[nuovo - 1] ?? 0) - (incPrima?.trucchetti[livello - 1] ?? 0);
+  const conosciutiInPiu = (incDopo?.conosciuti?.[nuovo - 1] ?? 0) - (incPrima?.conosciuti?.[livello - 1] ?? 0);
+  const note = [
+    `+${pfPerLivello(char, d.dadoVita)} PF massimi e +1 Dado Vita (d${d.dadoVita}).`,
+    nuoviSlot.length > 0 && `Nuovi slot incantesimo: ${nuoviSlot.join(", ")}.`,
+    incDopo?.modo === "libro" && "Copia 2 nuovi incantesimi nel libro (tab Grimorio).",
+    conosciutiInPiu > 0 && `Puoi imparare ${conosciutiInPiu} ${conosciutiInPiu === 1 ? "nuovo incantesimo" : "nuovi incantesimi"}.`,
+    trucchettiInPiu > 0 && `Puoi imparare ${trucchettiInPiu === 1 ? "un nuovo trucchetto" : `${trucchettiInPiu} nuovi trucchetti`}.`,
+    haAumentoCaratteristiche(nuovo) && "Aumento dei punteggi di caratteristica: usa \"Modifica\" nella tab Statistiche.",
+  ].filter(Boolean);
 
   const soglia = d.prossimaSoglia;
 
@@ -78,13 +110,62 @@ export default function TabProgresso({ char, d, setChar }: Props) {
             />
           </div>
         )}
-        {d.puoSalire && (
+        {d.puoSalire && !salita && (
           <button
-            onClick={sali}
+            onClick={() => caricaPrivilegi(serveSottoclasse ? "" : char.info.sottoclasse)}
             className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold"
           >
             <ArrowUpCircle className="w-4 h-4" /> Sali al livello {livello + 1}
           </button>
+        )}
+        {salita && (
+          <div className="mt-4 bg-slate-950/60 border border-emerald-900/50 rounded-xl p-4 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <h4 className="text-sm font-bold text-emerald-300">Livello {nuovo}</h4>
+              <button onClick={() => setSalita(null)} title="Annulla" className="text-slate-500 hover:text-slate-200 p-1"><X className="w-4 h-4" /></button>
+            </div>
+            {serveSottoclasse && regole && (
+              <label className="block space-y-1 text-sm">
+                <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Sottoclasse</span>
+                <select
+                  value={salita.sottoclasse}
+                  onChange={e => caricaPrivilegi(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-sm text-slate-200 outline-none focus:border-indigo-500"
+                >
+                  <option value="">Scegli...</option>
+                  {regole.sottoclassi.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+            )}
+            <ul className="text-sm text-slate-300 list-disc pl-5 space-y-0.5">
+              {note.map(n => <li key={String(n)}>{n}</li>)}
+            </ul>
+            <div className="text-sm">
+              <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Nuovi privilegi</span>
+              {salita.privilegi === null ? (
+                <LoaderCircle className="w-4 h-4 text-indigo-400 animate-spin mt-1" />
+              ) : salita.privilegi === "offline" ? (
+                <p className="text-xs text-amber-300 mt-1">Catalogo non raggiungibile: i privilegi del nuovo livello non verranno aggiunti.</p>
+              ) : salita.privilegi.length === 0 ? (
+                <p className="text-xs text-slate-500 mt-1">Nessun privilegio nel catalogo per questo livello (il catalogo è ancora parziale).</p>
+              ) : (
+                <ul className="mt-1 space-y-1">
+                  {salita.privilegi.map(p => (
+                    <li key={`${p.nome}|${p.fonte}`} className="text-xs text-slate-400">
+                      <strong className="text-slate-200">{p.nome}</strong> ({p.fonte}): {p.descrizione}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <button
+              onClick={confermaSalita}
+              disabled={salita.privilegi === null || (serveSottoclasse && !salita.sottoclasse)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold"
+            >
+              <ArrowUpCircle className="w-4 h-4" /> Conferma livello {nuovo}
+            </button>
+          </div>
         )}
       </div>
 

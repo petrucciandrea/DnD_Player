@@ -58,8 +58,8 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
     if (n <= 0) return;
     const tiri = await chiediTiro({
       titolo: n === 1 ? "Dado Vita" : `${n} Dadi Vita`,
-      descrizione: `Ogni dado recupera 1d6 ${segno(modCOS)} PF.`,
-      dadi: Array.from({ length: n }, (_, i) => ({ etichetta: `Dado Vita ${tiriDadiVita.length + i + 1}`, facce: 6 })),
+      descrizione: `Ogni dado recupera 1d${d.dadoVita} ${segno(modCOS)} PF.`,
+      dadi: Array.from({ length: n }, (_, i) => ({ etichetta: `Dado Vita ${tiriDadiVita.length + i + 1}`, facce: d.dadoVita })),
       bonus: modCOS,
     });
     if (!tiri) return;
@@ -134,7 +134,7 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
             </div>
           </div>
           {ore >= 8 && (
-            <p className="text-xs text-amber-300">Con 8 ore di riposo puoi fare un riposo lungo, che ripristina anche PF, slot e Presagio.</p>
+            <p className="text-xs text-amber-300">Con 8 ore di riposo puoi fare un riposo lungo, che ripristina anche PF e slot.</p>
           )}
         </div>
 
@@ -142,7 +142,7 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
         <div className={sezione}>
           <div className="flex items-center justify-between gap-2">
             <h3 className={titoloSezione}><Heart className="w-4 h-4 text-rose-400" /> Dadi Vita</h3>
-            <span className="text-xs text-slate-400">Disponibili: <strong className="text-slate-200">{dadiDisponibili}/{char.info.livello}</strong> d6 {segno(modCOS)}</span>
+            <span className="text-xs text-slate-400">Disponibili: <strong className="text-slate-200">{dadiDisponibili}/{char.info.livello}</strong> d{d.dadoVita} {segno(modCOS)}</span>
           </div>
           {dadiDisponibili > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -213,30 +213,38 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
           </div>
         )}
 
-        {/* RECUPERO ARCANO */}
-        <div className={sezione}>
-          <div className="flex items-center justify-between gap-2">
-            <h3 className={titoloSezione}><RotateCcw className="w-4 h-4 text-emerald-400" /> Recupero Arcano</h3>
-            <span className="text-xs text-slate-400">Livelli: <strong className="text-slate-200">{livelliScelti}/{d.budgetRecuperoArcano}</strong></span>
+        {d.pattoMagico && (
+          <div className={sezione}>
+            <p className="text-xs text-slate-300">Gli slot del patto tornano tutti disponibili alla fine del riposo.</p>
           </div>
-          {char.recuperoArcanoUsato ? (
-            <p className="text-xs text-slate-500">Già usato oggi: torna disponibile dopo un riposo lungo.</p>
-          ) : livelliRecuperabili.length === 0 ? (
-            <p className="text-xs text-slate-500">Nessuno slot speso da recuperare.</p>
-          ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              {livelliRecuperabili.map(i => (
-                <div key={i} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300">
-                  <span>{i + 1}° liv. <span className="text-slate-500">({spesi(i)} spesi)</span></span>
-                  <button onClick={() => cambiaRecupero(i, -1)} className={piccolo}><Minus className="w-3 h-3" /></button>
-                  <span className="font-mono font-bold w-3 text-center">{recupero[i] ?? 0}</span>
-                  <button onClick={() => cambiaRecupero(i, 1)} className={piccolo}><Plus className="w-3 h-3" /></button>
-                </div>
-              ))}
+        )}
+
+        {/* RECUPERO ARCANO (solo Mago) */}
+        {d.haRecuperoArcano && (
+          <div className={sezione}>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className={titoloSezione}><RotateCcw className="w-4 h-4 text-emerald-400" /> Recupero Arcano</h3>
+              <span className="text-xs text-slate-400">Livelli: <strong className="text-slate-200">{livelliScelti}/{d.budgetRecuperoArcano}</strong></span>
             </div>
-          )}
-          <p className="text-[11px] text-slate-500">Una volta al giorno, fino al 5° livello di slot.</p>
-        </div>
+            {char.recuperoArcanoUsato ? (
+              <p className="text-xs text-slate-500">Già usato oggi: torna disponibile dopo un riposo lungo.</p>
+            ) : livelliRecuperabili.length === 0 ? (
+              <p className="text-xs text-slate-500">Nessuno slot speso da recuperare.</p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                {livelliRecuperabili.map(i => (
+                  <div key={i} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300">
+                    <span>{i + 1}° liv. <span className="text-slate-500">({spesi(i)} spesi)</span></span>
+                    <button onClick={() => cambiaRecupero(i, -1)} className={piccolo}><Minus className="w-3 h-3" /></button>
+                    <span className="font-mono font-bold w-3 text-center">{recupero[i] ?? 0}</span>
+                    <button onClick={() => cambiaRecupero(i, 1)} className={piccolo}><Plus className="w-3 h-3" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-[11px] text-slate-500">Una volta al giorno, fino al 5° livello di slot.</p>
+          </div>
+        )}
 
         {/* RIEPILOGO */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">

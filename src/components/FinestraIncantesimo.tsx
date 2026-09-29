@@ -33,6 +33,9 @@ const nomeLivello = (l: number) => (l === 0 ? "Trucchetto" : `${l}° livello`);
 
 export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTiro, chiediD20, onChiudi }: Props) {
   const scheda = spell.scheda; // dal catalogo; manca per gli incantesimi senza dettagli
+  // Si apre solo per chi ha incantesimi, quindi una caratteristica magica c'è.
+  const attaccoMagico = d.attaccoMagico ?? 0;
+  const cdMagia = d.cdMagia ?? 0;
   const disponibili = spell.livello > 0 ? slotUtilizzabili(char, spell.livello) : [];
   const [livelloScelto, setLivelloScelto] = useState<number>(disponibili[0] ?? spell.livello);
   const [lancio, setLancio] = useState<Lancio | null>(null);
@@ -43,7 +46,8 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
   const conLivello = scheda && { ...scheda, livello: spell.livello };
   const danni: Danni | null = conLivello ? dannoIncantesimo(conLivello, livelloEffettivo, char.info.livello) : null;
   const totAttacchi = conLivello ? numeroAttacchi(conLivello, livelloEffettivo) : 0;
-  const puoLanciare = spell.livello === 0 || (spell.preparato && disponibili.length > 0);
+  const pronto = spell.livello === 0 || spell.preparato || !d.prepara; // chi li conosce non li prepara
+  const puoLanciare = spell.livello === 0 || (pronto && disponibili.length > 0);
   const puoRituale = !!scheda?.rituale;
 
   const lancia = (livelloSlot: number | null, rituale = false) => {
@@ -57,9 +61,9 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
   const tiraAttacco = async () => {
     const r = await chiediD20({
       titolo: totAttacchi > 1 ? `${spell.nome}: attacco ${attacchi.length + 1}/${totAttacchi}` : `${spell.nome}: tiro per colpire`,
-      bonus: d.attaccoMagico,
+      bonus: attaccoMagico,
     });
-    if (r) setAttacchi(prev => [...prev, { risultato: r.risultato, totale: r.risultato + d.attaccoMagico }]);
+    if (r) setAttacchi(prev => [...prev, { risultato: r.risultato, totale: r.risultato + attaccoMagico }]);
   };
 
   const tiraDanniAttacco = async (i: number) => {
@@ -120,12 +124,12 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
               {scheda.attacco && (
                 <span className="px-2 py-1 rounded-lg bg-slate-800 text-slate-200">
                   <Target className="inline w-3.5 h-3.5 mr-1 text-indigo-300" />
-                  Attacco {segno(d.attaccoMagico)}{totAttacchi > 1 && ` × ${totAttacchi}`}
+                  Attacco {segno(attaccoMagico)}{totAttacchi > 1 && ` × ${totAttacchi}`}
                 </span>
               )}
               {scheda.tiroSalvezza && (
                 <span className="px-2 py-1 rounded-lg bg-slate-800 text-slate-200">
-                  TS {scheda.tiroSalvezza.car} CD {d.cdMagia} · se riesce: {scheda.tiroSalvezza.effetto}
+                  TS {scheda.tiroSalvezza.car} CD {cdMagia} · se riesce: {scheda.tiroSalvezza.effetto}
                 </span>
               )}
               {danni && (
@@ -145,7 +149,7 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
         {/* LANCIO */}
         {!lancio ? (
           <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-3">
-            {spell.livello > 0 && spell.preparato && (
+            {spell.livello > 0 && pronto && (
               disponibili.length > 0 ? (
                 <label className="flex items-center justify-between gap-2 text-sm text-slate-300">
                   Slot da usare
@@ -161,7 +165,7 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
                 <p className="text-xs text-rose-300">Nessuno slot libero di {spell.livello}° livello o superiore.</p>
               )
             )}
-            {spell.livello > 0 && !spell.preparato && (
+            {spell.livello > 0 && !pronto && (
               <p className="text-xs text-slate-400">
                 Non preparato{puoRituale ? ": puoi lanciarlo solo come rituale." : "."}
               </p>
@@ -191,7 +195,7 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
                 {attacchi.map((a, i) => (
                   <div key={i} className="flex flex-wrap items-center justify-between gap-2 text-sm bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2">
                     <span className="text-slate-300">
-                      Attacco {i + 1}: <span className="font-mono">d20 = {a.risultato} {segno(d.attaccoMagico)}</span> →{" "}
+                      Attacco {i + 1}: <span className="font-mono">d20 = {a.risultato} {segno(attaccoMagico)}</span> →{" "}
                       <strong className="text-amber-400">{a.totale}</strong>
                       {a.risultato === 20 && <span className="text-amber-300"> · Critico!</span>}
                       {a.risultato === 1 && <span className="text-rose-300"> · Mancato</span>}

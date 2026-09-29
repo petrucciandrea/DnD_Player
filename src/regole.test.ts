@@ -4,7 +4,7 @@ import {
   bonusCompetenza, critico, dannoArma, derivate, formulaDanno, modificaCaratteristica, modificatore, parseDado, testoDanni, totaleDanni,
   riposoBreve, riposoLungo, risultatoD20, saliDiLivello,
   dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, slotUtilizzabili,
-  applicaCura, applicaDanno, cdConcentrazione, esitoTsMorte, statoVita,
+  applicaCura, applicaDanno, cdConcentrazione, esitoTsMorte, statoVita, pfPerLivello, slotPatto,
 } from "./regole";
 import { daJSON } from "./scheda";
 import { SCHEDE_INCANTESIMI } from "../server/semi/incantesimi.ts";
@@ -261,5 +261,122 @@ describe("danni, cure e tiri salvezza contro morte", () => {
     expect(c.concentrazione).toBe("Blocca Persone");
     expect(lanciaIncantesimo(c, null, { concentrazione: "Individuazione del Magico" }).concentrazione).toBe("Individuazione del Magico");
     expect(riposoBreve(c, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] }).concentrazione).toBeNull();
+  });
+});
+
+describe("regole per classe", () => {
+  // Un personaggio di esempio con classe, livello e punteggi scelti.
+  const pg = (classe: string, livello: number, punteggi: Partial<Record<"FOR" | "DES" | "COS" | "INT" | "SAG" | "CAR", number>> = {}, sottoclasse = ""): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe, livello, sottoclasse, razza: "Umano" };
+    for (const [k, v] of Object.entries(punteggi)) c.caratteristiche[k as keyof typeof punteggi] = { valore: v, compTS: false };
+    c.privilegi = [];
+    c.incantesimi = [];
+    return c;
+  };
+
+  it("slot di incantatori completi, mezzi, terzi e del patto", () => {
+    expect(derivate(pg("Chierico", 1)).slotMax).toEqual([2]);
+    expect(derivate(pg("Paladino", 1)).slotMax).toEqual([]);
+    expect(derivate(pg("Paladino", 2)).slotMax).toEqual([2]);
+    expect(derivate(pg("Ranger", 5)).slotMax).toEqual([4, 2]);
+    expect(derivate(pg("Guerriero", 3, {}, "Campione")).slotMax).toEqual([]);
+    expect(derivate(pg("Guerriero", 3, {}, "Cavaliere Mistico")).slotMax).toEqual([2]);
+    expect(derivate(pg("Warlock", 1)).slotMax).toEqual([1]);
+    expect(derivate(pg("Warlock", 3)).slotMax).toEqual([0, 2]);
+    expect(slotPatto(11)).toEqual({ numero: 3, livelloSlot: 5 });
+  });
+
+  it("caratteristica da incantatore, CD e attacco magico dipendono dalla classe", () => {
+    const chierico = derivate(pg("Chierico", 1, { SAG: 16, INT: 8 }));
+    expect(chierico.caratteristicaMagica).toBe("SAG");
+    expect(chierico.cdMagia).toBe(13);
+    expect(chierico.attaccoMagico).toBe(5);
+    const barbaro = derivate(pg("Barbaro", 1));
+    expect(barbaro.caratteristicaMagica).toBeNull();
+    expect(barbaro.cdMagia).toBeNull();
+    expect(barbaro.haIncantesimi).toBe(false);
+  });
+
+  it("chi non incanta per classe usa la caratteristica della razza per i trucchetti razziali", () => {
+    const c = pg("Guerriero", 1, { CAR: 14 });
+    c.info.razza = "Tiefling";
+    c.incantesimi = [{ id: 1, nome: "Taumaturgia", livello: 0, scuola: "Trasmutazione", tempo: "1 azione", preparato: true }];
+    const d = derivate(c);
+    expect(d.caratteristicaMagica).toBe("CAR");
+    expect(d.incantatore).toBe(false);
+    expect(d.haIncantesimi).toBe(true);
+  });
+
+  it("incantesimi preparati, del libro e conosciuti", () => {
+    expect(derivate(pg("Paladino", 4, { CAR: 16 })).maxPreparabili).toBe(5); // metà livello + CAR
+    expect(derivate(pg("Druido", 3, { SAG: 14 })).maxPreparabili).toBe(5);
+    const stregone = derivate(pg("Stregone", 1));
+    expect(stregone.maxPreparabili).toBeNull();
+    expect(stregone.maxConosciuti).toBe(2);
+    expect(stregone.maxTrucchetti).toBe(4);
+    expect(stregone.prepara).toBe(false);
+    expect(derivate(pg("Mago", 1)).modoIncantesimi).toBe("libro");
+  });
+
+  it("CA: armatura con limite di DES, scudo e Difesa Senza Armatura", () => {
+    const barbaro = pg("Barbaro", 1, { DES: 14, COS: 16 });
+    expect(derivate(barbaro)).toMatchObject({ ca: 15, notaCA: "Difesa Senza Armatura" });
+    const monaco = pg("Monaco", 1, { DES: 16, SAG: 14 });
+    expect(derivate(monaco).ca).toBe(15);
+    expect(derivate({ ...monaco, scudo: true }).ca).toBe(15); // con lo scudo niente SAG: 10 + 3 + 2
+    const cotta = { nome: "Cotta di Maglia", categoria: "pesante" as const, ca: 16, maxDes: 0, forzaMin: 13, svantaggioFurtivita: true, peso: 55 };
+    const guerriero = { ...pg("Guerriero", 1, { DES: 14, FOR: 12 }), armatura: cotta, scudo: true };
+    const d = derivate(guerriero);
+    expect(d.ca).toBe(18);
+    expect(d.avvisiArmatura).toHaveLength(2); // furtività e Forza sotto 13
+    const pelle = { ...cotta, nome: "Armatura di Pelle", categoria: "media" as const, ca: 12, maxDes: 2, forzaMin: 0, svantaggioFurtivita: false };
+    expect(derivate({ ...pg("Ranger", 1, { DES: 18 }), armatura: pelle }).ca).toBe(14);
+  });
+
+  it("Resilienza Draconica: CA 13 + DES e 1 PF in più per livello", () => {
+    const c = pg("Stregone", 1, { DES: 14, COS: 12 }, "Discendenza Draconica");
+    c.privilegi = [{ nome: "Resilienza Draconica", fonte: "Discendenza Draconica", descrizione: "" }];
+    expect(derivate(c).ca).toBe(15);
+    expect(pfPerLivello(c, 6)).toBe(6); // 4 + 1 (COS) + 1
+  });
+
+  it("PF per livello con il Dado Vita della classe", () => {
+    expect(pfPerLivello(pg("Barbaro", 1, { COS: 14 }), 12)).toBe(9);
+    const nano = pg("Guerriero", 1, { COS: 14 });
+    nano.privilegi = [{ nome: "Robustezza Nanica", fonte: "Nano delle Colline", descrizione: "" }];
+    expect(pfPerLivello(nano, 10)).toBe(9);
+    expect(derivate(pg("Barbaro", 1)).dadoVita).toBe(12);
+  });
+
+  it("il riposo breve recupera gli slot del patto", () => {
+    const warlock = { ...pg("Warlock", 3), slotSpesi: [0, 2, 0, 0, 0, 0, 0, 0, 0] };
+    const dopo = riposoBreve(warlock, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
+    expect(dopo.slotSpesi[1]).toBe(0);
+    const mago = { ...pg("Mago", 3), slotSpesi: [0, 1, 0, 0, 0, 0, 0, 0, 0] };
+    expect(riposoBreve(mago, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] }).slotSpesi[1]).toBe(1);
+  });
+
+  it("Presagio e Recupero Arcano solo per chi li ha", () => {
+    expect(derivate(alston()).haPresagio).toBe(true);
+    expect(derivate(pg("Mago", 3, {}, "Scuola di Invocazione")).haPresagio).toBe(false);
+    expect(derivate(pg("Chierico", 3)).haRecuperoArcano).toBe(false);
+    const c = pg("Guerriero", 1);
+    expect(riposoLungo(c).divinazione).toEqual(c.divinazione); // senza Presagio non cambia
+  });
+
+  it("armi a distanza con la DES", () => {
+    const c = pg("Ranger", 1, { FOR: 10, DES: 16 });
+    const arco = { nome: "Arco Lungo", dado: "1d8", tipoDanno: "Perforante", proprieta: "", accurata: false, distanza: true };
+    expect(derivate(c).attaccoArma(arco)).toEqual({ bonus: 5, mod: 3 });
+  });
+
+  it("salire di livello aggiunge i privilegi nuovi e la sottoclasse scelta", () => {
+    const c = pg("Mago", 1, { COS: 14 });
+    const presagio = { nome: "Presagio", fonte: "Scuola di Divinazione", descrizione: "..." };
+    const dopo = saliDiLivello(c, { privilegi: [presagio, presagio], sottoclasse: "Scuola di Divinazione" });
+    expect(dopo.info).toMatchObject({ livello: 2, sottoclasse: "Scuola di Divinazione" });
+    expect(dopo.privilegi).toEqual([presagio]);
+    expect(dopo.combattimento.pfMassimi).toBe(c.combattimento.pfMassimi + 6); // 3 + 1 + COS 2
   });
 });

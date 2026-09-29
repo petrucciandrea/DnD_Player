@@ -1,4 +1,4 @@
-import type { CharacterData, DettagliIncantesimo } from "./tipi";
+import type { CatalogoCreazione, CharacterData, DettagliIncantesimo, PrivilegioClasse } from "./tipi";
 
 // Chiamate all'API del server locale (server/api.ts) per accesso, personaggi e catalogo.
 // La sessione è un cookie HttpOnly: la pagina non vede il token, sa solo chi ha fatto l'accesso.
@@ -135,6 +135,28 @@ export async function importaPersonaggio(dati: CharacterData): Promise<{ id: num
     return { errore: erroreDa(corpo, "Importazione non riuscita.") };
   } catch {
     return { errore: IRRAGGIUNGIBILE };
+  }
+}
+
+// Cataloghi per la procedura di creazione; null se non sono raggiungibili.
+export async function catalogoCreazione(): Promise<CatalogoCreazione | null> {
+  try {
+    const res = await fetch("/api/creazione");
+    return res.ok ? ((await res.json()) as CatalogoCreazione) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Privilegi di classe (e di sottoclasse) di un livello; null se il catalogo non è raggiungibile.
+export async function privilegiDiLivello(classe: string, livello: number, sottoclasse: string): Promise<PrivilegioClasse[] | null> {
+  try {
+    const parametri = new URLSearchParams({ livello: String(livello), sottoclasse });
+    const res = await fetch(`/api/classi/${encodeURIComponent(classe)}/privilegi?${parametri}`);
+    const corpo: unknown = res.ok ? await res.json() : null;
+    return Array.isArray(corpo) ? (corpo as PrivilegioClasse[]) : null;
+  } catch {
+    return null;
   }
 }
 

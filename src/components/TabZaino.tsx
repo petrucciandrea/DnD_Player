@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from "react";
-import { Plus, Minus, Trash2 } from "lucide-react";
-import type { CharacterData, InventoryItem, SetChar } from "../tipi";
+import { useEffect, useState, type FormEvent } from "react";
+import { Plus, Minus, Trash2, Shield } from "lucide-react";
+import type { Armatura, CharacterData, InventoryItem, SetChar } from "../tipi";
 import type { Derivate } from "../regole";
+import { PESO_SCUDO, segno } from "../regole";
+import { catalogoCreazione } from "../accesso";
 
 interface Props {
   char: CharacterData;
@@ -21,6 +23,26 @@ const arrotonda = (n: number) => Number(n.toFixed(2));
 
 export default function TabZaino({ char, d, setChar }: Props) {
   const [newItemInput, setNewItemInput] = useState({ nome: "", qta: 1, peso: 1 });
+  const [armature, setArmature] = useState<Armatura[]>([]);
+
+  useEffect(() => {
+    let attivo = true;
+    catalogoCreazione().then(c => {
+      if (attivo && c) setArmature(c.armature);
+    });
+    return () => { attivo = false; };
+  }, []);
+
+  // L'armatura attuale resta tra le opzioni anche se il catalogo non è raggiungibile.
+  const opzioniArmatura = char.armatura && !armature.some(a => a.nome === char.armatura?.nome)
+    ? [char.armatura, ...armature]
+    : armature;
+
+  const indossa = (nome: string) =>
+    setChar(prev => ({ ...prev, armatura: opzioniArmatura.find(a => a.nome === nome) ?? null }));
+
+  const descriviArmatura = (a: Armatura) =>
+    `${a.nome} (CA ${a.ca}${a.maxDes === null ? " + DES" : a.maxDes > 0 ? ` + DES max ${segno(a.maxDes)}` : ""}, ${a.categoria})`;
 
   const impostaMonete = (k: keyof CharacterData["monete"], valore: number) =>
     setChar(prev => ({ ...prev, monete: { ...prev.monete, [k]: Math.max(0, Math.floor(valore) || 0) } }));
@@ -62,6 +84,33 @@ export default function TabZaino({ char, d, setChar }: Props) {
             />
           </label>
         ))}
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-3">
+        <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+          <Shield className="w-4 h-4 text-amber-400" /> Armatura indossata
+        </h3>
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            value={char.armatura?.nome ?? ""}
+            onChange={e => indossa(e.target.value)}
+            className="flex-1 min-w-48 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+          >
+            <option value="">Nessuna armatura</option>
+            {opzioniArmatura.map(a => <option key={a.nome} value={a.nome}>{descriviArmatura(a)}</option>)}
+          </select>
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={char.scudo}
+              onChange={e => setChar(prev => ({ ...prev, scudo: e.target.checked }))}
+              className="accent-indigo-500"
+            />
+            Scudo (+2 CA, {PESO_SCUDO} lb)
+          </label>
+          <span className="text-sm text-slate-400">CA: <strong className="text-amber-400">{d.ca}</strong> <span className="text-xs">({d.notaCA})</span></span>
+        </div>
+        {d.avvisiArmatura.map(a => <p key={a} className="text-xs text-amber-300">{a}</p>)}
       </div>
 
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
