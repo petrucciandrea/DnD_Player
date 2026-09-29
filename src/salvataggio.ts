@@ -2,7 +2,9 @@ import type { CharacterData } from "./tipi";
 import { INITIAL_CHARACTER } from "./dati/alston";
 import { CARATTERISTICHE } from "./regole";
 
-export const CHIAVE_SALVATAGGIO = "dnd_alston_character";
+// Copia locale di ogni personaggio, indicata dal suo id nell'archivio (per Alston "alston").
+const chiaveScheda = (personaggio: string) => `dnd_${personaggio}_character`;
+const chiaveRiferimento = (personaggio: string) => `dnd_${personaggio}_sincronizzazione`;
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -11,9 +13,9 @@ const obj = (v: unknown): Obj => (isObj(v) ? v : {});
 
 export const nuovoPersonaggio = (): CharacterData => structuredClone(INITIAL_CHARACTER);
 
-export function carica(): CharacterData {
+export function carica(personaggio: string): CharacterData {
   try {
-    const raw = localStorage.getItem(CHIAVE_SALVATAGGIO);
+    const raw = localStorage.getItem(chiaveScheda(personaggio));
     if (raw) return daJSON(JSON.parse(raw));
   } catch (e) {
     console.error("Salvataggio non leggibile, uso i dati iniziali", e);
@@ -21,11 +23,93 @@ export function carica(): CharacterData {
   return nuovoPersonaggio();
 }
 
-export function salva(c: CharacterData) {
+export function salva(personaggio: string, c: CharacterData) {
   try {
-    localStorage.setItem(CHIAVE_SALVATAGGIO, JSON.stringify(c));
+    localStorage.setItem(chiaveScheda(personaggio), JSON.stringify(c));
   } catch (e) {
     console.error("Impossibile salvare la scheda", e);
+  }
+}
+
+// --- Archivio SQLite sul server locale (server/api.ts) ---
+
+const URL_API = "/api/personaggio";
+
+// Revisione del server su cui si basa la scheda locale, e se ci sono modifiche non ancora inviate.
+// Sta nel localStorage perché le modifiche fatte appena prima di chiudere la pagina non vadano perse.
+export interface RiferimentoServer {
+  revisione: number;
+  inSospeso: boolean;
+}
+
+export function caricaRiferimento(personaggio: string): RiferimentoServer {
+  try {
+    const r: unknown = JSON.parse(localStorage.getItem(chiaveRiferimento(personaggio)) ?? "null");
+    if (isObj(r)) return { revisione: num(r.revisione, 0), inSospeso: r.inSospeso === true };
+  } catch {
+    // Nessun riferimento valido: si riparte come se il server non fosse mai stato contattato.
+  }
+  return { revisione: 0, inSospeso: false };
+}
+
+export function salvaRiferimento(personaggio: string, r: RiferimentoServer) {
+  try {
+    localStorage.setItem(chiaveRiferimento(personaggio), JSON.stringify(r));
+  } catch (e) {
+    console.error("Impossibile salvare lo stato della sincronizzazione", e);
+  }
+}
+
+export interface VersioneServer {
+  dati: CharacterData;
+  revisione: number;
+}
+
+// "sessione scaduta": il server ha risposto 401, bisogna rifare l'accesso.
+type Irraggiungibile = { tipo: "offline" } | { tipo: "sessione scaduta" };
+export type EsitoDownload = { tipo: "trovato"; versione: VersioneServer } | { tipo: "vuoto" } | Irraggiungibile;
+export type EsitoInvio =
+  | { tipo: "ok"; revisione: number }
+  | { tipo: "conflitto"; attuale: VersioneServer | null }
+  | Irraggiungibile;
+
+const versioneDa = (v: unknown): VersioneServer | null => {
+  if (!isObj(v) || typeof v.revisione !== "number") return null;
+  try {
+    return { dati: daJSON(v.dati), revisione: v.revisione };
+  } catch (e) {
+    console.error("Scheda sul server non valida", e);
+    return null;
+  }
+};
+
+export async function scaricaDalServer(): Promise<EsitoDownload> {
+  try {
+    const res = await fetch(URL_API, { cache: "no-store" });
+    if (res.status === 401) return { tipo: "sessione scaduta" };
+    if (res.status === 404) return { tipo: "vuoto" };
+    const versione = res.ok ? versioneDa(await res.json()) : null;
+    return versione ? { tipo: "trovato", versione } : { tipo: "offline" };
+  } catch {
+    return { tipo: "offline" };
+  }
+}
+
+// `revisione` è quella su cui si basano le modifiche (0 se il server non ha ancora la scheda).
+export async function inviaAlServer(dati: CharacterData, revisione: number): Promise<EsitoInvio> {
+  try {
+    const res = await fetch(URL_API, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dati, revisione }),
+    });
+    if (res.status === 401) return { tipo: "sessione scaduta" };
+    if (res.status === 409) return { tipo: "conflitto", attuale: versioneDa(await res.json()) };
+    if (!res.ok) return { tipo: "offline" };
+    const corpo: unknown = await res.json();
+    return isObj(corpo) && typeof corpo.revisione === "number" ? { tipo: "ok", revisione: corpo.revisione } : { tipo: "offline" };
+  } catch {
+    return { tipo: "offline" };
   }
 }
 

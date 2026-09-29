@@ -1,13 +1,16 @@
-import { useState, useEffect, useRef, type ChangeEvent } from "react";
+import { useCallback, useEffect, useState, useRef, type ChangeEvent } from "react";
 import {
   Sparkles, RefreshCw, BookOpen, Backpack, Scroll, Award,
-  Download, Upload, RotateCcw, Heart, Star, X, Coffee, Brain,
+  Download, Upload, RotateCcw, Heart, Star, X, Coffee, Brain, Cloud, CloudCheck, CloudOff, CloudUpload, LoaderCircle, LogOut,
 } from "lucide-react";
 import type { CharacterData, EsitoRiposoBreve } from "./tipi";
 import {
   applicaCura, applicaDanno, cdConcentrazione, derivate, riposoBreve, riposoLungo, segno,
 } from "./regole";
-import { carica, daJSON, nuovoPersonaggio, salva } from "./salvataggio";
+import { carica, daJSON, nuovoPersonaggio } from "./salvataggio";
+import { useSincronizzazione, type StatoSincronizzazione } from "./sincronizzazione";
+import { esci, sessioneAttuale, type Utente } from "./accesso";
+import SchermataAccesso from "./components/SchermataAccesso";
 import { useRichiestaTiro } from "./tiroDadi";
 import DialogoTiro from "./components/DialogoTiro";
 import PannelloRiposoBreve from "./components/PannelloRiposoBreve";
@@ -20,18 +23,68 @@ import TabLore from "./components/TabLore";
 
 type Tab = "statistiche" | "grimorio" | "zaino" | "xp" | "lore";
 
-export default function DnDPlatform() {
+const SYNC: Record<StatoSincronizzazione, { icona: typeof Cloud; etichetta: string; descrizione: string; colore: string }> = {
+  connessione: { icona: Cloud, etichetta: "Connessione…", descrizione: "Collegamento all'archivio in corso", colore: "text-slate-500" },
+  sincronizzato: { icona: CloudCheck, etichetta: "Salvata", descrizione: "Scheda salvata nell'archivio condiviso", colore: "text-emerald-400/80" },
+  "in invio": { icona: CloudUpload, etichetta: "Salvataggio…", descrizione: "Invio delle modifiche all'archivio", colore: "text-sky-400" },
+  offline: { icona: CloudOff, etichetta: "Offline", descrizione: "Archivio non raggiungibile: la scheda è salvata solo su questo dispositivo e verrà inviata appena possibile", colore: "text-amber-400" },
+};
+
+// Prima di mostrare la scheda serve una sessione valida sul server.
+export default function App() {
+  const [sessione, setSessione] = useState<Utente | null | "verifica">("verifica");
+  const [avviso, setAvviso] = useState<string | null>(null);
+
+  useEffect(() => {
+    let attivo = true;
+    sessioneAttuale().then(s => {
+      if (!attivo) return;
+      setSessione(s === "offline" ? null : s);
+      if (s === "offline") setAvviso("Archivio non raggiungibile: controlla che il server sia avviato.");
+    });
+    return () => { attivo = false; };
+  }, []);
+
+  const sessioneScaduta = useCallback(() => {
+    setSessione(null);
+    setAvviso("Sessione scaduta: accedi di nuovo. Le modifiche non salvate verranno inviate dopo l'accesso.");
+  }, []);
+
+  const uscita = async () => {
+    await esci();
+    setAvviso(null);
+    setSessione(null);
+  };
+
+  if (sessione === "verifica") {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <LoaderCircle className="w-6 h-6 text-indigo-400 animate-spin" />
+      </div>
+    );
+  }
+  if (!sessione) {
+    return <SchermataAccesso avviso={avviso} onAccesso={u => { setAvviso(null); setSessione(u); }} />;
+  }
+  return <Scheda key={sessione.personaggio} utente={sessione} onEsci={uscita} onSessioneScaduta={sessioneScaduta} />;
+}
+
+interface PropsScheda {
+  utente: Utente;
+  onEsci: () => void;
+  onSessioneScaduta: () => void;
+}
+
+function Scheda({ utente, onEsci, onSessioneScaduta }: PropsScheda) {
   const [activeTab, setActiveTab] = useState<Tab>("statistiche");
-  const [char, setChar] = useState<CharacterData>(carica);
+  const [char, setChar] = useState<CharacterData>(() => carica(utente.personaggio));
   const [quantitaPF, setQuantitaPF] = useState("");
   const [messaggio, setMessaggio] = useState<string | null>(null);
   const [riposoBreveAperto, setRiposoBreveAperto] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const { richiesta, chiediTiro, chiediD20, rispondi } = useRichiestaTiro();
 
-  useEffect(() => {
-    salva(char);
-  }, [char]);
+  const sync = SYNC[useSincronizzazione(utente.personaggio, char, setChar, onSessioneScaduta)];
 
   const d = derivate(char);
   const { combattimento: pf } = char;
@@ -167,6 +220,10 @@ export default function DnDPlatform() {
             </div>
 
             <div className="relative flex flex-wrap items-center gap-2">
+              <span title={sync.descrizione} className={`flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold ${sync.colore}`}>
+                <sync.icona className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{sync.etichetta}</span>
+              </span>
               <button onClick={eseguiRiposoLungo} className={`${pulsante} bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border-emerald-500/30`}>
                 <RefreshCw className="w-3.5 h-3.5" /> Riposo Lungo
               </button>
@@ -182,6 +239,9 @@ export default function DnDPlatform() {
               <input ref={fileInput} type="file" accept="application/json,.json" onChange={importa} className="hidden" />
               <button onClick={ripristina} title="Ripristina i dati iniziali" className={`${pulsanteNeutro} hover:text-rose-300`}>
                 <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={onEsci} title={`Esci (${utente.username})`} className={pulsanteNeutro}>
+                <LogOut className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{utente.username}</span>
               </button>
             </div>
           </div>

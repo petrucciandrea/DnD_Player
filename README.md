@@ -24,7 +24,8 @@ Sui d20 scegli **normale, vantaggio o svantaggio**. Con vantaggio o svantaggio s
 - **A 0 PF** la card dei PF mostra i **tiri salvezza contro morte**: 10+ è un successo, un 1 conta come due fallimenti, un 20 ti riporta a 1 PF. Subire danni a 0 PF conta come un fallimento. Se il danno oltre lo 0 raggiunge i PF massimi, la morte è istantanea. Successi e fallimenti si possono correggere a mano.
 - **Riposo lungo**: riporta PF e slot al massimo, recupera metà dei Dadi Vita, ritira il Presagio e rende di nuovo disponibile il Recupero Arcano. Serve almeno 1 PF.
 - **Riposo breve**: un pannello in cui imposti la durata e spendi i Dadi Vita uno alla volta. Puoi aggiungere il Canto di Riposo di un bardo del gruppo, scegliere gli slot da recuperare con il Recupero Arcano e, se sei stabilizzato a 0 PF, tirare il d4 per il recupero di 1 PF. Il pannello mostra l'anteprima dei PF, e nulla viene applicato finché non premi *Completa riposo*.
-- **Esporta / Importa JSON** e **Ripristina** (↺) i dati iniziali.
+- **Esporta / Importa JSON**, **Ripristina** (↺) i dati iniziali ed **Esci**, con il nome dell'utente collegato.
+- **Stato del salvataggio**: *Salvata*, *Salvataggio…* oppure *Offline* se il database non è raggiungibile.
 
 ### Statistiche & Presagio
 
@@ -58,11 +59,23 @@ Registro degli XP guadagnati, ognuno con un motivo e una data, e barra verso la 
 
 Tratti caratteriali, ideali, legami, difetti, biografia, dettagli fisici e privilegi di razza, classe e background.
 
+## Accesso
+
+All'apertura l'app chiede username e password. Ogni utente vede solo il proprio personaggio: Alston è collegato all'utente `alan`. L'accesso dura 30 giorni per ogni browser, poi va rifatto. Con **Esci**, nell'intestazione, si torna alla schermata di accesso.
+
+Le password sono salvate nel database solo come hash (scrypt), e la sessione è un cookie che la pagina non può leggere. I tentativi con una password sbagliata vengono rallentati.
+
 ## Salvataggio
 
-La scheda si salva da sola nel `localStorage` del browser a ogni modifica. Per spostarla su un altro dispositivo, o per farne un backup, usa **Esporta JSON** e poi **Importa JSON**. L'import controlla il file e accetta anche il formato delle versioni precedenti dell'app.
+La scheda si salva da sola in un database SQLite sul computer che avvia l'app: è il file `archivio/dnd_player.sqlite`, creato al primo avvio ed escluso da git. Non serve installare nulla, perché il database è quello integrato in Node.js. Se nel browser c'era già una scheda salvata, al primo avvio viene copiata nel database.
 
-Il salvataggio vale per quel browser su quel dispositivo: svuotare i dati del sito cancella la scheda. Esporta un backup di tanto in tanto.
+**Da più dispositivi.** Con `npm run dev` (o `npm run preview`) l'app è raggiungibile da tutta la rete di casa: all'avvio Vite stampa l'indirizzo `Network`, per esempio `http://192.168.1.20:5173`. Aprilo dal tablet o dal telefono e vedrai la stessa scheda. Ogni dispositivo carica gli aggiornamenti degli altri quando torni sulla pagina, e comunque ogni 15 secondi. Se due dispositivi modificano la scheda nello stesso momento, l'app chiede quale versione tenere.
+
+**Offline.** Ogni modifica finisce anche nel `localStorage` del browser. Se il computer con il database non è raggiungibile, l'indicatore nell'intestazione passa a *Offline* e le modifiche vengono inviate appena torna disponibile.
+
+**Backup.** Copia il file `archivio/dnd_player.sqlite`, oppure usa **Esporta JSON**. **Importa JSON** controlla il file e accetta anche il formato delle versioni precedenti dell'app. Attenzione: importare o premere ↺ cambia la scheda su tutti i dispositivi.
+
+Il collegamento non è cifrato (http, non https): il login tiene fuori chi non ha la password, ma resta pensato per la rete di casa. Non esporre l'app su internet.
 
 ## Cosa non gestisce (ancora)
 
@@ -73,7 +86,7 @@ Il salvataggio vale per quel browser su quel dispositivo: svuotare i dati del si
 
 ## Avvio
 
-Serve Node.js 20.19+ oppure 22.12+.
+Serve Node.js 22.13 o successivo (per il modulo `node:sqlite`).
 
 ```bash
 npm install
@@ -82,13 +95,13 @@ npm run dev        # http://localhost:5173
 
 | Comando | Cosa fa |
 |---|---|
-| `npm run dev` | Server di sviluppo con ricaricamento automatico |
-| `npm test` | Test delle regole (Vitest) |
+| `npm run dev` | Server di sviluppo con ricaricamento automatico e database, accessibile dalla rete di casa |
+| `npm test` | Test delle regole e del database (Vitest) |
 | `npm run lint` | ESLint |
 | `npm run build` | Controllo dei tipi e build di produzione in `dist/` |
-| `npm run preview` | Serve la build di produzione |
+| `npm run preview` | Serve la build di produzione, con il database |
 
-Se modifichi i dati iniziali in `src/dati/alston.ts` e non vedi cambiamenti, è perché il browser carica la scheda salvata. Premi ↺ nell'intestazione per ripartire dai dati iniziali.
+Se modifichi i dati iniziali in `src/dati/alston.ts` e non vedi cambiamenti, è perché l'app carica la scheda salvata nel database. Premi ↺ nell'intestazione per ripartire dai dati iniziali.
 
 ## Com'è fatto
 
@@ -97,6 +110,9 @@ React 19, TypeScript, Vite e Tailwind CSS v4, con icone di [lucide-react](https:
 - [`src/regole.ts`](src/regole.ts): tutte le regole come funzioni pure (modificatori, slot, riposi, danni, lancio, PF, TS contro morte). I test sono in [`src/regole.test.ts`](src/regole.test.ts).
 - [`src/dati/`](src/dati/): i dati iniziali di Alston e il catalogo delle schede degli incantesimi.
 - [`src/salvataggio.ts`](src/salvataggio.ts): salvataggio, import/export e migrazione dei vecchi formati.
+- [`src/sincronizzazione.ts`](src/sincronizzazione.ts): tiene la scheda allineata con il database.
+- [`src/accesso.ts`](src/accesso.ts) e [`src/components/SchermataAccesso.tsx`](src/components/SchermataAccesso.tsx): login e uscita.
+- [`server/`](server/): il database SQLite, utenti e sessioni, e l'API `/api`, montata nel server di Vite.
 - [`src/components/`](src/components/): una tab per sezione, più la finestra dei tiri, la scheda degli incantesimi e il pannello del riposo breve.
 
 La scheda contiene solo i dati di base del personaggio. Tutto ciò che si può calcolare, come modificatori, TS, CA e slot massimi, viene ricalcolato a ogni modifica, così i valori restano sempre coerenti. Le convenzioni per chi sviluppa sono in [`CLAUDE.md`](CLAUDE.md).
