@@ -75,7 +75,10 @@ export interface CharacterData {
     pfMassimi: number;
     pfTemporanei: number;
     dadiVitaRimanenti: number;
+    tsMorte: { successi: number; fallimenti: number };
+    stabile: boolean; // a 0 PF ma stabilizzato
   };
+  concentrazione: string | null; // nome dell'incantesimo su cui si mantiene la concentrazione
   divinazione: {
     presagio: number[];
     usati: boolean[];

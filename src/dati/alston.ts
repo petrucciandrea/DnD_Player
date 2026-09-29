@@ -35,8 +35,11 @@ export const INITIAL_CHARACTER: CharacterData = {
     pfAttuali: 23,
     pfMassimi: 23,
     pfTemporanei: 0,
-    dadiVitaRimanenti: 3
+    dadiVitaRimanenti: 3,
+    tsMorte: { successi: 0, fallimenti: 0 },
+    stabile: false
   },
+  concentrazione: null,
   divinazione: {
     presagio: [4, 16],
     usati: [false, false]

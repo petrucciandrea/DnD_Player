@@ -47,7 +47,10 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
   const puoRituale = !!scheda?.rituale;
 
   const lancia = (livelloSlot: number | null, rituale = false) => {
-    setChar(prev => lanciaIncantesimo(prev, livelloSlot));
+    const concentrazione = scheda?.concentrazione ? spell.nome : undefined;
+    if (concentrazione && char.concentrazione && char.concentrazione !== spell.nome
+      && !confirm(`Stai mantenendo la concentrazione su ${char.concentrazione}. Lanciando ${spell.nome} la interrompi. Continuare?`)) return;
+    setChar(prev => lanciaIncantesimo(prev, livelloSlot, { concentrazione }));
     setLancio({ livelloSlot, rituale });
   };
 

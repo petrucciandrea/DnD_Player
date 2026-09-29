@@ -56,6 +56,7 @@ function normalizza(d: Obj): CharacterData {
     caratteristiche,
     competenzeAbilita: lista("competenzeAbilita", base.competenzeAbilita),
     combattimento: sezione("combattimento", base.combattimento),
+    concentrazione: typeof d.concentrazione === "string" ? d.concentrazione : null,
     divinazione: sezione("divinazione", base.divinazione),
     recuperoArcanoUsato: d.recuperoArcanoUsato === true,
     monete: sezione("monete", base.monete),

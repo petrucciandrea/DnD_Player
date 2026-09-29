@@ -118,8 +118,8 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
         </span>
       </div>
 
-      <p className="text-xs text-slate-500 -mb-4">Clicca il nome di un incantesimo per aprirne la scheda e lanciarlo.</p>
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <p className="px-3 py-2 text-xs text-slate-500 border-b border-slate-800">Clicca il nome di un incantesimo per aprirne la scheda e lanciarlo.</p>
         <div className="grid grid-cols-12 bg-slate-950/80 p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
           <div className="col-span-5 sm:col-span-4">Incantesimo</div>
           <div className="col-span-2">Livello</div>

@@ -4,6 +4,7 @@ import {
   bonusCompetenza, critico, dannoArma, derivate, formulaDanno, modificaCaratteristica, modificatore, parseDado, testoDanni, totaleDanni,
   riposoBreve, riposoLungo, risultatoD20, saliDiLivello,
   dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, slotUtilizzabili,
+  applicaCura, applicaDanno, cdConcentrazione, esitoTsMorte, statoVita,
 } from "./regole";
 import { daJSON } from "./salvataggio";
 import { SCHEDE_INCANTESIMI } from "./dati/incantesimi";
@@ -128,6 +129,8 @@ describe("salvataggio", () => {
     expect(c.caratteristiche.INT).toEqual({ valore: 17, compTS: true });
     expect(c.caratteristiche.FOR.valore).toBe(8); // completata dai dati iniziali
     expect(c.combattimento.pfAttuali).toBe(12);
+    expect(c.combattimento.tsMorte).toEqual({ successi: 0, fallimenti: 0 }); // campi aggiunti dopo
+    expect(c.concentrazione).toBeNull();
     expect(c.slotSpesi.slice(0, 3)).toEqual([3, 1, 0]);
     expect(c.incantesimi[0].scuola).toBe("Invocazione");
     expect("nelGrimorio" in c.incantesimi[0]).toBe(false);
@@ -195,5 +198,68 @@ describe("incantesimi", () => {
     expect(slotUtilizzabili(dopo, 2)).toEqual([]);
     expect(lanciaIncantesimo(dopo, 2)).toBe(dopo); // nessuno slot libero
     expect(lanciaIncantesimo(c, null)).toBe(c); // trucchetto o rituale
+  });
+});
+
+describe("danni, cure e tiri salvezza contro morte", () => {
+  const conPF = (pf: number, temp = 0) => {
+    const c = alston();
+    c.combattimento.pfAttuali = pf;
+    c.combattimento.pfTemporanei = temp;
+    return c;
+  };
+
+  it("i PF temporanei assorbono per primi", () => {
+    const c = applicaDanno(conPF(20, 3), 5);
+    expect(c.combattimento).toMatchObject({ pfAttuali: 18, pfTemporanei: 0 });
+  });
+
+  it("a 0 PF si perde la concentrazione e si inizia a morire", () => {
+    const c = { ...conPF(5), concentrazione: "Blocca Persone" };
+    const dopo = applicaDanno(c, 8);
+    expect(dopo.combattimento.pfAttuali).toBe(0);
+    expect(dopo.concentrazione).toBeNull();
+    expect(statoVita(dopo)).toBe("morente");
+  });
+
+  it("danno massiccio: morte istantanea", () => {
+    expect(statoVita(applicaDanno(conPF(5), 5 + 23))).toBe("morto");
+    expect(statoVita(applicaDanno(conPF(5), 5 + 22))).toBe("morente");
+  });
+
+  it("danni subiti a 0 PF contano come fallimento", () => {
+    const c = applicaDanno(applicaDanno(conPF(1), 1), 3);
+    expect(c.combattimento.tsMorte).toEqual({ successi: 0, fallimenti: 1 });
+  });
+
+  it("esiti dei tiri salvezza contro morte", () => {
+    const morente = applicaDanno(conPF(1), 1);
+    expect(esitoTsMorte(morente, 12).combattimento.tsMorte).toEqual({ successi: 1, fallimenti: 0 });
+    expect(esitoTsMorte(morente, 9).combattimento.tsMorte).toEqual({ successi: 0, fallimenti: 1 });
+    expect(esitoTsMorte(morente, 1).combattimento.tsMorte).toEqual({ successi: 0, fallimenti: 2 });
+    expect(esitoTsMorte(morente, 20).combattimento.pfAttuali).toBe(1);
+    const tre = [15, 11, 10].reduce(esitoTsMorte, morente);
+    expect(statoVita(tre)).toBe("stabile");
+    const morto = [1, 5].reduce(esitoTsMorte, morente);
+    expect(statoVita(morto)).toBe("morto");
+    expect(applicaCura(morto, 10)).toBe(morto);
+  });
+
+  it("la cura rialza e azzera i tiri contro morte", () => {
+    const c = applicaCura(esitoTsMorte(applicaDanno(conPF(1), 1), 5), 4);
+    expect(c.combattimento).toMatchObject({ pfAttuali: 4, tsMorte: { successi: 0, fallimenti: 0 } });
+    expect(applicaCura(conPF(20), 10).combattimento.pfAttuali).toBe(23);
+  });
+
+  it("CD della concentrazione", () => {
+    expect(cdConcentrazione(7)).toBe(10);
+    expect(cdConcentrazione(25)).toBe(12);
+  });
+
+  it("lanciare un incantesimo di concentrazione la imposta", () => {
+    const c = lanciaIncantesimo(alston(), 2, { concentrazione: "Blocca Persone" });
+    expect(c.concentrazione).toBe("Blocca Persone");
+    expect(lanciaIncantesimo(c, null, { concentrazione: "Individuazione del Magico" }).concentrazione).toBe("Individuazione del Magico");
+    expect(riposoBreve(c, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] }).concentrazione).toBeNull();
   });
 });

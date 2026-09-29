@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef, type ChangeEvent } from "react";
 import {
   Sparkles, RefreshCw, BookOpen, Backpack, Scroll, Award,
-  Download, Upload, RotateCcw, Heart, Star, X, Coffee,
+  Download, Upload, RotateCcw, Heart, Star, X, Coffee, Brain,
 } from "lucide-react";
 import type { CharacterData, EsitoRiposoBreve } from "./tipi";
-import { derivate, riposoBreve, riposoLungo, segno } from "./regole";
+import {
+  applicaCura, applicaDanno, cdConcentrazione, derivate, riposoBreve, riposoLungo, segno,
+} from "./regole";
 import { carica, daJSON, nuovoPersonaggio, salva } from "./salvataggio";
 import { useRichiestaTiro } from "./tiroDadi";
 import DialogoTiro from "./components/DialogoTiro";
 import PannelloRiposoBreve from "./components/PannelloRiposoBreve";
+import TiriMorte from "./components/TiriMorte";
 import TabStatistiche from "./components/TabStatistiche";
 import TabGrimorio from "./components/TabGrimorio";
 import TabZaino from "./components/TabZaino";
@@ -33,21 +36,41 @@ export default function DnDPlatform() {
   const d = derivate(char);
   const { combattimento: pf } = char;
 
-  // --- Punti ferita: il danno consuma prima i PF temporanei ---
-  const applicaPF = (tipo: "danno" | "cura" | "temp") => {
+  // Subire danni mentre ci si concentra richiede un TS su COS (CD 10 o metà del danno).
+  const verificaConcentrazione = async (incantesimo: string, danno: number) => {
+    const cd = cdConcentrazione(danno);
+    const bonus = d.ts("COS");
+    const r = await chiediD20({ titolo: `Concentrazione: ${incantesimo}`, descrizione: `Hai subito ${danno} danni: TS su COS con CD ${cd}.`, bonus });
+    if (!r) return;
+    const totale = r.risultato + bonus;
+    if (totale >= cd) {
+      setMessaggio(`TS Concentrazione: ${totale} contro CD ${cd}. Mantieni ${incantesimo}.`);
+    } else {
+      setChar(prev => (prev.concentrazione === incantesimo ? { ...prev, concentrazione: null } : prev));
+      setMessaggio(`TS Concentrazione: ${totale} contro CD ${cd}. Concentrazione su ${incantesimo} persa.`);
+    }
+  };
+
+  // --- Punti ferita (regole in applicaDanno / applicaCura) ---
+  const applicaPF = async (tipo: "danno" | "cura" | "temp") => {
     const n = Math.max(0, parseInt(quantitaPF) || 0);
     if (n === 0 && tipo !== "temp") return;
-    setChar(prev => {
-      const c = prev.combattimento;
-      if (tipo === "temp") return { ...prev, combattimento: { ...c, pfTemporanei: n } };
-      if (tipo === "cura") return { ...prev, combattimento: { ...c, pfAttuali: Math.min(c.pfMassimi, c.pfAttuali + n) } };
-      const assorbiti = Math.min(c.pfTemporanei, n);
-      return {
-        ...prev,
-        combattimento: { ...c, pfTemporanei: c.pfTemporanei - assorbiti, pfAttuali: Math.max(0, c.pfAttuali - (n - assorbiti)) },
-      };
-    });
     setQuantitaPF("");
+    if (tipo === "temp") {
+      setChar(prev => ({ ...prev, combattimento: { ...prev.combattimento, pfTemporanei: n } }));
+      return;
+    }
+    if (tipo === "cura") {
+      setChar(prev => applicaCura(prev, n));
+      return;
+    }
+    const dopo = applicaDanno(char, n);
+    setChar(prev => applicaDanno(prev, n));
+    if (char.concentrazione && !dopo.concentrazione) {
+      setMessaggio(`A 0 PF: concentrazione su ${char.concentrazione} persa.`);
+    } else if (dopo.concentrazione) {
+      await verificaConcentrazione(dopo.concentrazione, n);
+    }
   };
 
   const completaRiposoBreve = (esito: EsitoRiposoBreve, riepilogo: string) => {
@@ -58,6 +81,10 @@ export default function DnDPlatform() {
 
   // Il dialogo del tiro fa anche da conferma: annullarlo annulla il riposo.
   const eseguiRiposoLungo = async () => {
+    if (pf.pfAttuali === 0) {
+      alert("Serve almeno 1 PF per iniziare un riposo lungo.");
+      return;
+    }
     const presagio = await chiediTiro({
       titolo: "Riposo Lungo",
       descrizione: "PF e slot tornano al massimo e si ritirano i dadi del Presagio.",
@@ -166,7 +193,7 @@ export default function DnDPlatform() {
                 {pf.pfAttuali} / {pf.pfMassimi}
                 {pf.pfTemporanei > 0 && <span className="text-sky-400 text-lg"> +{pf.pfTemporanei}</span>}
               </div>
-              {pf.pfAttuali === 0 && <div className="text-[10px] text-rose-400 font-bold uppercase">A terra: tiri salvezza contro morte</div>}
+              {pf.pfAttuali === 0 && <TiriMorte char={char} setChar={setChar} chiediD20={chiediD20} onMessaggio={setMessaggio} />}
               <div className="flex justify-center gap-1 mt-1.5">
                 <input
                   type="number"
@@ -202,6 +229,18 @@ export default function DnDPlatform() {
             >
               <Star className="w-3.5 h-3.5" /> Ispirazione
             </button>
+            {char.concentrazione && (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-200 border border-amber-500/40">
+                <Brain className="w-3.5 h-3.5" /> Concentrazione: <strong>{char.concentrazione}</strong>
+                <button
+                  onClick={() => setChar(prev => ({ ...prev, concentrazione: null }))}
+                  title="Termina la concentrazione"
+                  className="text-amber-400 hover:text-white"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
             <span className="px-3 py-1.5 rounded-lg bg-slate-800/60 text-slate-400 border border-slate-800">
               Percezione passiva <strong className="text-slate-200">{d.percezionePassiva}</strong>
             </span>

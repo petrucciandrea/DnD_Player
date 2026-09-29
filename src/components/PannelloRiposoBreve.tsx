@@ -43,7 +43,8 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
   const pfDaDadi = tiriDadiVita.reduce((acc, t) => acc + Math.max(0, t + modCOS), 0);
   // Il Canto di Riposo si applica solo se si spende almeno un Dado Vita.
   const pfCanto = tiriDadiVita.length > 0 && facceCanto > 0 && tiroCanto !== null ? tiroCanto : 0;
-  const pfStabile = pfAttuali === 0 && tiroStabile !== null && tiroStabile <= ore ? 1 : 0;
+  const { stabile } = char.combattimento;
+  const pfStabile = pfAttuali === 0 && stabile && tiroStabile !== null && tiroStabile <= ore ? 1 : 0;
   const pfTotali = pfDaDadi + pfCanto + pfStabile;
   const pfFinali = Math.min(pfMassimi, pfAttuali + pfTotali);
 
@@ -192,7 +193,13 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
         </div>
 
         {/* STABILIZZATO A 0 PF */}
-        {pfAttuali === 0 && (
+        {pfAttuali === 0 && !stabile && (
+          <div className={`${sezione} border-rose-900/60`}>
+            <h3 className={titoloSezione}><Heart className="w-4 h-4 text-rose-500" /> Sei a 0 PF e non sei stabile</h3>
+            <p className="text-xs text-slate-400">Tira i tiri salvezza contro morte (nella card dei Punti Ferita) finché non sei stabile, o fatti curare.</p>
+          </div>
+        )}
+        {pfAttuali === 0 && stabile && (
           <div className={`${sezione} border-rose-900/60`}>
             <h3 className={titoloSezione}><Heart className="w-4 h-4 text-rose-500" /> A terra ma stabilizzato</h3>
             <div className="flex flex-wrap items-center gap-2 text-xs">

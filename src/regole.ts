@@ -113,12 +113,81 @@ export function slotUtilizzabili(c: CharacterData, livelloIncantesimo: number): 
 }
 
 // livelloSlot null = trucchetto o rituale: nessuno slot speso.
-export function lanciaIncantesimo(c: CharacterData, livelloSlot: number | null): CharacterData {
-  if (livelloSlot === null) return c;
-  if (!slotUtilizzabili(c, livelloSlot).includes(livelloSlot)) return c;
-  const slotSpesi = [...c.slotSpesi];
-  slotSpesi[livelloSlot - 1] = (slotSpesi[livelloSlot - 1] ?? 0) + 1;
-  return { ...c, slotSpesi };
+// Con `concentrazione` l'incantesimo sostituisce quello su cui ci si stava concentrando.
+export function lanciaIncantesimo(
+  c: CharacterData, livelloSlot: number | null, opzioni: { concentrazione?: string } = {},
+): CharacterData {
+  let slotSpesi = c.slotSpesi;
+  if (livelloSlot !== null) {
+    if (!slotUtilizzabili(c, livelloSlot).includes(livelloSlot)) return c;
+    slotSpesi = [...c.slotSpesi];
+    slotSpesi[livelloSlot - 1] = (slotSpesi[livelloSlot - 1] ?? 0) + 1;
+  }
+  if (slotSpesi === c.slotSpesi && !opzioni.concentrazione) return c;
+  return { ...c, slotSpesi, concentrazione: opzioni.concentrazione ?? c.concentrazione };
+}
+
+// --- Punti ferita, concentrazione e tiri salvezza contro morte ---
+export const cdConcentrazione = (danno: number) => Math.max(10, Math.floor(danno / 2));
+
+const TS_MORTE_AZZERATI = { successi: 0, fallimenti: 0 };
+
+export const statoVita = (c: CharacterData) =>
+  c.combattimento.pfAttuali > 0 ? "in piedi"
+    : c.combattimento.tsMorte.fallimenti >= 3 ? "morto"
+    : c.combattimento.stabile ? "stabile"
+    : "morente";
+
+// Il danno consuma prima i PF temporanei. Scendere a 0 PF fa perdere la concentrazione;
+// subire danni a 0 PF conta come un fallimento; se il danno oltre lo 0 raggiunge i PF massimi è morte istantanea.
+export function applicaDanno(c: CharacterData, danno: number): CharacterData {
+  const cb = c.combattimento;
+  const assorbiti = Math.min(cb.pfTemporanei, danno);
+  const resto = danno - assorbiti;
+  const pfTemporanei = cb.pfTemporanei - assorbiti;
+  if (resto === 0) return { ...c, combattimento: { ...cb, pfTemporanei } };
+
+  if (cb.pfAttuali === 0) {
+    const fallimenti = resto >= cb.pfMassimi ? 3 : Math.min(3, cb.tsMorte.fallimenti + 1);
+    return { ...c, combattimento: { ...cb, pfTemporanei, stabile: false, tsMorte: { ...cb.tsMorte, fallimenti } } };
+  }
+  const pf = cb.pfAttuali - resto;
+  if (pf > 0) return { ...c, combattimento: { ...cb, pfTemporanei, pfAttuali: pf } };
+  return {
+    ...c,
+    concentrazione: null,
+    combattimento: {
+      ...cb, pfTemporanei, pfAttuali: 0, stabile: false,
+      tsMorte: { successi: 0, fallimenti: -pf >= cb.pfMassimi ? 3 : 0 },
+    },
+  };
+}
+
+export function applicaCura(c: CharacterData, cura: number): CharacterData {
+  const cb = c.combattimento;
+  if (cura <= 0 || statoVita(c) === "morto") return c;
+  return {
+    ...c,
+    combattimento: {
+      ...cb,
+      pfAttuali: Math.min(cb.pfMassimi, cb.pfAttuali + cura),
+      stabile: false,
+      tsMorte: TS_MORTE_AZZERATI,
+    },
+  };
+}
+
+// 20 naturale: torna a 1 PF. 1 naturale: due fallimenti. 10 o più: successo.
+// Tre successi: stabile. Tre fallimenti: morto.
+export function esitoTsMorte(c: CharacterData, d20: number): CharacterData {
+  const cb = c.combattimento;
+  if (d20 === 20) return applicaCura(c, 1);
+  const { successi, fallimenti } = cb.tsMorte;
+  if (d20 >= 10) {
+    if (successi + 1 >= 3) return { ...c, combattimento: { ...cb, stabile: true, tsMorte: TS_MORTE_AZZERATI } };
+    return { ...c, combattimento: { ...cb, tsMorte: { successi: successi + 1, fallimenti } } };
+  }
+  return { ...c, combattimento: { ...cb, tsMorte: { successi, fallimenti: Math.min(3, fallimenti + (d20 === 1 ? 2 : 1)) } } };
 }
 
 // Il danno non scende mai sotto 0.
@@ -179,24 +248,28 @@ export function riposoLungo(c: CharacterData, presagio: number[]): CharacterData
       ...c.combattimento,
       pfAttuali: c.combattimento.pfMassimi,
       dadiVitaRimanenti: Math.min(c.info.livello, c.combattimento.dadiVitaRimanenti + d.dadiVitaRecuperati),
+      tsMorte: TS_MORTE_AZZERATI,
+      stabile: false,
     },
     slotSpesi: c.slotSpesi.map(() => 0),
     divinazione: { presagio, usati: presagio.map(() => false) },
     recuperoArcanoUsato: false,
+    concentrazione: null,
   };
 }
 
 export function riposoBreve(c: CharacterData, esito: EsitoRiposoBreve): CharacterData {
   const usaRecupero = esito.slotRecuperati.some(n => n > 0);
+  const curato = applicaCura(c, esito.pfRecuperati);
   return {
-    ...c,
+    ...curato,
     combattimento: {
-      ...c.combattimento,
-      pfAttuali: Math.min(c.combattimento.pfMassimi, c.combattimento.pfAttuali + esito.pfRecuperati),
+      ...curato.combattimento,
       dadiVitaRimanenti: Math.max(0, c.combattimento.dadiVitaRimanenti - esito.dadiVitaSpesi),
     },
     slotSpesi: c.slotSpesi.map((s, i) => Math.max(0, s - (esito.slotRecuperati[i] ?? 0))),
     recuperoArcanoUsato: c.recuperoArcanoUsato || usaRecupero,
+    concentrazione: null, // almeno 1 ora: gli incantesimi di concentrazione di Alston durano meno
   };
 }
 
