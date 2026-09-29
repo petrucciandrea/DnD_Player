@@ -1,6 +1,8 @@
 # CLAUDE.md — DnD_Player
 
-Scheda personaggio interattiva per D&D 5e (**edizione 2014**), React 19, TypeScript (strict), Vite 8, Tailwind CSS v4. Il "backend" è un plugin di Vite che espone un archivio SQLite (`node:sqlite`, serve Node 22.13+) su `/api` (accesso, sessione, scheda): nessun server separato e nessuna dipendenza in più. I test (Vitest) coprono le regole. Repository git: `main` è il ramo stabile e si sviluppa sul branch `sviluppo`. Per ora gestisce un solo personaggio: Alston il Breve, Gnomo delle Rocce, Mago (Scuola di Divinazione).
+Scheda personaggio interattiva per D&D 5e (**edizione 2014**), React 19, TypeScript (strict), Vite 8, Tailwind CSS v4. Il "backend" è un plugin di Vite che espone un archivio SQLite (`node:sqlite`, serve Node 22.13+) su `/api` (registrazione, accesso, personaggi, catalogo): nessun server separato e nessuna dipendenza in più. I test (Vitest) coprono regole e archivio. Repository git: `main` è il ramo stabile e si sviluppa sul branch `sviluppo`.
+
+**Obiettivo: una piattaforma che possa usare chiunque**, con registrazione pubblica e più personaggi per utente. Oggi l'unico personaggio completo è Alston il Breve (Gnomo delle Rocce, Mago della Scuola di Divinazione) e le regole implementate sono quelle del Mago. Scrivi le nuove funzioni in modo generico, non cablate su Alston.
 
 ## Comandi
 
@@ -18,48 +20,64 @@ Prima di dichiarare finito un lavoro, esegui `npm test`, `npm run lint` e `npm r
 
 | File | Contenuto |
 |---|---|
-| `src/tipi.ts` | Tipi: `CharacterData` (versione 2), `Spell`, `Arma`, `Privilegio`, `SetChar`… |
+| `src/tipi.ts` | Tipi: `CharacterData` (versione 2), `Spell` (con `scheda?: DettagliIncantesimo` dal catalogo), `SchedaIncantesimo`, `Arma`, `Privilegio`, `SetChar`… |
 | `src/regole.ts` | Regole pure: tabelle di XP, slot del Mago, abilità e scuole; `derivate()`, riposi, livelli, danni (`Danni`, `critico`, `dannoArma`, `dannoIncantesimo`), lancio (`lanciaIncantesimo`), PF (`applicaDanno`, `applicaCura`, `esitoTsMorte`, `statoVita`), `risultatoD20`, `tiraD()` |
 | `src/regole.test.ts` | Test Vitest delle regole e della migrazione dei salvataggi |
-| `src/dati/alston.ts` | `INITIAL_CHARACTER`, i dati iniziali di Alston |
-| `src/dati/incantesimi.ts` | `SCHEDE_INCANTESIMI`: schede sintetiche degli incantesimi (gittata, durata, concentrazione, rituale, attacco, TS, danni e come scalano), collegate agli incantesimi del personaggio **per nome** |
+| `src/scheda.ts` | `daJSON()` (validazione e normalizzazione, anche dei vecchi formati) e `personaggioVuoto()`. Senza DOM: la usa anche il server |
+| `src/dati/alston.ts` | `INITIAL_CHARACTER`: la scheda di Alston, usata come esempio e nei test (non è più un valore predefinito) |
 | `src/tiroDadi.ts` | `useRichiestaTiro()` → `chiediTiro`, `chiediD20` (normale / vantaggio / svantaggio), `tiraDanni` |
-| `src/accesso.ts` | `sessioneAttuale()`, `accedi()`, `esci()` e il tipo `Utente` (`username`, `personaggio`) |
-| `src/salvataggio.ts` | Caricamento e salvataggio su `localStorage` (per id del personaggio), chiamate all'API (`scaricaDalServer`, `inviaAlServer`), import/export JSON, migrazione dal vecchio formato |
-| `src/sincronizzazione.ts` | `useSincronizzazione(personaggio, char, setChar, onSessioneScaduta)`: allinea la scheda con l'archivio del server e restituisce lo stato mostrato nell'intestazione |
-| `server/archivio.ts` | Archivio SQLite puro (`apriArchivio`, `leggi`, `scrivi` con revisione), testato in `server/archivio.test.ts` |
-| `server/accesso.ts` | Utenti e sessioni (`verificaCredenziali`, `apriSessione`, `leggiSessione`, `chiudiSessione`, `UTENTI_INIZIALI`), testato in `server/accesso.test.ts` |
-| `server/api.ts` | Plugin Vite `apiPersonaggio()` su `/api` in dev e in preview: `POST /accesso`, `GET /sessione`, `POST /uscita`, `GET`/`PUT /personaggio`. File `archivio/dnd_player.sqlite` (in `.gitignore`), oppure quello indicato da `DND_ARCHIVIO` |
-| `src/App.tsx` | `App` verifica la sessione e mostra `SchermataAccesso` o `Scheda`: intestazione (PF, riposi, import/export, uscita) e navigazione tra le tab |
+| `src/accesso.ts` | Chiamate all'API: `sessioneAttuale()`, `accedi()`, `registra()`, `esci()`, `cambiaUsername()`, `cambiaPassword()`, `elencoPersonaggi()`, `importaPersonaggio()`, `catalogoIncantesimi()`; tipi `Utente`, `RiassuntoPersonaggio`, `VoceIncantesimo` |
+| `src/salvataggio.ts` | Copia locale per id del personaggio (`carica`, `salva`, `ultimoPersonaggio`), `scaricaDalServer` / `inviaAlServer` su `/api/personaggi/:id` |
+| `src/sincronizzazione.ts` | `useSincronizzazione(personaggio, char, setChar, { onSessioneScaduta, onInesistente })`: allinea la scheda con l'archivio e restituisce lo stato mostrato nell'intestazione |
+| `server/schema.ts` | Schema SQLite (`PRAGMA user_version` = 2), migrazione dalla versione 1 (JSON unico) con copia `.bak-v1` |
+| `server/personaggi.ts` | `scomponi` (scheda → tabelle) e `componi` (tabelle + cataloghi → scheda), `creaPersonaggio`, `elencoPersonaggi`, `diUtente` |
+| `server/catalogo.ts` | Cataloghi condivisi: `aggiornaCataloghi` (upsert dei seed), `idIncantesimo` / `idArma` / `idPrivilegio` (cerca per nome o crea), `elencoIncantesimi` |
+| `server/semi/` | Seed dei cataloghi ufficiali: `incantesimi.ts` (`SCHEDE_INCANTESIMI`), `armi.ts`, `privilegi.ts` |
+| `server/archivio.ts` | `apriArchivio`, `leggi` e `scrivi` con revisione e controllo del proprietario |
+| `server/accesso.ts` | Utenti e sessioni: `creaUtente`, `erroreUsername` / `errorePassword` / `erroreRegistrazione`, `verificaCredenziali`, `passwordDiUtente`, `cambiaUsername`, `cambiaPassword`, `apriSessione`, `leggiSessione`, `chiudiSessione` |
+| `server/api.ts` | Plugin Vite `apiPersonaggio()` su `/api` in dev e in preview (elenco delle rotte in testa al file). File `archivio/dnd_player.sqlite` (in `.gitignore`), oppure quello indicato da `DND_ARCHIVIO` |
+| `server/*.test.ts` | Test di archivio, personaggi (scomporre/ricomporre), schema e migrazione, accesso |
+| `src/App.tsx` | `App`: accesso → `SchermataPersonaggi` → `Scheda` (intestazione con PF, riposi, import/export, "Personaggi", uscita, e tab). L'ultimo personaggio aperto si riapre da solo |
 | `src/components/Tab*.tsx` | Una tab ciascuno: Statistiche, Grimorio, Zaino, Progresso, Lore |
-| `src/components/` (altri) | `DialogoTiro` (finestra di ogni tiro), `FinestraIncantesimo` (scheda e lancio), `PannelloRiposoBreve`, `TiriMorte` (card PF a 0 PF) |
+| `src/components/` (altri) | `SchermataAccesso` (accesso e registrazione), `SchermataPersonaggi` (scelta e import), `FinestraAccount` (cambio di username e password), `DialogoTiro`, `FinestraIncantesimo` (scheda da `spell.scheda` e lancio), `PannelloRiposoBreve`, `TiriMorte` |
 
 - **Dati grezzi e valori derivati.** `CharacterData` contiene solo dati grezzi. Tutto ciò che si calcola (modificatori, TS, abilità, CA, iniziativa, CD e attacco magico, bonus competenza, slot massimi, limite di preparazione, soglia XP, attacco e danno delle armi) viene da `derivate(char)`, calcolata a ogni render in `App` e passata alle tab come `d`. **Non memorizzare nello stato un valore derivabile e non scriverlo a mano nel JSX:** aggiungilo a `derivate()`.
 - **Stato.** Un solo `useState<CharacterData>` in `App`, aggiornato in modo immutabile con `setChar(prev => ...)`. Le tab ricevono `char`, `d` e `setChar`. Lo stato solo di interfaccia (input dei form, ultimo tiro) resta locale nella tab.
 - **Tiri di dado.** Ogni tiro passa da `chiediTiro()` o, per i d20, da `chiediD20()` (`src/tiroDadi.ts`); per i danni c'è `tiraDanni()`. Tutti aprono `components/DialogoTiro.tsx`. L'utente sceglie se inserire i risultati dei propri dadi fisici o se far tirare l'app. È una richiesta esplicita dell'utente: **non chiamare mai `tiraD` direttamente in una funzionalità**. `chiediTiro` restituisce una Promise con i risultati (`null` se l'utente annulla), quindi gli handler sono `async`. Il tiro avviene **fuori** dall'updater di `setChar`, perché in StrictMode React chiama l'updater due volte, e gli esiti vengono passati alle funzioni pure (vedi `riposoLungo(c, presagio)`). `App` crea `chiediTiro` e `chiediD20` con `useRichiestaTiro()` e li passa alle tab che ne hanno bisogno.
 - **Slot.** `slotSpesi` è un array di 9 elementi (indice 0 = slot di 1° livello). I massimi vengono da `SLOT_MAGO[livello - 1]`.
 
+## Archivio (SQLite)
+
+- **Tutti i dati del personaggio sono in tabelle**, non in un JSON: `personaggi` (colonne per info, PF, monete, lore…) più le tabelle figlie `personaggio_caratteristiche`, `_abilita`, `_slot`, `_presagio`, `_xp`, `_oggetti` (l'inventario è proprio del personaggio).
+- **Cataloghi condivisi** `incantesimi`, `armi`, `privilegi`, collegati con le tabelle ponte `personaggio_incantesimi` (con `preparato`), `personaggio_armi`, `personaggio_privilegi`. Ogni voce ha `creato_da`: NULL = ufficiale (seed), altrimenti l'utente che l'ha aggiunta. Per ora chiunque può aggiungere voci (sono condivise con tutti); in produzione si userà solo il catalogo ufficiale.
+- **L'API resta "a documento"**: il client legge e scrive `CharacterData` intero. Su `PUT` il server lo valida con `daJSON()` e lo scompone (`scomponi`, dentro la transazione della revisione); su `GET` lo ricompone (`componi`). Il client non conosce le tabelle.
+- **Le voci di catalogo si risolvono per nome** (privilegi: nome + fonte, senza distinguere maiuscole), mai per id: così funzionano l'import dei vecchi JSON e le voci nuove. Un nome sconosciuto crea una voce con `creato_da`. I campi di una voce esistente vengono sempre dal catalogo: una `PUT` non può modificarla. `concentrazione` resta il nome nel JSON (`concentrazione_id` nell'archivio).
+- **Seed**: per correggere o aggiungere voci ufficiali modifica `server/semi/`. A ogni avvio `aggiornaCataloghi` fa l'upsert, ma solo sulle voci con `creato_da IS NULL`.
+- **Cambiare lo schema**: porta `VERSIONE_SCHEMA` al valore successivo e aggiungi una migrazione in `preparaSchema` (con copia di sicurezza del file). I dati degli utenti non devono andare persi. Se aggiungi un campo a `CharacterData`, aggiorna `personaggioVuoto()`, `normalizza()`, `scomponi` e `componi`, e il test di andata e ritorno in `server/personaggi.test.ts`.
+
 ## Accesso
 
-- Senza una sessione valida l'API risponde 401 a tutto tranne `POST /api/accesso`. Il personaggio da leggere e scrivere viene dall'utente della sessione, mai dal client.
-- Tabelle `utenti(username, hash, personaggio)` e `sessioni(token, username, scadenza)`, create da `apriArchivio`. Le password sono hash `scrypt$sale$hash`. Delle sessioni si salva solo lo SHA-256 del token; il token sta nel cookie `dnd_sessione` (HttpOnly, SameSite=Strict, 30 giorni). Un accesso fallito risponde dopo 1 s.
-- `UTENTI_INIZIALI` in `server/accesso.ts` contiene `alan` → `alston` e viene inserito con `INSERT OR IGNORE` a ogni apertura: cambiarne l'hash lì non modifica un archivio già creato. **Non scrivere password in chiaro nel codice, nei test o nella documentazione:** genera l'hash con `hashPassword()`.
-- Se il server risponde 401 durante l'uso (sessione scaduta), `useSincronizzazione` chiama `onSessioneScaduta` e `App` torna al login. Le modifiche non inviate restano in `localStorage` e partono al prossimo accesso.
+- Registrazione pubblica (`POST /api/registrazione`): username 3–30 caratteri `a-z 0-9 . _ -` (senza distinzione di maiuscole), password di almeno 8 caratteri.
+- **Modifica dell'account** (`FinestraAccount`, aperta dal pulsante con lo username nell'intestazione): `PUT /api/account/username` e `PUT /api/account/password` chiedono sempre la password attuale e applicano le stesse regole della registrazione. Una password attuale sbagliata risponde **403** (non 401, che per il client vuol dire sessione scaduta) dopo 1 s. Il cambio di password chiude le sessioni degli altri dispositivi e lascia aperta quella in uso; il cambio di username non tocca le sessioni.
+- Senza una sessione valida l'API risponde 401 a tutto tranne registrazione e accesso. Un personaggio di un altro utente risponde 404, come se non esistesse.
+- Le password sono hash `scrypt$sale$hash`. Delle sessioni si salva solo lo SHA-256 del token; il token sta nel cookie `dnd_sessione` (HttpOnly, SameSite=Strict, 30 giorni). Un accesso fallito risponde dopo 1 s. **Non scrivere password in chiaro nel codice, nei test o nella documentazione.**
+- Un archivio nuovo non ha utenti. L'utente `alan` esiste solo perché migrato dalla versione 1 (`UTENTE_V1` in `schema.ts` serve solo alla migrazione).
+- Se il server risponde 401 durante l'uso, `useSincronizzazione` chiama `onSessioneScaduta` e `App` torna al login; con 404 chiama `onInesistente` e `App` torna all'elenco. Le modifiche non inviate restano in `localStorage`.
 
-## Salvataggio
+## Salvataggio e sincronizzazione
 
-- **Fonte di verità: l'archivio SQLite** (`archivio/dnd_player.sqlite`, una riga per personaggio con id `alston`, JSON della scheda e `revisione`). Il `localStorage` (chiave `dnd_<personaggio>_character`, per Alston `dnd_alston_character`) è una copia offline: all'avvio la scheda si mostra subito da lì, poi arriva quella del server. Se l'archivio è vuoto ci si copia la scheda del browser.
-- **Sincronizzazione** (`useSincronizzazione`, al posto del vecchio `useEffect` con `salva`): ogni modifica va subito nel `localStorage` e dopo 500 ms al server con `PUT { dati, revisione }`. Il server accetta solo se la revisione coincide, altrimenti risponde 409 con la versione attuale e il client chiede con `confirm()` quale tenere. La revisione di riferimento e il flag delle modifiche non inviate stanno in `localStorage` (`dnd_<personaggio>_sincronizzazione`), così nulla va perso chiudendo la pagina o andando offline. Gli aggiornamenti degli altri dispositivi si scaricano all'avvio, al focus o al ritorno sulla pagina, e ogni 15 s.
-- Il salvataggio ha la precedenza su `INITIAL_CHARACTER`: se modifichi i dati iniziali, l'app mostra ancora quelli salvati. Per vederli usa il pulsante ↺ (Ripristina) nell'intestazione, che però vale per tutti i dispositivi.
+- Il `localStorage` (`dnd_personaggio_<id>` e `dnd_personaggio_<id>_sincronizzazione`) è una copia offline: la scheda si mostra subito da lì, poi arriva quella del server. Prima di aprire un personaggio senza copia locale, `App` lo scarica.
+- Ogni modifica va subito nel `localStorage` e dopo 500 ms al server con `PUT { dati, revisione }`. Il server accetta solo se la revisione coincide, altrimenti risponde 409 con la versione attuale e il client chiede con `confirm()` quale tenere. Gli aggiornamenti degli altri dispositivi si scaricano all'avvio, al focus o al ritorno sulla pagina, e ogni 15 s.
+- Import JSON: dalla schermata dei personaggi crea un personaggio nuovo (`POST /api/personaggi`); dentro la scheda sostituisce quella aperta. Non c'è più "Ripristina ai dati iniziali".
 - `server.host` e `preview.host` sono `true`: l'app è raggiungibile da tutta la rete locale, protetta dal login ma su http non cifrato. Va bene per la rete di casa, non per esporla su internet.
-- Il server non valida la scheda (controlla solo che `dati` sia un oggetto): la validazione resta `daJSON()` sul client, anche per ciò che arriva dal server.
-- `daJSON()` valida i dati e li normalizza, completando le sezioni mancanti con `INITIAL_CHARACTER`. Converte anche il vecchio formato senza `versione` (`migraV1`). **Se cambi la forma di `CharacterData`**, aggiorna `normalizza()`. Se il cambiamento non è compatibile, porta `versione` a 3 e aggiungi una migrazione: i dati salvati degli utenti non devono andare persi.
+- `daJSON()` (`src/scheda.ts`) valida i dati e li normalizza, completando le sezioni mancanti con `personaggioVuoto()`. Converte anche il vecchio formato senza `versione` (`migraV1`). Se il cambiamento a `CharacterData` non è compatibile, porta `versione` a 3 e aggiungi una migrazione.
 
 ## Attenzione
 
 - **`src/index.css` deve restare minimale.** Tailwind v4 mette le utility in `@layer` e qualunque CSS fuori dai layer vince su di esse. Il vecchio CSS del template rendeva il nome del personaggio illeggibile. Gli stili vanno scritti come classi Tailwind nel JSX.
 - Tailwind v4 si configura tramite il plugin `@tailwindcss/vite`: non ci sono `tailwind.config.js` né `postcss.config.js`.
 - `react-refresh/only-export-components`: i file in `components/` devono esportare solo componenti. Costanti e funzioni condivise vanno in `regole.ts`.
+- Il codice in `server/` importa da `src/` (`tipi`, `regole`, `scheda`): quei file non devono usare il DOM. `tsconfig.node.json` usa la risoluzione `bundler`, perché server e config li carica Vite.
 - Tipi da React: usa `import { type FormEvent } from "react"`, non `React.FormEvent` (con `verbatimModuleSyntax` il namespace globale non è disponibile).
 
 ## Convenzioni
@@ -85,4 +103,4 @@ Prima di dichiarare finito un lavoro, esegui `npm test`, `npm run lint` e `npm r
 - Salita di livello: disponibile quando gli XP raggiungono la soglia. Aggiunge PF medi e un Dado Vita. Gli aumenti di caratteristica si fanno a mano con "Modifica" nella tab Statistiche.
 - La CA è calcolata senza armatura (10 + DES): Armatura Magica e altri oggetti non sono gestiti.
 
-Non ancora implementati: gestione degli utenti dall'interfaccia (si aggiungono in `UTENTI_INIZIALI`; archivio e API supportano già un personaggio per utente), effetti attivi (Scudo, Armatura Magica, Immagine Speculare), condizioni e indebolimento, armature, note di sessione, modifica di tratti/armi dall'interfaccia, classi e razze diverse. Per aggiungere un'altra classe bisogna rendere generiche `SLOT_MAGO`, il Dado Vita d6 e le regole di preparazione in `regole.ts`.
+Non ancora implementati: creazione di un personaggio da zero (oggi si importa un JSON), eliminazione di account e personaggi, recupero della password dimenticata, interfaccia per armi e privilegi (i cataloghi ci sono, si riempiono da seed o import), limitazione del catalogo alle sole voci ufficiali, effetti attivi (Scudo, Armatura Magica, Immagine Speculare), condizioni e indebolimento, armature, note di sessione, modifica di tratti/armi dall'interfaccia, classi e razze diverse. Per aggiungere un'altra classe bisogna rendere generiche `SLOT_MAGO`, il Dado Vita d6 e le regole di preparazione in `regole.ts`.

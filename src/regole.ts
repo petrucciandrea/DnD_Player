@@ -1,6 +1,8 @@
 // Regole D&D 5e (edizione 2014) per il Mago.
-import type { Arma, Caratteristica, CharacterData, EsitoRiposoBreve } from "./tipi";
-import type { SchedaIncantesimo } from "./dati/incantesimi";
+import type { Arma, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve } from "./tipi";
+
+// Quanto serve per calcolare danni e attacchi di un incantesimo lanciato con un certo slot.
+type IncantesimoDaLanciare = { livello: number } & Pick<DettagliIncantesimo, "danni" | "attacco">;
 
 export const CARATTERISTICHE: Caratteristica[] = ["FOR", "DES", "COS", "INT", "SAG", "CAR"];
 
@@ -89,7 +91,7 @@ export function dannoArma(arma: Arma, mod: number, dueMani = false): Danni {
 // Trucchetti: 1 dado, 2 dal 5° livello, 3 dall'11°, 4 dal 17°.
 const moltiplicatoreTrucchetto = (livello: number) => (livello >= 17 ? 4 : livello >= 11 ? 3 : livello >= 5 ? 2 : 1);
 
-export function dannoIncantesimo(s: SchedaIncantesimo, livelloSlot: number, livelloPersonaggio: number): Danni | null {
+export function dannoIncantesimo(s: IncantesimoDaLanciare, livelloSlot: number, livelloPersonaggio: number): Danni | null {
   if (!s.danni) return null;
   const base = parseDado(s.danni.dado);
   let numero = s.danni.trucchetto ? base.numero * moltiplicatoreTrucchetto(livelloPersonaggio) : base.numero;
@@ -100,7 +102,7 @@ export function dannoIncantesimo(s: SchedaIncantesimo, livelloSlot: number, live
   return { numero, facce: base.facce, mod, tipo: s.danni.tipo };
 }
 
-export const numeroAttacchi = (s: SchedaIncantesimo, livelloSlot: number) =>
+export const numeroAttacchi = (s: IncantesimoDaLanciare, livelloSlot: number) =>
   s.attacco ? s.attacco.numero + (s.attacco.perLivello ?? 0) * Math.max(0, livelloSlot - s.livello) : 0;
 
 // Livelli di slot con almeno uno slot libero, a partire dal livello dell'incantesimo.

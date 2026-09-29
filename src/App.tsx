@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useState, useRef, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef, type ChangeEvent } from "react";
 import {
   Sparkles, RefreshCw, BookOpen, Backpack, Scroll, Award,
-  Download, Upload, RotateCcw, Heart, Star, X, Coffee, Brain, Cloud, CloudCheck, CloudOff, CloudUpload, LoaderCircle, LogOut,
+  Download, Upload, Users, Heart, Star, X, Coffee, Brain, Cloud, CloudCheck, CloudOff, CloudUpload, LoaderCircle, LogOut, UserCog,
 } from "lucide-react";
 import type { CharacterData, EsitoRiposoBreve } from "./tipi";
 import {
   applicaCura, applicaDanno, cdConcentrazione, derivate, riposoBreve, riposoLungo, segno,
 } from "./regole";
-import { carica, daJSON, nuovoPersonaggio } from "./salvataggio";
-import { useSincronizzazione, type StatoSincronizzazione } from "./sincronizzazione";
+import {
+  carica, ricordaUltimoPersonaggio, salva, salvaRiferimento, scaricaDalServer, ultimoPersonaggio,
+} from "./salvataggio";
+import { daJSON, personaggioVuoto } from "./scheda";
+import { useSincronizzazione, type AvvisiSincronizzazione, type StatoSincronizzazione } from "./sincronizzazione";
 import { esci, sessioneAttuale, type Utente } from "./accesso";
 import SchermataAccesso from "./components/SchermataAccesso";
+import SchermataPersonaggi from "./components/SchermataPersonaggi";
+import FinestraAccount from "./components/FinestraAccount";
 import { useRichiestaTiro } from "./tiroDadi";
 import DialogoTiro from "./components/DialogoTiro";
 import PannelloRiposoBreve from "./components/PannelloRiposoBreve";
@@ -30,29 +35,78 @@ const SYNC: Record<StatoSincronizzazione, { icona: typeof Cloud; etichetta: stri
   offline: { icona: CloudOff, etichetta: "Offline", descrizione: "Archivio non raggiungibile: la scheda è salvata solo su questo dispositivo e verrà inviata appena possibile", colore: "text-amber-400" },
 };
 
-// Prima di mostrare la scheda serve una sessione valida sul server.
+const SESSIONE_SCADUTA = "Sessione scaduta: accedi di nuovo. Le modifiche non salvate verranno inviate dopo l'accesso.";
+
+// Accesso → scelta del personaggio → scheda. L'ultimo personaggio aperto si riapre da solo.
 export default function App() {
   const [sessione, setSessione] = useState<Utente | null | "verifica">("verifica");
+  const [personaggio, setPersonaggio] = useState<number | null>(null);
   const [avviso, setAvviso] = useState<string | null>(null);
+  const [accountAperto, setAccountAperto] = useState(false);
+
+  const entra = useCallback((u: Utente) => {
+    setSessione(u);
+    setPersonaggio(ultimoPersonaggio(u.id));
+  }, []);
 
   useEffect(() => {
     let attivo = true;
     sessioneAttuale().then(s => {
       if (!attivo) return;
-      setSessione(s === "offline" ? null : s);
-      if (s === "offline") setAvviso("Archivio non raggiungibile: controlla che il server sia avviato.");
+      if (s === "offline") {
+        setSessione(null);
+        setAvviso("Archivio non raggiungibile: controlla che il server sia avviato.");
+      } else if (s) {
+        entra(s);
+      } else {
+        setSessione(null);
+      }
     });
     return () => { attivo = false; };
-  }, []);
+  }, [entra]);
 
   const sessioneScaduta = useCallback(() => {
+    setAccountAperto(false);
     setSessione(null);
-    setAvviso("Sessione scaduta: accedi di nuovo. Le modifiche non salvate verranno inviate dopo l'accesso.");
+    setPersonaggio(null);
+    setAvviso(SESSIONE_SCADUTA);
   }, []);
+
+  const utenteId = sessione && sessione !== "verifica" ? sessione.id : null;
+
+  const chiudiPersonaggio = useCallback((messaggio: string | null) => {
+    if (utenteId !== null) ricordaUltimoPersonaggio(utenteId, null);
+    setPersonaggio(null);
+    setAvviso(messaggio);
+  }, [utenteId]);
+
+  const avvisi = useMemo<AvvisiSincronizzazione>(() => ({
+    onSessioneScaduta: sessioneScaduta,
+    onInesistente: () => chiudiPersonaggio("Questo personaggio non esiste più nell'archivio."),
+  }), [sessioneScaduta, chiudiPersonaggio]);
+
+  // Se il browser non ha ancora una copia del personaggio la si scarica prima di aprire la scheda.
+  const apriPersonaggio = async (id: number) => {
+    if (utenteId === null) return;
+    if (!carica(id)) {
+      const esito = await scaricaDalServer(id);
+      if (esito.tipo === "sessione scaduta") return sessioneScaduta();
+      if (esito.tipo !== "trovato") {
+        return setAvviso(esito.tipo === "inesistente" ? "Questo personaggio non esiste più nell'archivio." : "Archivio non raggiungibile: riprova.");
+      }
+      salva(id, esito.versione.dati);
+      salvaRiferimento(id, { revisione: esito.versione.revisione, inSospeso: false });
+    }
+    ricordaUltimoPersonaggio(utenteId, id);
+    setAvviso(null);
+    setPersonaggio(id);
+  };
 
   const uscita = async () => {
     await esci();
+    setAccountAperto(false);
     setAvviso(null);
+    setPersonaggio(null);
     setSessione(null);
   };
 
@@ -64,27 +118,66 @@ export default function App() {
     );
   }
   if (!sessione) {
-    return <SchermataAccesso avviso={avviso} onAccesso={u => { setAvviso(null); setSessione(u); }} />;
+    return <SchermataAccesso avviso={avviso} onAccesso={u => { setAvviso(null); entra(u); }} />;
   }
-  return <Scheda key={sessione.personaggio} utente={sessione} onEsci={uscita} onSessioneScaduta={sessioneScaduta} />;
+  const account = accountAperto && (
+    <FinestraAccount
+      utente={sessione}
+      onUtenteAggiornato={setSessione}
+      onSessioneScaduta={sessioneScaduta}
+      onChiudi={() => setAccountAperto(false)}
+    />
+  );
+  if (personaggio === null) {
+    return (
+      <>
+        <SchermataPersonaggi
+          utente={sessione}
+          avviso={avviso}
+          onScegli={apriPersonaggio}
+          onAccount={() => setAccountAperto(true)}
+          onEsci={uscita}
+          onSessioneScaduta={sessioneScaduta}
+        />
+        {account}
+      </>
+    );
+  }
+  return (
+    <>
+      <Scheda
+        key={personaggio}
+        personaggio={personaggio}
+        utente={sessione}
+        avvisi={avvisi}
+        onCambiaPersonaggio={() => chiudiPersonaggio(null)}
+        onAccount={() => setAccountAperto(true)}
+        onEsci={uscita}
+      />
+      {account}
+    </>
+  );
 }
 
 interface PropsScheda {
+  personaggio: number;
   utente: Utente;
+  avvisi: AvvisiSincronizzazione;
+  onCambiaPersonaggio: () => void;
+  onAccount: () => void;
   onEsci: () => void;
-  onSessioneScaduta: () => void;
 }
 
-function Scheda({ utente, onEsci, onSessioneScaduta }: PropsScheda) {
+function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, onEsci }: PropsScheda) {
   const [activeTab, setActiveTab] = useState<Tab>("statistiche");
-  const [char, setChar] = useState<CharacterData>(() => carica(utente.personaggio));
+  const [char, setChar] = useState<CharacterData>(() => carica(personaggio) ?? personaggioVuoto());
   const [quantitaPF, setQuantitaPF] = useState("");
   const [messaggio, setMessaggio] = useState<string | null>(null);
   const [riposoBreveAperto, setRiposoBreveAperto] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const { richiesta, chiediTiro, chiediD20, rispondi } = useRichiestaTiro();
 
-  const sync = SYNC[useSincronizzazione(utente.personaggio, char, setChar, onSessioneScaduta)];
+  const sync = SYNC[useSincronizzazione(personaggio, char, setChar, avvisi)];
 
   const d = derivate(char);
   const { combattimento: pf } = char;
@@ -172,12 +265,6 @@ function Scheda({ utente, onEsci, onSessioneScaduta }: PropsScheda) {
     }
   };
 
-  const ripristina = () => {
-    if (!confirm("Ripristinare la scheda ai dati iniziali? Tutti i progressi salvati andranno persi.")) return;
-    setChar(nuovoPersonaggio());
-    setMessaggio("Scheda ripristinata ai dati iniziali.");
-  };
-
   const pulsante = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition";
   const pulsanteNeutro = `${pulsante} bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700`;
 
@@ -237,11 +324,14 @@ function Scheda({ utente, onEsci, onSessioneScaduta }: PropsScheda) {
                 <Upload className="w-3.5 h-3.5" /> Importa JSON
               </button>
               <input ref={fileInput} type="file" accept="application/json,.json" onChange={importa} className="hidden" />
-              <button onClick={ripristina} title="Ripristina i dati iniziali" className={`${pulsanteNeutro} hover:text-rose-300`}>
-                <RotateCcw className="w-3.5 h-3.5" />
+              <button onClick={onCambiaPersonaggio} title="Torna all'elenco dei personaggi" className={pulsanteNeutro}>
+                <Users className="w-3.5 h-3.5" /> Personaggi
               </button>
-              <button onClick={onEsci} title={`Esci (${utente.username})`} className={pulsanteNeutro}>
-                <LogOut className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{utente.username}</span>
+              <button onClick={onAccount} title="Account: username e password" className={pulsanteNeutro}>
+                <UserCog className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{utente.username}</span>
+              </button>
+              <button onClick={onEsci} title="Esci" className={`${pulsanteNeutro} hover:text-rose-300`}>
+                <LogOut className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

@@ -19,10 +19,14 @@ const MESSAGGIO_CONFLITTO =
 // Gli aggiornamenti fatti da altri dispositivi si caricano all'avvio, al ritorno sulla pagina
 // e ogni INTERVALLO_CONTROLLO. Le scritture usano la revisione del server per accorgersi dei conflitti.
 // Se il server risponde che la sessione è scaduta si chiama `onSessioneScaduta`: le modifiche non
-// inviate restano nel localStorage e partono al prossimo accesso.
-export function useSincronizzazione(
-  personaggio: string, char: CharacterData, setChar: SetChar, onSessioneScaduta: () => void,
-) {
+// inviate restano nel localStorage e partono al prossimo accesso. Se il personaggio non esiste più
+// (o non è dell'utente collegato) si chiama `onInesistente`.
+export interface AvvisiSincronizzazione {
+  onSessioneScaduta: () => void;
+  onInesistente: () => void;
+}
+
+export function useSincronizzazione(personaggio: number, char: CharacterData, setChar: SetChar, avvisi: AvvisiSincronizzazione) {
   const [stato, setStato] = useState<StatoSincronizzazione>("connessione");
   const [riferimentoIniziale] = useState(() => caricaRiferimento(personaggio));
   const riferimento = useRef(riferimentoIniziale);
@@ -30,11 +34,11 @@ export function useSincronizzazione(
   const allineata = useRef(char); // scheda che non va inviata: quella iniziale o quella appena scaricata
   const coda = useRef(Promise.resolve()); // invii e controlli si eseguono uno alla volta
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const sessioneScaduta = useRef(onSessioneScaduta);
+  const avvisiAttuali = useRef(avvisi);
 
   useEffect(() => {
-    sessioneScaduta.current = onSessioneScaduta;
-  }, [onSessioneScaduta]);
+    avvisiAttuali.current = avvisi;
+  }, [avvisi]);
 
   const aggiorna = useCallback((revisione: number, inSospeso: boolean) => {
     riferimento.current = { revisione, inSospeso };
@@ -57,9 +61,10 @@ export function useSincronizzazione(
   const invia = useCallback(async () => {
     for (;;) {
       const dati = ultima.current;
-      const esito = await inviaAlServer(dati, riferimento.current.revisione);
+      const esito = await inviaAlServer(personaggio, dati, riferimento.current.revisione);
       if (esito.tipo === "offline") return setStato("offline");
-      if (esito.tipo === "sessione scaduta") return sessioneScaduta.current();
+      if (esito.tipo === "sessione scaduta") return avvisiAttuali.current.onSessioneScaduta();
+      if (esito.tipo === "inesistente") return avvisiAttuali.current.onInesistente();
       if (esito.tipo === "ok") {
         // Se nel frattempo ci sono state altre modifiche, restano in sospeso per il prossimo invio.
         const tutteInviate = ultima.current === dati;
@@ -67,26 +72,24 @@ export function useSincronizzazione(
         if (tutteInviate) setStato("sincronizzato");
         return;
       }
-      if (esito.attuale && confirm(MESSAGGIO_CONFLITTO)) return applica(esito.attuale);
+      // Versione del server illeggibile: si riprova più tardi invece di sovrascriverla alla cieca.
+      if (!esito.attuale) return setStato("offline");
+      if (confirm(MESSAGGIO_CONFLITTO)) return applica(esito.attuale);
       // Si tiene la scheda locale: la si riscrive sopra la versione attuale del server.
-      aggiorna(esito.attuale?.revisione ?? 0, true);
+      aggiorna(esito.attuale.revisione, true);
     }
-  }, [aggiorna, applica]);
+  }, [personaggio, aggiorna, applica]);
 
   const controlla = useCallback(async () => {
     if (riferimento.current.inSospeso) return invia();
-    const esito = await scaricaDalServer();
+    const esito = await scaricaDalServer(personaggio);
     if (esito.tipo === "offline") return setStato("offline");
-    if (esito.tipo === "sessione scaduta") return sessioneScaduta.current();
-    if (esito.tipo === "vuoto") {
-      // Archivio vuoto: ci si copia la scheda di questo browser (anche quella salvata prima del server).
-      aggiorna(0, true);
-      return invia();
-    }
+    if (esito.tipo === "sessione scaduta") return avvisiAttuali.current.onSessioneScaduta();
+    if (esito.tipo === "inesistente") return avvisiAttuali.current.onInesistente();
     if (riferimento.current.inSospeso) return invia(); // modifiche arrivate durante il download
     if (esito.versione.revisione !== riferimento.current.revisione) return applica(esito.versione);
     setStato("sincronizzato");
-  }, [aggiorna, applica, invia]);
+  }, [personaggio, applica, invia]);
 
   useEffect(() => {
     ultima.current = char;

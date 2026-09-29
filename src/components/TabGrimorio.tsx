@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { CheckCircle2, Circle, AlertCircle, Plus, Trash2, RotateCcw } from "lucide-react";
 import type { CharacterData, SetChar, Spell } from "../tipi";
 import type { ChiediD20, ChiediTiro } from "../tiroDadi";
-import { schedaDi } from "../dati/incantesimi";
+import { catalogoIncantesimi, type VoceIncantesimo } from "../accesso";
 import FinestraIncantesimo from "./FinestraIncantesimo";
 import type { Derivate } from "../regole";
 import { SCUOLE, derivate } from "../regole";
@@ -21,6 +21,24 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
   const [aperto, setAperto] = useState<number | null>(null); // id dell'incantesimo nella finestra
   const spellAperto = char.incantesimi.find(s => s.id === aperto);
   const [nuovo, setNuovo] = useState({ nome: "", livello: 1, scuola: "Invocazione", tempo: "1 Azione" });
+  const [catalogo, setCatalogo] = useState<VoceIncantesimo[]>([]);
+
+  useEffect(() => {
+    let attivo = true;
+    catalogoIncantesimi().then(voci => {
+      if (attivo && voci) setCatalogo(voci);
+    });
+    return () => { attivo = false; };
+  }, []);
+
+  const stessoNome = (a: string, b: string) => a.trim().localeCompare(b.trim(), "it", { sensitivity: "accent" }) === 0;
+  const voceScelta = catalogo.find(v => stessoNome(v.nome, nuovo.nome));
+
+  // Scegliendo un incantesimo del catalogo, livello, scuola e tempo vengono dal catalogo.
+  const cambiaNome = (nome: string) => {
+    const voce = catalogo.find(v => stessoNome(v.nome, nome));
+    setNuovo(prev => (voce ? { nome, livello: voce.livello, scuola: voce.scuola, tempo: voce.tempo } : { ...prev, nome }));
+  };
 
   const spesi = (i: number) => Math.min(char.slotSpesi[i] ?? 0, d.slotMax[i] ?? 0);
   const livelloMaxIncantesimi = d.slotMax.length;
@@ -48,15 +66,24 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
 
   const aggiungiIncantesimo = (e: FormEvent) => {
     e.preventDefault();
-    if (!nuovo.nome.trim()) return;
-    const spell: Spell = {
-      id: Date.now(),
-      nome: nuovo.nome.trim(),
-      livello: nuovo.livello,
-      scuola: nuovo.scuola,
-      tempo: nuovo.tempo.trim() || "1 Azione",
-      preparato: nuovo.livello === 0,
-    };
+    const nome = nuovo.nome.trim();
+    if (!nome) return;
+    if (char.incantesimi.some(s => stessoNome(s.nome, nome))) {
+      alert(`"${nome}" è già nel grimorio.`);
+      return;
+    }
+    // Un nome che non è nel catalogo diventa una nuova voce del catalogo condiviso al prossimo salvataggio.
+    if (!voceScelta && !confirm(`"${nome}" non è nel catalogo: verrà aggiunto al catalogo condiviso, senza scheda dettagliata. Continuare?`)) return;
+    const spell: Spell = voceScelta
+      ? { ...voceScelta, preparato: voceScelta.livello === 0 }
+      : {
+          id: Date.now(),
+          nome,
+          livello: nuovo.livello,
+          scuola: nuovo.scuola,
+          tempo: nuovo.tempo.trim() || "1 Azione",
+          preparato: nuovo.livello === 0,
+        };
     setChar(prev => ({ ...prev, incantesimi: [...prev.incantesimi, spell] }));
     setNuovo(prev => ({ ...prev, nome: "" }));
   };
@@ -140,8 +167,8 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
                 <button onClick={() => setAperto(s.id)} className="text-left hover:text-indigo-300 underline decoration-slate-700 underline-offset-4 hover:decoration-indigo-400">
                   {s.nome}
                 </button>
-                {schedaDi(s.nome)?.concentrazione && <span title="Concentrazione" className="text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">C</span>}
-                {schedaDi(s.nome)?.rituale && <span title="Rituale" className="text-[10px] px-1 rounded bg-sky-500/20 text-sky-300">R</span>}
+                {s.scheda?.concentrazione && <span title="Concentrazione" className="text-[10px] px-1 rounded bg-amber-500/20 text-amber-300">C</span>}
+                {s.scheda?.rituale && <span title="Rituale" className="text-[10px] px-1 rounded bg-sky-500/20 text-sky-300">R</span>}
               </div>
               <div className="col-span-2 text-xs font-mono text-indigo-300">{nomeLivello(s.livello)}</div>
               <div className="col-span-3 text-xs text-slate-400">{s.scuola} • {s.tempo}</div>
@@ -167,24 +194,32 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
       <form onSubmit={aggiungiIncantesimo} className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-wrap gap-2 items-center">
         <input
           type="text"
-          placeholder="Nuovo incantesimo..."
+          placeholder={catalogo.length ? `Cerca tra ${catalogo.length} incantesimi del catalogo...` : "Nuovo incantesimo..."}
+          list="catalogo-incantesimi"
           value={nuovo.nome}
-          onChange={e => setNuovo(prev => ({ ...prev, nome: e.target.value }))}
+          onChange={e => cambiaNome(e.target.value)}
           className="flex-1 min-w-40 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
         />
+        <datalist id="catalogo-incantesimi">
+          {catalogo.filter(v => !char.incantesimi.some(s => stessoNome(s.nome, v.nome))).map(v => (
+            <option key={v.id} value={v.nome}>{nomeLivello(v.livello)} · {v.scuola}</option>
+          ))}
+        </datalist>
         <select
           value={nuovo.livello}
+          disabled={!!voceScelta}
           onChange={e => setNuovo(prev => ({ ...prev, livello: Number(e.target.value) }))}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+          className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-60"
         >
-          {Array.from({ length: livelloMaxIncantesimi + 1 }, (_, l) => (
+          {Array.from({ length: Math.max(livelloMaxIncantesimi, voceScelta?.livello ?? 0) + 1 }, (_, l) => (
             <option key={l} value={l}>{nomeLivello(l)}</option>
           ))}
         </select>
         <select
           value={nuovo.scuola}
+          disabled={!!voceScelta}
           onChange={e => setNuovo(prev => ({ ...prev, scuola: e.target.value }))}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+          className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-60"
         >
           {SCUOLE.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -192,8 +227,9 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
           type="text"
           placeholder="Tempo di lancio"
           value={nuovo.tempo}
+          disabled={!!voceScelta}
           onChange={e => setNuovo(prev => ({ ...prev, tempo: e.target.value }))}
-          className="w-36 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+          className="w-36 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-60"
         />
         <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold flex items-center gap-1">
           <Plus className="w-4 h-4" /> Aggiungi

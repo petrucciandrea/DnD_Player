@@ -6,8 +6,8 @@ import {
   dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, slotUtilizzabili,
   applicaCura, applicaDanno, cdConcentrazione, esitoTsMorte, statoVita,
 } from "./regole";
-import { daJSON } from "./salvataggio";
-import { SCHEDE_INCANTESIMI } from "./dati/incantesimi";
+import { daJSON } from "./scheda";
+import { SCHEDE_INCANTESIMI } from "../server/semi/incantesimi.ts";
 import type { CharacterData } from "./tipi";
 
 const alston = (): CharacterData => structuredClone(INITIAL_CHARACTER);
@@ -127,7 +127,7 @@ describe("salvataggio", () => {
     expect(c.info.ispirazione).toBe(true);
     expect("bonusCompetenza" in c.info).toBe(false);
     expect(c.caratteristiche.INT).toEqual({ valore: 17, compTS: true });
-    expect(c.caratteristiche.FOR.valore).toBe(8); // completata dai dati iniziali
+    expect(c.caratteristiche.FOR.valore).toBe(10); // completata con il modello vuoto
     expect(c.combattimento.pfAttuali).toBe(12);
     expect(c.combattimento.tsMorte).toEqual({ successi: 0, fallimenti: 0 }); // campi aggiunti dopo
     expect(c.concentrazione).toBeNull();

@@ -8,6 +8,37 @@ export interface AbilityScore {
   compTS: boolean;
 }
 
+// Dettagli di un incantesimo del catalogo (tabella `incantesimi` dell'archivio).
+export interface DettagliIncantesimo {
+  gittata: string;
+  componenti: string;
+  durata: string;
+  concentrazione: boolean;
+  rituale: boolean;
+  descrizione: string;
+  livelloSuperiore?: string;
+  attacco?: { numero: number; perLivello?: number }; // tiri per colpire con incantesimo (es. raggi)
+  tiroSalvezza?: { car: Caratteristica; effetto: string };
+  danni?: {
+    dado: string;
+    tipo: string; // si legge dopo "danni": "da fuoco", "necrotici"...
+    mod?: number;
+    perLivello?: string; // dadi aggiunti per ogni livello di slot sopra quello base
+    modPerLivello?: number;
+    trucchetto?: boolean; // i dadi aumentano al 5°, 11° e 17° livello del personaggio
+    perAttacco?: boolean; // il danno si tira per ogni tiro per colpire
+  };
+}
+
+// Voce completa del catalogo, come nel seed del server.
+export interface SchedaIncantesimo extends DettagliIncantesimo {
+  livello: number;
+  scuola: string;
+  tempo: string;
+}
+
+// Incantesimo nel grimorio del personaggio. `id` è quello del catalogo (o provvisorio, per una voce
+// appena aggiunta); `scheda` arriva dal catalogo e manca per gli incantesimi senza dettagli.
 export interface Spell {
   id: number;
   nome: string;
@@ -15,6 +46,7 @@ export interface Spell {
   scuola: string;
   tempo: string;
   preparato: boolean;
+  scheda?: DettagliIncantesimo;
 }
 
 export interface InventoryItem {

@@ -1,42 +1,54 @@
 import { describe, expect, it } from "vitest";
+import { INITIAL_CHARACTER } from "../src/dati/alston.ts";
+import { creaUtente } from "./accesso.ts";
 import { apriArchivio, leggi, scrivi } from "./archivio.ts";
+import { creaPersonaggio } from "./personaggi.ts";
 
-describe("archivio SQLite", () => {
-  it("un personaggio mai salvato non esiste", () => {
-    const db = apriArchivio(":memory:");
-    expect(leggi(db, "alston")).toBeNull();
-  });
+const conAlston = () => {
+  const db = apriArchivio(":memory:");
+  const utente = creaUtente(db, "prova", "segretissima")!;
+  const id = creaPersonaggio(db, utente.id, structuredClone(INITIAL_CHARACTER));
+  return { db, utente, id };
+};
 
-  it("la prima scrittura parte dalla revisione 0 e crea la revisione 1", () => {
-    const db = apriArchivio(":memory:");
-    expect(scrivi(db, "alston", { nome: "Alston" }, 0)).toEqual({ ok: true, revisione: 1 });
-    expect(leggi(db, "alston")).toEqual({ dati: { nome: "Alston" }, revisione: 1 });
+const conPF = (pf: number) => {
+  const c = structuredClone(INITIAL_CHARACTER);
+  c.combattimento.pfAttuali = pf;
+  return c;
+};
+
+describe("archivio: revisioni", () => {
+  it("un personaggio nuovo parte dalla revisione 1", () => {
+    const { db, utente, id } = conAlston();
+    expect(leggi(db, id, utente.id)?.revisione).toBe(1);
   });
 
   it("con la revisione giusta sovrascrive e incrementa", () => {
-    const db = apriArchivio(":memory:");
-    scrivi(db, "alston", { pf: 10 }, 0);
-    expect(scrivi(db, "alston", { pf: 7 }, 1)).toEqual({ ok: true, revisione: 2 });
-    expect(leggi(db, "alston")).toEqual({ dati: { pf: 7 }, revisione: 2 });
+    const { db, utente, id } = conAlston();
+    expect(scrivi(db, id, utente.id, conPF(7), 1)).toEqual({ ok: true, revisione: 2 });
+    expect(leggi(db, id, utente.id)?.dati.combattimento.pfAttuali).toBe(7);
   });
 
   it("con una revisione superata rifiuta e restituisce la versione attuale", () => {
-    const db = apriArchivio(":memory:");
-    scrivi(db, "alston", { pf: 10 }, 0);
-    scrivi(db, "alston", { pf: 7 }, 1);
-    expect(scrivi(db, "alston", { pf: 3 }, 1)).toEqual({ ok: false, attuale: { dati: { pf: 7 }, revisione: 2 } });
-    expect(leggi(db, "alston")?.dati).toEqual({ pf: 7 });
+    const { db, utente, id } = conAlston();
+    scrivi(db, id, utente.id, conPF(7), 1);
+    const esito = scrivi(db, id, utente.id, conPF(3), 1);
+    expect(esito.ok).toBe(false);
+    expect(!esito.ok && esito.attuale?.revisione).toBe(2);
+    expect(!esito.ok && esito.attuale?.dati.combattimento.pfAttuali).toBe(7);
+    expect(leggi(db, id, utente.id)?.dati.combattimento.pfAttuali).toBe(7);
   });
 
-  it("non crea un personaggio se il client crede che esista già", () => {
-    const db = apriArchivio(":memory:");
-    expect(scrivi(db, "alston", { pf: 10 }, 3)).toEqual({ ok: false, attuale: null });
-    expect(leggi(db, "alston")).toBeNull();
+  it("un personaggio inesistente non si legge né si scrive", () => {
+    const { db, utente } = conAlston();
+    expect(leggi(db, 999, utente.id)).toBeNull();
+    expect(scrivi(db, 999, utente.id, conPF(1), 1)).toEqual({ ok: false, attuale: null });
   });
 
-  it("tiene separati i personaggi", () => {
-    const db = apriArchivio(":memory:");
-    scrivi(db, "alston", { nome: "Alston" }, 0);
-    expect(leggi(db, "altro")).toBeNull();
+  it("un utente non legge né scrive i personaggi di un altro", () => {
+    const { db, id } = conAlston();
+    const altro = creaUtente(db, "altro", "segretissima")!;
+    expect(leggi(db, id, altro.id)).toBeNull();
+    expect(scrivi(db, id, altro.id, conPF(1), 1)).toEqual({ ok: false, attuale: null });
   });
 });

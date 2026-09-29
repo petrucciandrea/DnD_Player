@@ -5,7 +5,6 @@ import type { Danni, Derivate } from "../regole";
 import {
   critico, dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, segno, slotUtilizzabili, testoDanni,
 } from "../regole";
-import { schedaDi } from "../dati/incantesimi";
 import type { ChiediD20, ChiediTiro } from "../tiroDadi";
 import { tiraDanni } from "../tiroDadi";
 
@@ -33,7 +32,7 @@ interface Attacco {
 const nomeLivello = (l: number) => (l === 0 ? "Trucchetto" : `${l}° livello`);
 
 export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTiro, chiediD20, onChiudi }: Props) {
-  const scheda = schedaDi(spell.nome);
+  const scheda = spell.scheda; // dal catalogo; manca per gli incantesimi senza dettagli
   const disponibili = spell.livello > 0 ? slotUtilizzabili(char, spell.livello) : [];
   const [livelloScelto, setLivelloScelto] = useState<number>(disponibili[0] ?? spell.livello);
   const [lancio, setLancio] = useState<Lancio | null>(null);
@@ -41,8 +40,9 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
   const [danniTirati, setDanniTirati] = useState<{ tiri: number[]; totale: number } | null>(null);
 
   const livelloEffettivo = lancio?.livelloSlot ?? (spell.livello === 0 ? 0 : livelloScelto);
-  const danni: Danni | null = scheda ? dannoIncantesimo(scheda, livelloEffettivo, char.info.livello) : null;
-  const totAttacchi = scheda ? numeroAttacchi(scheda, livelloEffettivo) : 0;
+  const conLivello = scheda && { ...scheda, livello: spell.livello };
+  const danni: Danni | null = conLivello ? dannoIncantesimo(conLivello, livelloEffettivo, char.info.livello) : null;
+  const totAttacchi = conLivello ? numeroAttacchi(conLivello, livelloEffettivo) : 0;
   const puoLanciare = spell.livello === 0 || (spell.preparato && disponibili.length > 0);
   const puoRituale = !!scheda?.rituale;
 
@@ -77,7 +77,7 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
   };
 
   const dettagli = scheda && [
-    ["Tempo", scheda.tempo],
+    ["Tempo", spell.tempo],
     ["Gittata", scheda.gittata],
     ["Componenti", scheda.componenti],
     ["Durata", scheda.durata],
@@ -94,7 +94,7 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
               <Sparkles className="w-5 h-5 text-indigo-400" /> {spell.nome}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              {nomeLivello(spell.livello)} · {scheda?.scuola ?? spell.scuola}
+              {nomeLivello(spell.livello)} · {spell.scuola}
               {scheda?.concentrazione && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">Concentrazione</span>}
               {scheda?.rituale && <span className="ml-2 px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300">Rituale</span>}
             </p>
@@ -112,9 +112,9 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
                 </div>
               ))}
             </div>
-            <p className="text-sm text-slate-300 leading-relaxed">{scheda.descrizione}</p>
+            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">{scheda.descrizione}</p>
             {scheda.livelloSuperiore && (
-              <p className="text-xs text-slate-400"><strong className="text-slate-300">A livelli superiori.</strong> {scheda.livelloSuperiore}</p>
+              <p className="text-xs text-slate-400 whitespace-pre-line"><strong className="text-slate-300">Ai livelli superiori.</strong>{"\n"}{scheda.livelloSuperiore}</p>
             )}
             <div className="flex flex-wrap gap-2 text-xs">
               {scheda.attacco && (
