@@ -1,6 +1,8 @@
 // Regole D&D 5e (edizione 2014). Le regole delle singole classi stanno in dati/classi.ts.
-import type { Arma, ArmaPersonaggio, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, Privilegio, PrivilegioClasse, Spell } from "./tipi.ts";
-import { CARATTERISTICA_MAGICA_RAZZIALE, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi.ts";
+import type {
+  Arma, ArmaPersonaggio, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, IncantesimoCatalogo, Privilegio, PrivilegioClasse, Spell,
+} from "./tipi.ts";
+import { CARATTERISTICA_MAGICA_RAZZIALE, classeDellaLista, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi.ts";
 import { bonusIra, risorseDelPersonaggio } from "./dati/risorse.ts";
 import { EFFETTI, condizione, effetto, type DefinizioneEffetto } from "./dati/condizioni.ts";
 import { competenteArma, competenteArmatura } from "./dati/competenze.ts";
@@ -89,6 +91,12 @@ export function slotMassimi(inc: Incantatore | null, livello: number): number[] 
 }
 
 const LIVELLI_AUMENTO_CARATTERISTICHE = [4, 8, 12, 16, 19];
+
+// Il livello di slot più alto che l'incantatore ha a quel livello (0 = nessuno).
+export function livelloMassimoIncantesimi(inc: Incantatore | null, livello: number): number {
+  const slot = slotMassimi(inc, livello);
+  return slot.reduce((max, n, i) => (n > 0 ? i + 1 : max), 0);
+}
 
 export const PESO_SCUDO = 6; // lb
 
@@ -583,7 +591,7 @@ export function incantesimiSottoclasseMancanti(c: CharacterData): string[] {
   return incantesimiDiSottoclasse(c).sempre.filter(n => !presenti.has(nomeIncantesimo(n)));
 }
 
-// Aggiunge al grimorio gli incantesimi che non ci sono già (per nome), preparati.
+// Aggiunge al grimorio gli incantesimi che non ci sono già (per nome), con il loro stato di preparazione.
 export function aggiungiIncantesimi(c: CharacterData, nuovi: Spell[]): CharacterData {
   const presenti = new Set(c.incantesimi.map(s => nomeIncantesimo(s.nome)));
   const daAggiungere = nuovi.filter(s => {
@@ -593,20 +601,53 @@ export function aggiungiIncantesimi(c: CharacterData, nuovi: Spell[]): Character
     return true;
   });
   if (daAggiungere.length === 0) return c;
-  return { ...c, incantesimi: [...c.incantesimi, ...daAggiungere.map(s => ({ ...s, preparato: true }))] };
+  return { ...c, incantesimi: [...c.incantesimi, ...daAggiungere] };
+}
+
+// Aumento dei punteggi di caratteristica: +2 a una o +1 a due, senza superare 20. Passa da modificaCaratteristica,
+// quindi un aumento della COS alza i PF massimi di tutti i livelli. Un aumento non valido non cambia la scheda.
+export function applicaAumento(c: CharacterData, aumenti: Partial<Record<Caratteristica, number>>): CharacterData {
+  const voci = Object.entries(aumenti).filter(([, n]) => n) as [Caratteristica, number][];
+  const totale = voci.reduce((acc, [, n]) => acc + n, 0);
+  if (totale !== 2 || voci.some(([k, n]) => (n !== 1 && n !== 2) || c.caratteristiche[k].valore + n > 20)) return c;
+  return voci.reduce((acc, [k, n]) => modificaCaratteristica(acc, k, n), c);
+}
+
+// Incantesimi del catalogo che si possono imparare salendo al livello indicato: della lista della classe
+// (o del Mago per i terzi incantatori) più la lista ampliata del patrono, fino al livello di slot più alto
+// disponibile, esclusi quelli già nel grimorio.
+export function incantesimiDaImparare(
+  c: CharacterData, catalogo: IncantesimoCatalogo[], livello: number, sottoclasse = c.info.sottoclasse,
+): { trucchetti: IncantesimoCatalogo[]; incantesimi: IncantesimoCatalogo[] } {
+  const inc = incantatoreDi(c.info.classe, sottoclasse);
+  const lista = classeDellaLista(c.info.classe, sottoclasse);
+  const ampliata = new Set(incantesimiDiSottoclasse({ ...c, info: { ...c.info, livello, sottoclasse } }).ampliata.map(nomeIncantesimo));
+  const presenti = new Set(c.incantesimi.map(s => nomeIncantesimo(s.nome)));
+  const massimo = livelloMassimoIncantesimi(inc, livello);
+  const disponibili = catalogo.filter(i => !presenti.has(nomeIncantesimo(i.nome))
+    && (i.classi.includes(lista) || ampliata.has(nomeIncantesimo(i.nome))));
+  return {
+    trucchetti: inc ? disponibili.filter(i => i.livello === 0) : [],
+    incantesimi: disponibili.filter(i => i.livello > 0 && i.livello <= massimo),
+  };
 }
 
 // Aggiunge PF medi, un Dado Vita e i privilegi del nuovo livello (letti dal catalogo prima di salire),
-// ed eventualmente la sottoclasse scelta a quel livello e gli incantesimi nuovi (di sottoclasse o scelti).
+// ed eventualmente la sottoclasse scelta a quel livello, gli incantesimi nuovi (di sottoclasse o scelti),
+// l'aumento dei punteggi di caratteristica o un talento (privilegio con fonte "Talento").
 export function saliDiLivello(
-  c: CharacterData, extra: { privilegi?: CharacterData["privilegi"]; sottoclasse?: string; incantesimi?: Spell[] } = {},
+  c: CharacterData,
+  extra: {
+    privilegi?: CharacterData["privilegi"]; sottoclasse?: string; incantesimi?: Spell[];
+    aumenti?: Partial<Record<Caratteristica, number>>; talento?: Privilegio;
+  } = {},
 ): CharacterData {
   const pf = pfPerLivello(c, regoleClasse(c.info.classe)?.dadoVita ?? 8);
   const nuovi: CharacterData["privilegi"] = [];
-  for (const p of extra.privilegi ?? []) {
+  for (const p of [...(extra.privilegi ?? []), ...(extra.talento ? [extra.talento] : [])]) {
     if (![...c.privilegi, ...nuovi].some(x => x.nome === p.nome && x.fonte === p.fonte)) nuovi.push(p);
   }
-  return aggiungiIncantesimi({
+  const salito = aggiungiIncantesimi({
     ...c,
     info: { ...c.info, livello: c.info.livello + 1, sottoclasse: extra.sottoclasse ?? c.info.sottoclasse },
     privilegi: [...c.privilegi, ...nuovi],
@@ -617,10 +658,13 @@ export function saliDiLivello(
       dadiVitaRimanenti: c.combattimento.dadiVitaRimanenti + 1,
     },
   }, extra.incantesimi ?? []);
+  // I PF del nuovo livello usano la COS di prima: l'aumento della COS poi li corregge per tutti i livelli.
+  return extra.aumenti ? applicaAumento(salito, extra.aumenti) : salito;
 }
 
-export const haAumentoCaratteristiche = (livello: number) =>
-  LIVELLI_AUMENTO_CARATTERISTICHE.includes(livello);
+// Livelli con l'aumento dei punteggi di caratteristica (o un talento): 4, 8, 12, 16, 19, più quelli della classe.
+export const haAumentoCaratteristiche = (classe: string, livello: number) =>
+  LIVELLI_AUMENTO_CARATTERISTICHE.includes(livello) || (regoleClasse(classe)?.aumentiExtra ?? []).includes(livello);
 
 // Cambiare la COS modifica retroattivamente i PF massimi (1 PF per livello per punto di modificatore).
 export function modificaCaratteristica(c: CharacterData, k: Caratteristica, delta: number): CharacterData {

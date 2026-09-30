@@ -1,15 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Plus, Trash2, ArrowUpCircle, LoaderCircle, X } from "lucide-react";
-import type { CharacterData, Privilegio, SetChar, XPRecord } from "../tipi";
+import type { Caratteristica, CharacterData, IncantesimoCatalogo, Privilegio, SetChar, Spell, XPRecord } from "../tipi";
 import type { Derivate } from "../regole";
 import {
-  aggiungiIncantesimi, haAumentoCaratteristiche, incantesimiSottoclasseMancanti, pfPerLivello, privilegiMancanti, saliDiLivello,
-  sceltePendenti, slotMassimi,
+  CARATTERISTICHE, aggiungiIncantesimi, applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, incantesimiSottoclasseMancanti,
+  pfPerLivello, privilegiMancanti, saliDiLivello, sceltePendenti, slotMassimi,
 } from "../regole";
 import { incantatoreDi, regoleClasse } from "../dati/classi";
 import { opzioniScelta, type DefinizioneScelta } from "../dati/scelte";
 import { incantesimiDiSottoclasse } from "../dati/incantesimiSottoclasse";
-import { catalogoCreazione, privilegiDiLivello, privilegiFinoAlLivello, type VoceIncantesimo } from "../accesso";
+import { catalogoCreazione, privilegiDiLivello, privilegiFinoAlLivello } from "../accesso";
 import ScegliMolti from "./ScegliMolti";
 
 interface Props {
@@ -23,7 +23,22 @@ interface Salita {
   sottoclasse: string;
   privilegi: Privilegio[] | null | "offline";
   scelte: Record<string, string[]>; // opzioni scelte per id di scelta (Metamagia, stile...)
+  // Aumento dei punteggi: due +1 (sulla stessa caratteristica = +2), oppure un talento.
+  aumento: { tipo: "aumento" | "talento"; car: (Caratteristica | "")[]; talento: { nome: string; descrizione: string } };
+  trucchetti: string[];
+  incantesimi: string[];
 }
+
+const campo = "bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-sm text-slate-200 outline-none focus:border-indigo-500";
+const etichetta = "text-xs text-slate-400 font-semibold uppercase tracking-wider";
+
+// +1 per ogni caratteristica scelta: la stessa due volte fa +2.
+const aumentiDa = (car: (Caratteristica | "")[]) =>
+  car.reduce<Partial<Record<Caratteristica, number>>>((acc, k) => (k ? { ...acc, [k]: (acc[k] ?? 0) + 1 } : acc), {});
+
+const spellDa = (i: IncantesimoCatalogo, preparato: boolean): Spell => ({
+  id: i.id, nome: i.nome, livello: i.livello, scuola: i.scuola, tempo: i.tempo, preparato, ...(i.scheda ? { scheda: i.scheda } : {}),
+});
 
 // Opzioni di una scelta di privilegio, senza quelle che la scheda ha già.
 function SceltaPrivilegio({ scelta, mancano, catalogo, posseduti, valori, onCambia }: {
@@ -53,7 +68,7 @@ export default function TabProgresso({ char, d, setChar }: Props) {
   const [verifica, setVerifica] = useState<"attesa" | "offline" | Privilegio[] | null>(null);
   // Opzioni delle scelte di privilegio dal catalogo (null = in caricamento o non raggiungibile).
   const [opzioni, setOpzioni] = useState<Privilegio[] | null>(null);
-  const [incantesimiCatalogo, setIncantesimiCatalogo] = useState<VoceIncantesimo[]>([]);
+  const [incantesimiCatalogo, setIncantesimiCatalogo] = useState<IncantesimoCatalogo[]>([]);
   const [scelteAttuali, setScelteAttuali] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
@@ -99,7 +114,10 @@ export default function TabProgresso({ char, d, setChar }: Props) {
 
   // Privilegi del nuovo livello dal catalogo (con quelli della sottoclasse, se c'è).
   const caricaPrivilegi = async (sottoclasse: string) => {
-    setSalita({ sottoclasse, privilegi: null, scelte: {} });
+    setSalita(prev => ({
+      sottoclasse, privilegi: null, scelte: {}, trucchetti: [], incantesimi: [],
+      aumento: prev?.aumento ?? { tipo: "aumento", car: ["", ""], talento: { nome: "", descrizione: "" } },
+    }));
     const r = await privilegiDiLivello(char.info.classe, nuovo, sottoclasse);
     setSalita(prev => (prev?.sottoclasse === sottoclasse ? { ...prev, privilegi: r ? r.map(x => x.privilegio) : "offline" } : prev));
   };
@@ -111,19 +129,43 @@ export default function TabProgresso({ char, d, setChar }: Props) {
     x.mancano, opzioniScelta(x.scelta, opzioni).filter(o => !char.privilegi.some(p => p.fonte === o.fonte && p.nome === o.nome)).length,
   ));
 
+  // Aumento dei punteggi (o talento) ai livelli che lo concedono.
+  const serveAumento = haAumentoCaratteristiche(char.info.classe, nuovo);
+  const aumentoValido = !serveAumento || !salita || (salita.aumento.tipo === "talento"
+    ? salita.aumento.talento.nome.trim() !== ""
+    : applicaAumento(char, aumentiDa(salita.aumento.car)) !== char);
+  const cambiaAumento = (parziale: Partial<Salita["aumento"]>) =>
+    setSalita(prev => prev && { ...prev, aumento: { ...prev.aumento, ...parziale } });
+
+  // Incantesimi da imparare al nuovo livello: trucchetti, conosciuti o i 2 da copiare nel libro.
+  const sottoclasseDopo = serveSottoclasse ? (salita?.sottoclasse ?? "") : char.info.sottoclasse;
+  const incDopo = incantatoreDi(char.info.classe, sottoclasseDopo);
+  const imparabili = incantesimiDaImparare(char, incantesimiCatalogo, nuovo, sottoclasseDopo);
+
   const confermaSalita = () => {
-    if (!salita || (serveSottoclasse && !salita.sottoclasse) || !scelteComplete) return;
+    if (!salita || (serveSottoclasse && !salita.sottoclasse) || !scelteComplete || !aumentoValido) return;
     const privilegi = [
       ...(Array.isArray(salita.privilegi) ? salita.privilegi : []),
       ...(opzioni ? privilegiScelti(salita.scelte, pendentiSalita, opzioni) : []),
     ];
     // Gli incantesimi di sottoclasse che il nuovo livello concede (e quelli che mancavano) arrivano dal catalogo.
+    // Gli incantesimi scelti: i conosciuti e i trucchetti sono pronti, quelli copiati nel libro vanno preparati.
+    const scelti = [
+      ...imparabili.trucchetti.filter(i => salita.trucchetti.includes(i.nome)).map(i => spellDa(i, true)),
+      ...imparabili.incantesimi.filter(i => salita.incantesimi.includes(i.nome)).map(i => spellDa(i, incDopo?.modo !== "libro")),
+    ];
+    const talento = serveAumento && salita.aumento.tipo === "talento"
+      ? { nome: salita.aumento.talento.nome.trim(), fonte: "Talento", descrizione: salita.aumento.talento.descrizione.trim() }
+      : undefined;
+    const aumenti = serveAumento && salita.aumento.tipo === "aumento" ? aumentiDa(salita.aumento.car) : undefined;
     setChar(prev => {
-      const salito = saliDiLivello(prev, { privilegi, sottoclasse: serveSottoclasse ? salita.sottoclasse : undefined });
+      const salito = saliDiLivello(prev, {
+        privilegi, sottoclasse: serveSottoclasse ? salita.sottoclasse : undefined, incantesimi: scelti, aumenti, talento,
+      });
       const mancanti = incantesimiSottoclasseMancanti(salito);
       return aggiungiIncantesimi(salito, incantesimiCatalogo
         .filter(v => mancanti.some(n => n.toLowerCase() === v.nome.toLowerCase()))
-        .map(v => ({ ...v, preparato: true })));
+        .map(v => spellDa(v, true)));
     });
     setSalita(null);
   };
@@ -156,9 +198,7 @@ export default function TabProgresso({ char, d, setChar }: Props) {
   };
 
   // Cosa cambia al nuovo livello, per il riepilogo.
-  const sottoclasseDopo = serveSottoclasse ? (salita?.sottoclasse ?? "") : char.info.sottoclasse;
   const incPrima = incantatoreDi(char.info.classe, char.info.sottoclasse);
-  const incDopo = incantatoreDi(char.info.classe, sottoclasseDopo);
   const slotPrima = slotMassimi(incPrima, livello);
   const slotDopo = slotMassimi(incDopo, nuovo);
   const nuoviSlot = slotDopo.flatMap((n, i) => (n > (slotPrima[i] ?? 0) ? [`${n - (slotPrima[i] ?? 0)}× ${i + 1}°`] : []));
@@ -167,7 +207,7 @@ export default function TabProgresso({ char, d, setChar }: Props) {
   // Incantesimi di sottoclasse nuovi al livello successivo (il terreno del circolo può essere scelto salendo).
   const sottoclasseInfo = (livelloInfo: number, sottoclasse: string, privilegiExtra: Privilegio[] = []) =>
     incantesimiDiSottoclasse({ info: { ...char.info, livello: livelloInfo, sottoclasse }, privilegi: [...char.privilegi, ...privilegiExtra] });
-  const privilegiSceltiSalita = salita && opzioni ? privilegiScelti(salita.scelte, sceltePendenti(char, { livello: nuovo, sottoclasse: sottoclasseDopo }), opzioni) : [];
+  const privilegiSceltiSalita = salita && opzioni ? privilegiScelti(salita.scelte, pendentiSalita, opzioni) : [];
   const sottoPrima = sottoclasseInfo(livello, char.info.sottoclasse);
   const sottoDopo = sottoclasseInfo(nuovo, sottoclasseDopo, privilegiSceltiSalita);
   const nuoviSempre = sottoDopo.sempre.filter(n => !sottoPrima.sempre.includes(n));
@@ -175,14 +215,14 @@ export default function TabProgresso({ char, d, setChar }: Props) {
   const note = [
     `+${pfPerLivello(char, d.dadoVita)} PF massimi e +1 Dado Vita (d${d.dadoVita}).`,
     nuoviSlot.length > 0 && `Nuovi slot incantesimo: ${nuoviSlot.join(", ")}.`,
-    incDopo?.modo === "libro" && "Copia 2 nuovi incantesimi nel libro (tab Grimorio).",
     conosciutiInPiu > 0 && `Puoi imparare ${conosciutiInPiu} ${conosciutiInPiu === 1 ? "nuovo incantesimo" : "nuovi incantesimi"}.`,
     trucchettiInPiu > 0 && `Puoi imparare ${trucchettiInPiu === 1 ? "un nuovo trucchetto" : `${trucchettiInPiu} nuovi trucchetti`}.`,
     nuoviSempre.length > 0 && `Incantesimi sempre preparati (${sottoDopo.fonte?.toLowerCase()}): ${nuoviSempre.join(", ")}.`,
     nuoviAmpliati.length > 0 && `Nuovi incantesimi nella lista del patrono: ${nuoviAmpliati.join(", ")}.`,
-    haAumentoCaratteristiche(nuovo) && "Aumento dei punteggi di caratteristica: usa \"Modifica\" nella tab Statistiche.",
   ].filter(Boolean);
 
+  const nTrucchetti = Math.min(Math.max(0, trucchettiInPiu), imparabili.trucchetti.length);
+  const nIncantesimi = Math.min(incDopo?.modo === "libro" ? 2 : Math.max(0, conosciutiInPiu), imparabili.incantesimi.length);
   const soglia = d.prossimaSoglia;
 
   return (
@@ -257,6 +297,73 @@ export default function TabProgresso({ char, d, setChar }: Props) {
                 </ul>
               )}
             </div>
+            {serveAumento && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={etichetta}>Aumento dei punteggi</span>
+                  {(["aumento", "talento"] as const).map(t => (
+                    <label key={t} className="flex items-center gap-1.5 text-xs text-slate-300">
+                      <input type="radio" checked={salita.aumento.tipo === t} onChange={() => cambiaAumento({ tipo: t })} className="accent-indigo-500" />
+                      {t === "aumento" ? "+2 a una o +1 a due" : "Talento"}
+                    </label>
+                  ))}
+                </div>
+                {salita.aumento.tipo === "aumento" ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {[0, 1].map(i => (
+                      <select
+                        key={i}
+                        value={salita.aumento.car[i]}
+                        onChange={e => cambiaAumento({ car: salita.aumento.car.map((x, j) => (j === i ? e.target.value as Caratteristica | "" : x)) })}
+                        className={campo}
+                      >
+                        <option value="">+1 a...</option>
+                        {CARATTERISTICHE.map(k => <option key={k} value={k}>{k} ({char.caratteristiche[k].valore})</option>)}
+                      </select>
+                    ))}
+                    {salita.aumento.car.every(Boolean) && !aumentoValido && (
+                      <p className="col-span-2 text-xs text-rose-300">Nessun punteggio può superare 20.</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      value={salita.aumento.talento.nome}
+                      onChange={e => cambiaAumento({ talento: { ...salita.aumento.talento, nome: e.target.value } })}
+                      placeholder="Nome del talento"
+                      className={`${campo} w-full`}
+                    />
+                    <textarea
+                      value={salita.aumento.talento.descrizione}
+                      onChange={e => cambiaAumento({ talento: { ...salita.aumento.talento, descrizione: e.target.value } })}
+                      placeholder="Cosa fa (facoltativo)"
+                      rows={2}
+                      className={`${campo} w-full`}
+                    />
+                    <p className="text-[11px] text-slate-500">Gli effetti dei talenti sui calcoli non sono automatici: modificali a mano se servono.</p>
+                  </div>
+                )}
+              </div>
+            )}
+            {nTrucchetti > 0 && (
+              <ScegliMolti
+                titolo="Nuovi trucchetti"
+                opzioni={imparabili.trucchetti.map(i => i.nome)}
+                scelte={salita.trucchetti}
+                massimo={nTrucchetti}
+                onCambia={v => setSalita(prev => prev && { ...prev, trucchetti: v })}
+              />
+            )}
+            {nIncantesimi > 0 && (
+              <ScegliMolti
+                titolo={incDopo?.modo === "libro" ? "Incantesimi da copiare nel libro" : "Nuovi incantesimi conosciuti"}
+                opzioni={imparabili.incantesimi.map(i => i.nome)}
+                scelte={salita.incantesimi}
+                massimo={nIncantesimi}
+                onCambia={v => setSalita(prev => prev && { ...prev, incantesimi: v })}
+                nome={v => `${v} (${imparabili.incantesimi.find(i => i.nome === v)?.livello}°)`}
+              />
+            )}
             {opzioni && pendentiSalita.map(({ scelta, mancano }) => (
               <SceltaPrivilegio
                 key={scelta.id}
@@ -270,7 +377,7 @@ export default function TabProgresso({ char, d, setChar }: Props) {
             ))}
             <button
               onClick={confermaSalita}
-              disabled={salita.privilegi === null || (serveSottoclasse && !salita.sottoclasse) || !scelteComplete}
+              disabled={salita.privilegi === null || (serveSottoclasse && !salita.sottoclasse) || !scelteComplete || !aumentoValido}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold"
             >
               <ArrowUpCircle className="w-4 h-4" /> Conferma livello {nuovo}

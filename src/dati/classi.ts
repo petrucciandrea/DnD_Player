@@ -54,6 +54,7 @@ export interface RegoleClasse {
   sottoclassi: string[];
   sottoclassiIncantatrici?: Record<string, Incantatore>; // terzi incantatori
   difesaSenzaArmatura?: Caratteristica; // 10 + DES + questa caratteristica, senza armatura
+  aumentiExtra?: number[]; // livelli con un aumento dei punteggi di caratteristica oltre a 4, 8, 12, 16 e 19
   equipaggiamento: GruppoEquipaggiamento[];
 }
 
@@ -209,6 +210,7 @@ export const CLASSI: Record<NomeClasse, RegoleClasse> = {
     incantatore: null,
     livelloSottoclasse: 3,
     sottoclassi: ["Campione", "Maestro di Battaglia", "Cavaliere Mistico"],
+    aumentiExtra: [6, 14],
     sottoclassiIncantatrici: {
       "Cavaliere Mistico": {
         caratteristica: "INT", tipo: "terzo", modo: "conosciuti",
@@ -251,6 +253,7 @@ export const CLASSI: Record<NomeClasse, RegoleClasse> = {
     incantatore: null,
     livelloSottoclasse: 3,
     sottoclassi: ["Furfante", "Assassino", "Mistificatore Arcano"],
+    aumentiExtra: [10],
     sottoclassiIncantatrici: {
       "Mistificatore Arcano": {
         caratteristica: "INT", tipo: "terzo", modo: "conosciuti",
@@ -441,6 +444,12 @@ export function incantatoreDi(classe: string, sottoclasse: string): Incantatore 
   const r = regoleClasse(classe);
   if (!r) return null;
   return r.incantatore ?? r.sottoclassiIncantatrici?.[sottoclasse] ?? null;
+}
+
+// La lista da cui si scelgono gli incantesimi: i terzi incantatori (Cavaliere Mistico, Mistificatore Arcano) usano quella del Mago.
+export function classeDellaLista(classe: string, sottoclasse: string): string {
+  const r = regoleClasse(classe);
+  return !r?.incantatore && r?.sottoclassiIncantatrici?.[sottoclasse] ? "Mago" : classe;
 }
 
 // Numero di incantesimi che la classe sceglie alla creazione (1° livello), oltre ai trucchetti.

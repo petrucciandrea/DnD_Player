@@ -10,10 +10,11 @@ import {
   danneggiaArma, dannoCritico, attacchiPerAzione, sogliaCritico, dadiCriticoBrutale, danniExtraArma,
   dadiAttaccoFurtivo, dannoPunizione, spendiSlot, armaDaMonaco, dadoArtiMarziali, COLPO_SENZA_ARMI,
   sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot, incantesimiSottoclasseMancanti, aggiungiIncantesimi,
+  applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { competenteArmatura, competenzaCopreArma } from "./dati/competenze";
-import { regoleClasse } from "./dati/classi";
+import { classeDellaLista, incantatoreDi, regoleClasse } from "./dati/classi";
 import { completaConEsistente, daJSON } from "./scheda";
 import { CLASSI_INCANTESIMI, SCHEDE_INCANTESIMI } from "../server/semi/incantesimi.ts";
 import { TUTTE_LE_LISTE, incantesimiDiSottoclasse } from "./dati/incantesimiSottoclasse";
@@ -1046,10 +1047,70 @@ describe("incantesimi di dominio, giuramento, circolo e patrono", () => {
     expect(d.semprePreparato("benedizione ")).toBe(true);
     expect(d.semprePreparato("Santuario")).toBe(false);
     expect(incantesimiSottoclasseMancanti(c)).toEqual(["Cura Ferite"]);
-    const aggiunto = aggiungiIncantesimi(c, [spell("Cura Ferite"), spell("Benedizione"), spell("Cura Ferite")]);
+    const aggiunto = aggiungiIncantesimi(c, [spell("Cura Ferite", 1, true), spell("Benedizione"), spell("Cura Ferite")]);
     expect(aggiunto.incantesimi.map(s => [s.nome, s.preparato])).toEqual([["Benedizione", true], ["Santuario", true], ["Cura Ferite", true]]);
     expect(aggiungiIncantesimi(c, [spell("Benedizione")])).toBe(c);
     const salito = saliDiLivello({ ...c, incantesimi: [] }, { incantesimi: [spell("Ristorare Inferiore", 2)] });
     expect(salito.incantesimi.map(s => s.nome)).toEqual(["Ristorare Inferiore"]);
+  });
+});
+
+describe("salita di livello guidata", () => {
+  const pg = (classe: string, livello: number, sottoclasse = ""): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe, livello, sottoclasse };
+    c.privilegi = [];
+    c.incantesimi = [];
+    return c;
+  };
+  const voce = (id: number, nome: string, livello: number, classi: string[]) => ({ id, nome, livello, scuola: "Invocazione", tempo: "1 azione", classi });
+
+  it("livelli dell'aumento dei punteggi, anche quelli propri della classe", () => {
+    expect([4, 6, 8, 10, 14, 19].map(l => haAumentoCaratteristiche("Guerriero", l))).toEqual([true, true, true, false, true, true]);
+    expect([6, 10].map(l => haAumentoCaratteristiche("Ladro", l))).toEqual([false, true]);
+    expect([5, 6].map(l => haAumentoCaratteristiche("Mago", l))).toEqual([false, false]);
+  });
+
+  it("aumento: +2 a una o +1 a due, massimo 20, COS retroattiva", () => {
+    const c = pg("Mago", 4);
+    c.caratteristiche.INT = { valore: 19, compTS: true };
+    expect(applicaAumento(c, { INT: 2 })).toBe(c); // supererebbe 20
+    expect(applicaAumento(c, { INT: 1, DES: 1 }).caratteristiche.INT.valore).toBe(20);
+    expect(applicaAumento(c, { DES: 1 })).toBe(c); // totale 1
+    expect(applicaAumento(c, { DES: 3 })).toBe(c);
+    const cos = c.caratteristiche.COS.valore; // 14 → 16: +1 al modificatore
+    const r = applicaAumento(c, { COS: 2 });
+    expect(r.caratteristiche.COS.valore).toBe(cos + 2);
+    expect(r.combattimento.pfMassimi).toBe(c.combattimento.pfMassimi + 4); // 1 PF per livello
+  });
+
+  it("salire con un aumento della COS: i PF del nuovo livello e quelli precedenti crescono insieme", () => {
+    const c = { ...pg("Mago", 3), caratteristiche: { ...pg("Mago", 3).caratteristiche, COS: { valore: 13, compTS: false } } };
+    const semplice = saliDiLivello(c);
+    const conCos = saliDiLivello(c, { aumenti: { COS: 1, INT: 1 } });
+    expect(conCos.info.livello).toBe(4);
+    expect(conCos.combattimento.pfMassimi).toBe(semplice.combattimento.pfMassimi + 4); // 13 → 14: +1 per 4 livelli
+    const talento = { nome: "Allerta", fonte: "Talento", descrizione: "" };
+    expect(saliDiLivello(c, { talento }).privilegi).toContainEqual(talento);
+  });
+
+  it("livello di slot più alto e incantesimi da imparare", () => {
+    expect(livelloMassimoIncantesimi(incantatoreDi("Mago", ""), 5)).toBe(3);
+    expect(livelloMassimoIncantesimi(incantatoreDi("Paladino", ""), 1)).toBe(0);
+    expect(livelloMassimoIncantesimi(incantatoreDi("Warlock", ""), 7)).toBe(4);
+    expect(classeDellaLista("Ladro", "Mistificatore Arcano")).toBe("Mago");
+    expect(classeDellaLista("Chierico", "Dominio della Vita")).toBe("Chierico");
+    const catalogo = [
+      voce(1, "Dardo di Fuoco", 0, ["Mago", "Stregone"]), voce(2, "Palla di Fuoco", 3, ["Mago", "Stregone"]),
+      voce(3, "Cono di Freddo", 5, ["Mago"]), voce(4, "Comando", 1, ["Chierico", "Paladino"]), voce(5, "Sonno", 1, ["Mago"]),
+    ];
+    const mago = { ...pg("Mago", 4), incantesimi: [{ id: 5, nome: "Sonno", livello: 1, scuola: "Ammaliamento", tempo: "1 azione", preparato: false }] };
+    const m = incantesimiDaImparare(mago, catalogo, 5);
+    expect(m.trucchetti.map(i => i.nome)).toEqual(["Dardo di Fuoco"]);
+    expect(m.incantesimi.map(i => i.nome)).toEqual(["Palla di Fuoco"]); // Sonno è già nel libro, Cono di Freddo è troppo alto
+    // Il patrono Immondo aggiunge Comando alla lista del Warlock.
+    expect(incantesimiDaImparare(pg("Warlock", 1, "L'Immondo"), catalogo, 2).incantesimi.map(i => i.nome)).toEqual(["Comando"]);
+    expect(incantesimiDaImparare(pg("Ladro", 2), catalogo, 3, "Mistificatore Arcano").incantesimi.map(i => i.nome)).toEqual(["Sonno"]);
+    expect(incantesimiDaImparare(pg("Guerriero", 4, "Campione"), catalogo, 5)).toEqual({ trucchetti: [], incantesimi: [] });
   });
 });
