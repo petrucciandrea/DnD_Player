@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { Danni, Modalita } from "./regole";
 import { risultatoD20, testoDanni, totaleDanni } from "./regole";
 import type { CharacterData } from "./tipi";
-import { suggerimentoTiro, type ContestoTiro } from "./dati/condizioni";
+import { suggerimentoTiro, type ContestoTiro, type TipoTiro } from "./dati/condizioni";
 
 export interface Dado {
   etichetta: string;
@@ -17,17 +17,20 @@ export interface RichiestaTiro {
   d20?: boolean; // mostra la scelta normale / vantaggio / svantaggio
   modalita?: Modalita; // modalità preselezionata per i tiri d20
   ammettiTotale?: boolean; // si può inserire solo la somma: la risposta è allora [totale]
+  tipo?: TipoTiro; // tiro per colpire, TS o prova: il Presagio può sostituirlo
 }
 
 export interface RispostaTiro {
   tiri: number[];
   modalita: Modalita;
+  presagio?: number; // indice del dado del Presagio che ha sostituito il tiro
 }
 
 export interface TiroD20 {
   risultato: number; // il d20 che conta, dopo vantaggio o svantaggio
   tiri: number[];
   modalita: Modalita;
+  presagio?: boolean; // il d20 è un dado del Presagio
 }
 
 // Risultati dei dadi nello stesso ordine di `dadi`, oppure null se l'utente annulla.
@@ -40,7 +43,7 @@ export function conSuggerimento(
 ): Omit<RichiestaTiro, "dadi" | "d20"> {
   const { modalita, note } = suggerimentoTiro(char, contesto);
   const descrizione = [richiesta.descrizione, ...note].filter(Boolean).join(" ");
-  return { ...richiesta, modalita, descrizione: descrizione || undefined };
+  return { ...richiesta, modalita, tipo: contesto.tipo, descrizione: descrizione || undefined };
 }
 
 export interface TiroDanni {
@@ -84,7 +87,8 @@ export function useRichiestaTiro() {
   const chiediD20 = useCallback<ChiediD20>(async r => {
     const risposta = await chiedi({ ...r, dadi: [{ etichetta: "Risultato", facce: 20 }], d20: true });
     if (!risposta) return null;
-    return { ...risposta, risultato: risultatoD20(risposta.tiri, risposta.modalita) };
+    const { presagio, ...resto } = risposta;
+    return { ...resto, risultato: risultatoD20(risposta.tiri, risposta.modalita), ...(presagio !== undefined ? { presagio: true } : {}) };
   }, [chiedi]);
 
   const rispondi = useCallback((risposta: RispostaTiro | null) => {

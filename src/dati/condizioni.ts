@@ -76,6 +76,10 @@ export interface DefinizioneEffetto {
   finisce: "breve" | "lunga";
   incantesimo?: string; // il lancio di questo incantesimo lo attiva
   classe?: string; // privilegio di questa classe: solo lei può attivarlo
+  livelloMinimo?: number; // livello di classe da cui si ha il privilegio
+  // "se": solo su se stessi, quindi parte solo dal proprio incantesimo o privilegio.
+  // "altri": può lanciarlo anche un alleato, quindi si può segnare dal pannello.
+  bersaglio: "se" | "altri";
   caBonus?: number;
   caBase?: number; // senza armatura la CA è questo valore + DES (Armatura Magica)
   caMinima?: number; // la CA non scende sotto questo valore (Pelle Coriacea)
@@ -87,27 +91,28 @@ export interface DefinizioneEffetto {
 }
 
 export const EFFETTI: DefinizioneEffetto[] = [
-  { id: "ira", nome: "Ira", durata: "1 minuto", finisce: "breve", classe: "Barbaro", consuma: "ira", finisceConcentrazione: true,
+  { id: "ira", nome: "Ira", durata: "1 minuto", finisce: "breve", classe: "Barbaro", bersaglio: "se", consuma: "ira", finisceConcentrazione: true,
     descrizione: "Vantaggio alle prove e ai TS di Forza, bonus ai danni in mischia con la Forza, resistenza ai danni contundenti, perforanti e taglienti. Non si possono lanciare incantesimi. Finisce se non si attacca né si subiscono danni.",
     vantaggio: { prove: ["FOR"], ts: ["FOR"] } },
-  { id: "attacco-sconsiderato", nome: "Attacco Sconsiderato", durata: "1 turno", finisce: "breve", classe: "Barbaro",
+  { id: "attacco-sconsiderato", nome: "Attacco Sconsiderato", durata: "1 turno", finisce: "breve", classe: "Barbaro", livelloMinimo: 2,
+    bersaglio: "se",
     descrizione: "Vantaggio ai tiri per colpire in mischia con la Forza fino al prossimo turno; gli attacchi contro di te hanno vantaggio.",
     vantaggio: { attacchiMischiaFOR: true } },
-  { id: "armatura-magica", nome: "Armatura Magica", durata: "8 ore", finisce: "lunga", incantesimo: "Armatura Magica", caBase: 13,
+  { id: "armatura-magica", nome: "Armatura Magica", durata: "8 ore", finisce: "lunga", incantesimo: "Armatura Magica", caBase: 13, bersaglio: "altri",
     descrizione: "Senza armatura la CA è 13 + mod DES." },
-  { id: "scudo", nome: "Scudo", durata: "fino all'inizio del prossimo turno", finisce: "breve", incantesimo: "Scudo", caBonus: 5,
+  { id: "scudo", nome: "Scudo", durata: "fino all'inizio del prossimo turno", finisce: "breve", incantesimo: "Scudo", caBonus: 5, bersaglio: "se",
     descrizione: "+5 alla CA, anche contro l'attacco che l'ha fatto lanciare. Nessun danno da dardo incantato." },
   { id: "scudo-della-fede", nome: "Scudo della Fede", durata: "concentrazione, 10 minuti", finisce: "breve", incantesimo: "Scudo della Fede",
-    caBonus: 2,
+    caBonus: 2, bersaglio: "altri",
     descrizione: "+2 alla CA." },
-  { id: "pelle-coriacea", nome: "Pelle Coriacea", durata: "concentrazione, 1 ora", finisce: "lunga", incantesimo: "Pelle Coriacea", caMinima: 16,
+  { id: "pelle-coriacea", nome: "Pelle Coriacea", durata: "concentrazione, 1 ora", finisce: "lunga", incantesimo: "Pelle Coriacea", caMinima: 16, bersaglio: "altri",
     descrizione: "La CA non scende sotto 16, qualunque armatura si indossi." },
-  { id: "velocita", nome: "Velocità", durata: "concentrazione, 1 minuto", finisce: "breve", incantesimo: "Velocità", caBonus: 2,
+  { id: "velocita", nome: "Velocità", durata: "concentrazione, 1 minuto", finisce: "breve", incantesimo: "Velocità", caBonus: 2, bersaglio: "altri",
     descrizione: "+2 alla CA, vantaggio ai TS di Destrezza, velocità doppia e un'azione in più a turno.",
     vantaggio: { ts: ["DES"] } },
-  { id: "immagine-speculare", nome: "Immagine Speculare", durata: "1 minuto", finisce: "breve", incantesimo: "Immagine Speculare", conteggio: 3,
+  { id: "immagine-speculare", nome: "Immagine Speculare", durata: "1 minuto", finisce: "breve", incantesimo: "Immagine Speculare", conteggio: 3, bersaglio: "se",
     descrizione: "Duplicati illusori che deviano gli attacchi: con 3 duplicati serve 6+ su d20, con 2 serve 8+, con 1 serve 11+. Un duplicato ha CA 10 + mod DES e sparisce se colpito." },
-  { id: "benedizione", nome: "Benedizione", durata: "concentrazione, 1 minuto", finisce: "breve", incantesimo: "Benedizione",
+  { id: "benedizione", nome: "Benedizione", durata: "concentrazione, 1 minuto", finisce: "breve", incantesimo: "Benedizione", bersaglio: "altri",
     descrizione: "+1d4 ai tiri per colpire e ai tiri salvezza.",
     notaTiro: { attacco: "Benedizione: aggiungi 1d4 al tiro.", ts: "Benedizione: aggiungi 1d4 al tiro." } },
 ];

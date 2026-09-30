@@ -11,7 +11,8 @@ import { transazione } from "./transazione.ts";
 // 3: armature, razze, background, privilegi di classe, classi degli incantesimi; taglia, armatura e
 //    competenze (lingue, strumenti, armi, armature) del personaggio.
 // 4: risorse di classe usate, condizioni, indebolimento, effetti attivi e note di sessione del personaggio.
-export const VERSIONE_SCHEMA = 4;
+// 5: avatar; armi del personaggio con bonus, munizioni, durabilità e stato (anche due armi uguali); campi delle note.
+export const VERSIONE_SCHEMA = 5;
 
 // Esportato per i test della migrazione.
 export const SCHEMA_V2 = `
@@ -282,8 +283,8 @@ export const MIGRAZIONE_V3 = `
   );
 `;
 
-// Cosa aggiunge la versione 4 allo schema 3.
-const MIGRAZIONE_V4 = `
+// Cosa aggiunge la versione 4 allo schema 3 (esportato per i test della migrazione).
+export const MIGRAZIONE_V4 = `
   ALTER TABLE personaggi ADD COLUMN indebolimento INTEGER NOT NULL DEFAULT 0;
   CREATE TABLE personaggio_risorse (
     personaggio_id INTEGER NOT NULL REFERENCES personaggi(id) ON DELETE CASCADE,
@@ -317,11 +318,44 @@ const MIGRAZIONE_V4 = `
   );
 `;
 
+// Cosa aggiunge la versione 5 allo schema 4. `personaggio_armi` si ricrea per cambiarne la chiave:
+// ogni riga è una copia dell'arma, con i suoi contatori (NULL = non si contano).
+const MIGRAZIONE_V5 = `
+  ALTER TABLE personaggi ADD COLUMN avatar TEXT NOT NULL DEFAULT '';
+
+  CREATE TABLE personaggio_armi_v5 (
+    personaggio_id INTEGER NOT NULL REFERENCES personaggi(id) ON DELETE CASCADE,
+    ordine INTEGER NOT NULL,
+    id_locale INTEGER NOT NULL,
+    arma_id INTEGER NOT NULL REFERENCES armi(id),
+    bonus INTEGER NOT NULL DEFAULT 0,  -- arma magica +1/+2/+3
+    munizioni_rimaste INTEGER,
+    munizioni_massime INTEGER,
+    durabilita_rimasta INTEGER,        -- con durabilita_massima NULL: colpi rimasti di un'arma danneggiata
+    durabilita_massima INTEGER,
+    rotta INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (personaggio_id, ordine)
+  );
+  INSERT INTO personaggio_armi_v5 (personaggio_id, ordine, id_locale, arma_id)
+    SELECT personaggio_id, ordine, ordine + 1, arma_id FROM personaggio_armi;
+  DROP TABLE personaggio_armi;
+  ALTER TABLE personaggio_armi_v5 RENAME TO personaggio_armi;
+
+  CREATE TABLE personaggio_note_campi (
+    personaggio_id INTEGER NOT NULL REFERENCES personaggi(id) ON DELETE CASCADE,
+    nota_ordine INTEGER NOT NULL,      -- ordine della nota in personaggio_note
+    campo TEXT NOT NULL,               -- id del campo (src/dati/note.ts)
+    valore TEXT NOT NULL,
+    PRIMARY KEY (personaggio_id, nota_ordine, campo)
+  );
+`;
+
 // Schema completo della versione attuale.
 const creaSchema = (db: DatabaseSync) => {
   db.exec(SCHEMA_V2);
   db.exec(MIGRAZIONE_V3);
   db.exec(MIGRAZIONE_V4);
+  db.exec(MIGRAZIONE_V5);
 };
 
 // Utente che la versione 1 creava all'apertura dell'archivio, collegato ad Alston.
@@ -351,6 +385,7 @@ export function preparaSchema(db: DatabaseSync, percorso: string) {
       else if (versione === 0) creaSchema(db);
       if (versione === 2) migraDaV2(db);
       if (versione === 2 || versione === 3) db.exec(MIGRAZIONE_V4);
+      if (versione >= 2 && versione <= 4) db.exec(MIGRAZIONE_V5);
       db.exec(`PRAGMA user_version = ${VERSIONE_SCHEMA}`);
     });
   }

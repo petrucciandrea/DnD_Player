@@ -11,6 +11,7 @@ import {
 import { catalogoCreazione, importaPersonaggio } from "../accesso";
 import { useRichiestaTiro } from "../tiroDadi";
 import DialogoTiro from "./DialogoTiro";
+import Avatar from "./Avatar";
 
 interface Props {
   giocatore: string; // proposto nel campo "Giocatore"
@@ -553,6 +554,10 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
     );
     return (
       <div className={`${card} space-y-4`}>
+        <div className="flex items-center gap-3">
+          <Avatar avatar={d.avatar} nome={d.nome} onCambia={avatar => imposta({ avatar })} />
+          <p className="text-xs text-slate-400">Immagine del personaggio (facoltativa): clicca per sceglierla.</p>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {testo("nome", "Nome del personaggio")}
           <label className="block space-y-1">

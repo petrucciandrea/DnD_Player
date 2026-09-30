@@ -5,6 +5,7 @@ import { creaUtente } from "./accesso.ts";
 import { apriArchivio } from "./archivio.ts";
 import { componi, creaPersonaggio, elencoPersonaggi, scomponi } from "./personaggi.ts";
 import { SCHEDE_INCANTESIMI } from "./semi/incantesimi.ts";
+import { nuovaArma } from "../src/regole.ts";
 
 const alston = (): CharacterData => structuredClone(INITIAL_CHARACTER);
 
@@ -58,7 +59,7 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
   it("anche armi e privilegi nuovi finiscono nel catalogo, quelli noti no", () => {
     const { db, utente } = archivio();
     const c = alston();
-    c.armi.push({ nome: "Lancia del Gnomo", dado: "1d8", tipoDanno: "Perforante", proprieta: "Speciale", accurata: false });
+    c.armi.push(nuovaArma({ nome: "Lancia del Gnomo", dado: "1d8", tipoDanno: "Perforante", proprieta: "Speciale", accurata: false }, 3));
     c.privilegi.push({ nome: "Scurovisione", fonte: "Drow", descrizione: "Vede fino a 36 m." });
     const composta = componi(db, creaPersonaggio(db, utente.id, c))!;
     expect(composta.armi.map(a => a.nome)).toEqual(["Bastone Ferrato", "Pugnale", "Lancia del Gnomo"]);
@@ -106,7 +107,7 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
     const id = creaPersonaggio(db, utente.id, alston());
     creaPersonaggio(db, altro.id, alston());
     expect(elencoPersonaggi(db, utente.id)).toEqual([
-      { id, nome: "Alston il Breve", classe: "Mago", sottoclasse: "Scuola di Divinazione", livello: 3, razza: "Gnomo delle Rocce" },
+      { id, nome: "Alston il Breve", classe: "Mago", sottoclasse: "Scuola di Divinazione", livello: 3, razza: "Gnomo delle Rocce", avatar: "" },
     ]);
   });
 
@@ -118,8 +119,11 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
     c.indebolimento = 3;
     c.effetti = [{ id: "ira" }, { id: "immagine-speculare", valore: 2 }];
     c.note = [
-      { id: 7, data: "30/9/2026", categoria: "png", titolo: "Il locandiere", testo: "Sa dell'osservatorio.\nSecondo rigo.", fatto: false },
-      { id: 8, data: "30/9/2026", categoria: "obiettivo", titolo: "Trovare la chiave", testo: "", fatto: true },
+      {
+        id: 7, data: "30/9/2026", categoria: "png", titolo: "Il locandiere", testo: "Sa dell'osservatorio.\nSecondo rigo.", fatto: false,
+        campi: { razza: "Halfling", classe: "Ladro", atteggiamento: "Amichevole" },
+      },
+      { id: 8, data: "30/9/2026", categoria: "obiettivo", titolo: "Trovare la chiave", testo: "", fatto: true, campi: {} },
     ];
     const id = creaPersonaggio(db, utente.id, c);
     expect({ ...componi(db, id)!, incantesimi: [] }).toEqual({ ...c, incantesimi: [] });
@@ -127,5 +131,34 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
     const meno = { ...c, risorseUsate: {}, condizioni: [], effetti: [], note: [], indebolimento: 0 };
     scomponi(db, id, meno, utente.id);
     expect({ ...componi(db, id)!, incantesimi: [] }).toEqual({ ...meno, incantesimi: [] });
+  });
+
+  it("armi con bonus, munizioni, durabilità e stato fanno andata e ritorno, anche due uguali", () => {
+    const { db, utente } = archivio();
+    const c = alston();
+    const pugnale = c.armi[1];
+    c.armi = [
+      ...c.armi,
+      { ...pugnale, id: 10, bonus: 1, munizioni: { rimasti: 3, massimo: 5 }, durabilita: { rimasti: 0, massimo: 4 }, rotta: true },
+      { ...nuovaArma({ nome: "Arco Corto", dado: "1d6", tipoDanno: "Perforante", proprieta: "Munizioni", accurata: false }, 11),
+        munizioni: { rimasti: 12, massimo: 20 } },
+    ];
+    c.armi[0] = { ...c.armi[0], danneggiata: 2 };
+    const composta = componi(db, creaPersonaggio(db, utente.id, c))!;
+    expect(composta.armi.map(a => [a.id, a.nome])).toEqual([[1, "Bastone Ferrato"], [2, "Pugnale"], [10, "Pugnale"], [11, "Arco Corto"]]);
+    expect(composta.armi[2]).toEqual(c.armi[2]);
+    expect(composta.armi[0]).toMatchObject({ danneggiata: 2, durabilita: null, rotta: false });
+    expect(composta.armi[1]).toMatchObject({ danneggiata: null, durabilita: null });
+    // I dati dell'arco sono quelli del catalogo, i contatori quelli della copia del personaggio.
+    expect(composta.armi[3]).toMatchObject({ distanza: true, categoria: "semplice", munizioni: { rimasti: 12, massimo: 20 }, durabilita: null });
+  });
+
+  it("l'avatar fa andata e ritorno e compare nell'elenco", () => {
+    const { db, utente } = archivio();
+    const c = alston();
+    c.info.avatar = "data:image/jpeg;base64,AAAA";
+    const id = creaPersonaggio(db, utente.id, c);
+    expect(componi(db, id)!.info.avatar).toBe(c.info.avatar);
+    expect(elencoPersonaggi(db, utente.id)[0].avatar).toBe(c.info.avatar);
   });
 });

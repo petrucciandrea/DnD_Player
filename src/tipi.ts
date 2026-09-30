@@ -74,6 +74,22 @@ export interface Arma {
   distanza?: boolean; // arma a distanza: si attacca con DES
 }
 
+// Un contatore con un massimo (munizioni, durabilità).
+export interface Contatore {
+  rimasti: number;
+  massimo: number;
+}
+
+// Arma posseduta dal personaggio: i dati dell'arma vengono dal catalogo, il resto è di questa copia.
+export interface ArmaPersonaggio extends Arma {
+  id: number;
+  bonus: number; // arma magica +1/+2/+3: si somma ad attacco e danni
+  munizioni: Contatore | null; // frecce, dardi, armi da lancio, cariche (null = non si contano)
+  durabilita: Contatore | null; // usi prima di rompersi (null = non si consuma)
+  danneggiata: number | null; // arma senza durabilità danneggiata: colpi che regge ancora prima di rompersi
+  rotta: boolean;
+}
+
 // Armatura del catalogo (tabella `armature`). Lo scudo è a parte (+2 alla CA).
 export interface Armatura {
   nome: string;
@@ -115,6 +131,7 @@ export interface NotaSessione {
   titolo: string;
   testo: string;
   fatto: boolean;
+  campi: Record<string, string>; // campi della categoria (dati/note.ts): razza e classe di un PNG...
 }
 
 // Solo i dati "grezzi": tutto ciò che si può calcolare (modificatori, TS, CA,
@@ -139,6 +156,7 @@ export interface CharacterData {
     velocita: string;
     taglia: string; // "Piccola", "Media"...
     ispirazione: boolean;
+    avatar: string; // data URL dell'immagine (JPEG ridotto), "" = nessuna
   };
   caratteristiche: Record<Caratteristica, AbilityScore>;
   competenzeAbilita: string[];
@@ -174,7 +192,7 @@ export interface CharacterData {
     totale: number;
     storico: XPRecord[];
   };
-  armi: Arma[];
+  armi: ArmaPersonaggio[];
   slotSpesi: number[]; // indice 0 = slot di 1° livello, lunghezza 9
   incantesimi: Spell[];
   inventario: InventoryItem[];

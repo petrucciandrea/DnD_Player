@@ -1,32 +1,51 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, Check } from "lucide-react";
 import type { CategoriaNota, CharacterData, NotaSessione, SetChar } from "../tipi";
+import { CATEGORIE_NOTA, COLORI_SCELTA, categoriaNota, type CampoNota } from "../dati/note";
+import { NOMI_CLASSI } from "../dati/classi";
+import { catalogoCreazione } from "../accesso";
 
 interface Props {
   char: CharacterData;
   setChar: SetChar;
 }
 
-const CATEGORIE: { id: CategoriaNota; etichetta: string; colore: string }[] = [
-  { id: "sessione", etichetta: "Sessione", colore: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" },
-  { id: "png", etichetta: "PNG", colore: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
-  { id: "obiettivo", etichetta: "Obiettivo", colore: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
-  { id: "altro", etichetta: "Altro", colore: "bg-slate-500/15 text-slate-300 border-slate-500/30" },
-];
-
 const campo = "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500";
+const campoPiccolo = "w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200 outline-none focus:border-indigo-500";
 
-// Appunti di sessione, personaggi incontrati e obiettivi. Le modifiche si salvano man mano.
+// Appunti di sessione, personaggi incontrati e obiettivi, ciascuno con i suoi campi. Le modifiche si salvano man mano.
 export default function TabNote({ char, setChar }: Props) {
   const [filtro, setFiltro] = useState<CategoriaNota | "tutte">("tutte");
   const [categoria, setCategoria] = useState<CategoriaNota>("sessione");
+  const [razze, setRazze] = useState<string[]>([]);
+
+  // Le razze servono solo come suggerimenti: senza server resta il campo libero.
+  useEffect(() => {
+    let attivo = true;
+    catalogoCreazione().then(c => {
+      if (attivo && c) setRazze(c.razze.map(r => r.nome));
+    });
+    return () => { attivo = false; };
+  }, []);
+
+  const suggerimenti: Record<NonNullable<CampoNota["suggerimenti"]>, string[]> = {
+    razze,
+    classi: NOMI_CLASSI,
+    png: char.note.filter(n => n.categoria === "png" && n.titolo.trim()).map(n => n.titolo.trim()),
+  };
 
   const aggiorna = (id: number, modifiche: Partial<NotaSessione>) =>
     setChar(prev => ({ ...prev, note: prev.note.map(n => (n.id === id ? { ...n, ...modifiche } : n)) }));
 
+  const aggiornaCampo = (id: number, chiave: string, valore: string) =>
+    setChar(prev => ({
+      ...prev,
+      note: prev.note.map(n => (n.id === id ? { ...n, campi: { ...n.campi, [chiave]: valore } } : n)),
+    }));
+
   const aggiungi = () => {
     const nota: NotaSessione = {
-      id: Date.now(), data: new Date().toLocaleDateString("it-IT"), categoria, titolo: "", testo: "", fatto: false,
+      id: Date.now(), data: new Date().toLocaleDateString("it-IT"), categoria, titolo: "", testo: "", fatto: false, campi: {},
     };
     setChar(prev => ({ ...prev, note: [nota, ...prev.note] }));
     if (filtro !== "tutte" && filtro !== categoria) setFiltro("tutte");
@@ -42,15 +61,21 @@ export default function TabNote({ char, setChar }: Props) {
 
   return (
     <div className="space-y-4">
+      {Object.entries(suggerimenti).map(([id, valori]) => (
+        <datalist key={id} id={`note-${id}`}>
+          {valori.map(v => <option key={v} value={v} />)}
+        </datalist>
+      ))}
+
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-wrap items-center gap-2">
         <select value={categoria} onChange={e => setCategoria(e.target.value as CategoriaNota)} className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500">
-          {CATEGORIE.map(c => <option key={c.id} value={c.id}>{c.etichetta}</option>)}
+          {CATEGORIE_NOTA.map(c => <option key={c.id} value={c.id}>{c.etichetta}</option>)}
         </select>
         <button onClick={aggiungi} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold flex items-center gap-1">
           <Plus className="w-4 h-4" /> Nuova nota
         </button>
         <div className="flex flex-wrap gap-1 ml-auto text-xs font-semibold">
-          {[{ id: "tutte" as const, etichetta: "Tutte", n: char.note.length }, ...CATEGORIE.map(c => ({ id: c.id, etichetta: c.etichetta, n: conteggio(c.id) }))].map(f => (
+          {[{ id: "tutte" as const, etichetta: "Tutte", n: char.note.length }, ...CATEGORIE_NOTA.map(c => ({ id: c.id, etichetta: c.etichetta, n: conteggio(c.id) }))].map(f => (
             <button
               key={f.id}
               onClick={() => setFiltro(f.id)}
@@ -72,7 +97,7 @@ export default function TabNote({ char, setChar }: Props) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {visibili.map(n => {
-          const cat = CATEGORIE.find(c => c.id === n.categoria) ?? CATEGORIE[3];
+          const cat = categoriaNota(n.categoria);
           return (
             <div key={n.id} className={`bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2 ${n.fatto ? "opacity-60" : ""}`}>
               <div className="flex items-center gap-2">
@@ -88,13 +113,44 @@ export default function TabNote({ char, setChar }: Props) {
                 <input
                   value={n.titolo}
                   onChange={e => aggiorna(n.id, { titolo: e.target.value })}
-                  placeholder="Titolo"
+                  placeholder={cat.titolo}
                   className={`${campo} font-semibold ${n.fatto ? "line-through" : ""}`}
                 />
                 <button onClick={() => elimina(n)} title="Elimina nota" className="text-slate-600 hover:text-rose-400 p-1">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
+
+              {cat.campi.length > 0 && (
+                <div className="grid grid-cols-2 gap-2">
+                  {cat.campi.map(c => {
+                    const valore = n.campi[c.id] ?? "";
+                    return (
+                      <label key={c.id} className="space-y-0.5">
+                        <span className="block text-[10px] uppercase tracking-wider text-slate-500">{c.etichetta}</span>
+                        {c.tipo === "scelta" ? (
+                          <select
+                            value={valore}
+                            onChange={e => aggiornaCampo(n.id, c.id, e.target.value)}
+                            className={`${campoPiccolo} ${COLORI_SCELTA[valore] ?? ""}`}
+                          >
+                            <option value="">—</option>
+                            {c.opzioni?.map(o => <option key={o} value={o} className="bg-slate-900 text-slate-200">{o}</option>)}
+                          </select>
+                        ) : (
+                          <input
+                            value={valore}
+                            onChange={e => aggiornaCampo(n.id, c.id, e.target.value)}
+                            list={c.suggerimenti && `note-${c.suggerimenti}`}
+                            className={campoPiccolo}
+                          />
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
               <textarea
                 value={n.testo}
                 onChange={e => aggiorna(n.id, { testo: e.target.value })}
@@ -108,7 +164,7 @@ export default function TabNote({ char, setChar }: Props) {
                   onChange={e => aggiorna(n.id, { categoria: e.target.value as CategoriaNota })}
                   className={`px-2 py-0.5 rounded-full border text-[10px] uppercase tracking-wider font-bold bg-transparent outline-none ${cat.colore}`}
                 >
-                  {CATEGORIE.map(c => <option key={c.id} value={c.id} className="bg-slate-900 text-slate-200">{c.etichetta}</option>)}
+                  {CATEGORIE_NOTA.map(c => <option key={c.id} value={c.id} className="bg-slate-900 text-slate-200">{c.etichetta}</option>)}
                 </select>
                 <span className="text-slate-500">{n.data}</span>
               </div>

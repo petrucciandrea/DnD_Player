@@ -36,7 +36,7 @@ export default function TiriMorte({ char, setChar, chiediD20, onMessaggio }: Pro
     }));
 
   const tira = async () => {
-    const r = await chiediD20({ titolo: "Tiro salvezza contro morte", descrizione: "10 o più: successo. 1 naturale: due fallimenti. 20 naturale: torni a 1 PF." });
+    const r = await chiediD20({ titolo: "Tiro salvezza contro morte", tipo: "ts", descrizione: "10 o più: successo. 1 naturale: due fallimenti. 20 naturale: torni a 1 PF." });
     if (!r) return;
     const dopo = esitoTsMorte(char, r.risultato);
     setChar(prev => esitoTsMorte(prev, r.risultato));

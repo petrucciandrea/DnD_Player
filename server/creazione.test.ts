@@ -68,6 +68,8 @@ describe("creazione: personaggi completi", () => {
     expect(c.armatura?.nome).toBe("Cotta di Maglia");
     expect(c.scudo).toBe(true);
     expect(c.armi.map(a => a.nome)).toEqual(["Spada Lunga", "Ascia"]);
+    expect(c.armi.map(a => a.id)).toEqual([1, 2]);
+    expect(c.armi.every(a => a.bonus === 0 && a.munizioni === null && a.durabilita === null && !a.rotta)).toBe(true);
     expect(c.competenzeAbilita.sort()).toEqual(["atletica", "intimidire", "percezione", "sopravvivenza", "storia"]);
     expect(c.competenzeAltre.lingue).toEqual(["Comune", "Orchesco"]);
     expect(c.monete.mo).toBe(10);

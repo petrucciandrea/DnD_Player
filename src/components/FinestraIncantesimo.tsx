@@ -42,6 +42,10 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
   const [lancio, setLancio] = useState<Lancio | null>(null);
   const [attacchi, setAttacchi] = useState<Attacco[]>([]);
   const [danniTirati, setDanniTirati] = useState<{ tiri: number[]; totale: number } | null>(null);
+  // Effetto con una durata (Scudo, Armatura Magica...). Se si può lanciare su altri si sceglie se applicarlo a sé.
+  const effetto = effettoDaIncantesimo(spell.nome);
+  const [suDiMe, setSuDiMe] = useState(true);
+  const effettoSuDiMe = !!effetto && (effetto.bersaglio === "se" || suDiMe);
 
   const livelloEffettivo = lancio?.livelloSlot ?? (spell.livello === 0 ? 0 : livelloScelto);
   const conLivello = scheda && { ...scheda, livello: spell.livello };
@@ -56,10 +60,9 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
     if (concentrazione && char.concentrazione && char.concentrazione !== spell.nome
       && !confirm(`Stai mantenendo la concentrazione su ${char.concentrazione}. Lanciando ${spell.nome} la interrompi. Continuare?`)) return;
     // Gli incantesimi che danno un effetto con una durata (Scudo, Armatura Magica...) lo attivano da soli.
-    const effetto = effettoDaIncantesimo(spell.nome);
     setChar(prev => {
       const lanciato = lanciaIncantesimo(prev, livelloSlot, { concentrazione });
-      return effetto && lanciato !== prev ? attivaEffetto(lanciato, effetto.id) : lanciato;
+      return effetto && effettoSuDiMe && lanciato !== prev ? attivaEffetto(lanciato, effetto.id, { daIncantesimo: true }) : lanciato;
     });
     setLancio({ livelloSlot, rituale });
   };
@@ -176,6 +179,12 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
                 Non preparato{puoRituale ? ": puoi lanciarlo solo come rituale." : "."}
               </p>
             )}
+            {effetto?.bersaglio === "altri" && (
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input type="checkbox" checked={suDiMe} onChange={e => setSuDiMe(e.target.checked)} className="accent-indigo-500" />
+                Applica l'effetto a me ({effetto.nome})
+              </label>
+            )}
             <div className="flex flex-wrap gap-2">
               {puoLanciare && (
                 <button onClick={() => lancia(spell.livello === 0 ? null : livelloScelto)} className={`${pulsante} flex-1 bg-indigo-600 hover:bg-indigo-500 text-white`}>
@@ -195,8 +204,8 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
               <BookOpen className="w-4 h-4" />
               {lancio.rituale ? "Lanciato come rituale." : lancio.livelloSlot ? `Lanciato con uno slot di ${lancio.livelloSlot}° livello.` : "Lanciato."}
             </p>
-            {effettoDaIncantesimo(spell.nome) && (
-              <p className="text-xs text-indigo-300">Effetto attivo: {effettoDaIncantesimo(spell.nome)?.nome} (lo gestisci nella tab Statistiche).</p>
+            {effetto && effettoSuDiMe && (
+              <p className="text-xs text-indigo-300">Effetto attivo: {effetto.nome} (lo gestisci nella tab Statistiche).</p>
             )}
 
             {totAttacchi > 0 && (

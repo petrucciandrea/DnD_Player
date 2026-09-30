@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { Shield, Eye, Dices, Pencil, Check, Minus, Plus } from "lucide-react";
-import type { Caratteristica, CharacterData, SetChar } from "../tipi";
+import type { ArmaPersonaggio, Caratteristica, CharacterData, SetChar } from "../tipi";
 import type { Danni, Derivate, Modalita } from "../regole";
 import {
-  ABILITA, CARATTERISTICHE, critico, dannoArma, formulaDanno, modificaCaratteristica, segno, testoDanni,
+  ABILITA, CARATTERISTICHE, critico, dannoArma, modificaCaratteristica, segno, testoDanni,
 } from "../regole";
 import type { ChiediD20, ChiediTiro, TiroDanni } from "../tiroDadi";
 import { conSuggerimento, tiraDanni } from "../tiroDadi";
 import type { ContestoTiro } from "../dati/condizioni";
 import PannelloRisorse from "./PannelloRisorse";
 import PannelloCondizioni from "./PannelloCondizioni";
+import PannelloArmi from "./PannelloArmi";
 
 interface OpzioneDanno {
   etichetta: string;
@@ -23,6 +24,7 @@ interface Tiro {
   bonus: number;
   tiri?: number[];
   modalita?: Modalita;
+  presagio?: boolean;
   opzioniDanno?: OpzioneDanno[];
 }
 
@@ -41,6 +43,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
 
   const astuziaGnomesca = char.privilegi.some(p => p.nome === "Astuzia Gnomesca");
 
+  // true se il tiro è stato fatto, false se l'utente l'ha annullato.
   const tira = async (
     etichetta: string, facce: number, bonus = 0,
     extra: { descrizione?: string; opzioniDanno?: OpzioneDanno[]; contesto?: ContestoTiro } = {},
@@ -48,14 +51,30 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
     if (facce === 20) {
       const richiesta = { titolo: etichetta, bonus, descrizione: extra.descrizione };
       const r = await chiediD20(extra.contesto ? conSuggerimento(char, extra.contesto, richiesta) : richiesta);
-      if (!r) return;
-      setUltimoTiro({ etichetta, facce, risultato: r.risultato, bonus, tiri: r.tiri, modalita: r.modalita, opzioniDanno: extra.opzioniDanno });
+      if (!r) return false;
+      setUltimoTiro({
+        etichetta, facce, risultato: r.risultato, bonus, tiri: r.tiri, modalita: r.modalita, presagio: r.presagio,
+        opzioniDanno: extra.opzioniDanno,
+      });
     } else {
       const tiri = await chiediTiro({ titolo: etichetta, dadi: [{ etichetta: "Risultato", facce }], bonus });
-      if (!tiri) return;
+      if (!tiri) return false;
       setUltimoTiro({ etichetta, facce, risultato: tiri[0], bonus });
     }
     setUltimoDanno(null);
+    return true;
+  };
+
+  const attaccoArma = (arma: ArmaPersonaggio) => {
+    const { bonus, modDanno, mischiaFOR } = d.attaccoArma(arma);
+    const nome = `${arma.nome}${arma.bonus !== 0 ? ` ${segno(arma.bonus)}` : ""}`;
+    const opzioniDanno: OpzioneDanno[] = arma.dadoVersatile
+      ? [
+          { etichetta: `${nome} (una mano)`, danni: dannoArma(arma, modDanno) },
+          { etichetta: `${nome} (due mani)`, danni: dannoArma(arma, modDanno, true) },
+        ]
+      : [{ etichetta: nome, danni: dannoArma(arma, modDanno) }];
+    return tira(`Attacco: ${nome}`, 20, bonus, { opzioniDanno, contesto: { tipo: "attacco", mischiaFOR } });
   };
 
   // Con un 20 naturale sul tiro per colpire i dadi dei danni raddoppiano.
@@ -106,17 +125,24 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
         <p className="text-xs text-slate-500 -mt-2">
           {modifica
             ? "Modifica i punteggi e clicca un'abilità per cambiarne la competenza."
-            : "Clicca un tiro salvezza, un'abilità o un'arma per tirare il d20."}
+            : "Clicca una prova, un tiro salvezza, un'abilità o un'arma per tirare il d20."}
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {CARATTERISTICHE.map(sigla => {
             const car = char.caratteristiche[sigla];
             const ts = d.ts(sigla);
+            const prova = () => tira(`Prova di ${sigla}`, 20, d.mod(sigla), { contesto: { tipo: "prova", car: sigla } });
             return (
               <div key={sigla} className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col items-center">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{sigla}</span>
-                <span className="text-3xl font-black text-white my-1">{segno(d.mod(sigla))}</span>
+                <button
+                  onClick={prova}
+                  title={`Prova di ${sigla}`}
+                  className="text-3xl font-black text-white my-1 px-2 rounded-lg hover:bg-slate-800/60 transition"
+                >
+                  {segno(d.mod(sigla))}
+                </button>
                 <div className="flex items-center gap-1.5">
                   {modifica && (
                     <button onClick={() => cambiaValore(sigla, -1)} className="p-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">
@@ -131,13 +157,20 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
                   )}
                 </div>
                 <button
+                  onClick={prova}
+                  className="mt-3 pt-2 border-t border-slate-800/80 w-full text-xs text-slate-400 flex justify-between items-center px-1 hover:text-slate-200"
+                >
+                  <span>Prova:</span>
+                  <span className="font-bold text-slate-300">{segno(d.mod(sigla))}</span>
+                </button>
+                <button
                   onClick={() => tira(`TS ${sigla}`, 20, ts, {
                     contesto: { tipo: "ts", car: sigla },
                     descrizione: astuziaGnomesca && ["INT", "SAG", "CAR"].includes(sigla)
                       ? "Astuzia Gnomesca: vantaggio se il tiro salvezza è contro la magia."
                       : undefined,
                   })}
-                  className="mt-3 pt-2 border-t border-slate-800/80 w-full text-xs text-slate-400 flex justify-between items-center px-1 hover:text-slate-200"
+                  className="mt-1 w-full text-xs text-slate-400 flex justify-between items-center px-1 hover:text-slate-200"
                 >
                   <span>Tiro Salvezza:</span>
                   <span className={`font-bold ${car.compTS ? "text-indigo-400" : "text-slate-300"}`}>
@@ -176,38 +209,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-3">Armi da Mischia / Distanza</h3>
-          <div className="space-y-2">
-            {char.armi.map((arma, idx) => {
-              const { bonus, modDanno, mischiaFOR } = d.attaccoArma(arma);
-              const danno = formulaDanno(arma.dado, modDanno) + (arma.dadoVersatile ? ` / ${formulaDanno(arma.dadoVersatile, modDanno)}` : "");
-              const opzioniDanno: OpzioneDanno[] = arma.dadoVersatile
-                ? [
-                    { etichetta: `${arma.nome} (una mano)`, danni: dannoArma(arma, modDanno) },
-                    { etichetta: `${arma.nome} (due mani)`, danni: dannoArma(arma, modDanno, true) },
-                  ]
-                : [{ etichetta: arma.nome, danni: dannoArma(arma, modDanno) }];
-              return (
-                <button
-                  key={idx}
-                  onClick={() => tira(`Attacco: ${arma.nome}`, 20, bonus, { opzioniDanno, contesto: { tipo: "attacco", mischiaFOR } })}
-                  className="w-full flex flex-wrap justify-between items-center gap-2 p-3 bg-slate-950/60 hover:bg-slate-800/40 rounded-lg border border-slate-800 text-sm text-left transition"
-                >
-                  <span>
-                    <span className="font-semibold text-slate-200">{arma.nome}</span>
-                    <span className="block text-[11px] text-slate-500">{arma.proprieta}</span>
-                  </span>
-                  <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-mono">
-                    <span className="text-indigo-300 font-bold">Attacco: {segno(bonus)}</span>
-                    <span className="text-amber-300">Danno: {danno}</span>
-                    <span className="text-slate-400">{arma.tipoDanno}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <PannelloArmi char={char} d={d} setChar={setChar} onAttacco={attaccoArma} />
       </div>
 
       <div className="space-y-4">
@@ -269,9 +271,11 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
               <span className="text-slate-400">
                 {ultimoTiro.etichetta}
                 <span className="block text-xs text-slate-500 font-mono">
-                  {ultimoTiro.modalita && ultimoTiro.modalita !== "normale" && ultimoTiro.tiri
-                    ? `${ultimoTiro.modalita} (${ultimoTiro.tiri.join(", ")}) → ${ultimoTiro.risultato}`
-                    : `d${ultimoTiro.facce} = ${ultimoTiro.risultato}`}
+                  {ultimoTiro.presagio
+                    ? `Presagio = ${ultimoTiro.risultato}`
+                    : ultimoTiro.modalita && ultimoTiro.modalita !== "normale" && ultimoTiro.tiri
+                      ? `${ultimoTiro.modalita} (${ultimoTiro.tiri.join(", ")}) → ${ultimoTiro.risultato}`
+                      : `d${ultimoTiro.facce} = ${ultimoTiro.risultato}`}
                   {ultimoTiro.bonus !== 0 && ` ${segno(ultimoTiro.bonus)}`}
                   {ultimoTiro.facce === 20 && ultimoTiro.risultato === 20 && " · Critico!"}
                   {ultimoTiro.facce === 20 && ultimoTiro.risultato === 1 && " · 1 naturale"}

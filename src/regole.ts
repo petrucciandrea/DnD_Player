@@ -1,8 +1,8 @@
 // Regole D&D 5e (edizione 2014). Le regole delle singole classi stanno in dati/classi.ts.
-import type { Arma, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, Privilegio, PrivilegioClasse } from "./tipi.ts";
+import type { Arma, ArmaPersonaggio, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, Privilegio, PrivilegioClasse } from "./tipi.ts";
 import { CARATTERISTICA_MAGICA_RAZZIALE, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi.ts";
 import { bonusIra, risorseDelPersonaggio } from "./dati/risorse.ts";
-import { condizione, effetto } from "./dati/condizioni.ts";
+import { EFFETTI, condizione, effetto, type DefinizioneEffetto } from "./dati/condizioni.ts";
 
 // Quanto serve per calcolare danni e attacchi di un incantesimo lanciato con un certo slot.
 type IncantesimoDaLanciare = { livello: number } & Pick<DettagliIncantesimo, "danni" | "attacco">;
@@ -302,16 +302,21 @@ export function derivate(c: CharacterData) {
   };
   // Armi a distanza con la DES, accurate con la migliore tra FOR e DES, le altre con la FOR.
   // Mentre è in ira il bonus ai danni si aggiunge alle armi da mischia usate con la Forza.
+  // Il bonus di un'arma magica vale per l'attacco e per i danni.
   const iraAttiva = c.effetti.some(e => e.id === "ira");
-  const attaccoArma = (arma: Arma) => {
+  const attaccoArma = (arma: Arma & { bonus?: number }) => {
     const m = arma.distanza && !arma.accurata ? mod("DES") : arma.accurata ? Math.max(mod("FOR"), mod("DES")) : mod("FOR");
     const conForza = !arma.distanza && m === mod("FOR");
-    return { bonus: m + comp, mod: m, modDanno: m + (iraAttiva && conForza ? bonusIra(liv) : 0), mischiaFOR: conForza };
+    const magico = arma.bonus ?? 0;
+    return {
+      bonus: m + comp + magico, mod: m, modDanno: m + magico + (iraAttiva && conForza ? bonusIra(liv) : 0), mischiaFOR: conForza,
+    };
   };
   const prossimaSoglia = liv < 20 ? SOGLIE_XP[liv] : null;
   const { ca, nota: notaCA } = classeArmatura(c, mod);
   const modoIncantesimi = inc?.modo ?? null;
   const prepara = modoIncantesimi === "preparati" || modoIncantesimi === "libro";
+  const haPresagio = c.info.sottoclasse === "Scuola di Divinazione" && liv >= 2;
 
   return {
     comp,
@@ -351,7 +356,11 @@ export function derivate(c: CharacterData) {
     capacitaCarico: c.caratteristiche.FOR.valore * 15,
     prossimaSoglia,
     puoSalire: prossimaSoglia !== null && c.xp.totale >= prossimaSoglia,
-    haPresagio: c.info.sottoclasse === "Scuola di Divinazione" && liv >= 2,
+    haPresagio,
+    // Dadi del Presagio non ancora usati: si possono scegliere nel dialogo di un tiro per colpire, TS o prova.
+    presagioDisponibile: haPresagio
+      ? c.divinazione.presagio.flatMap((valore, indice) => (c.divinazione.usati[indice] ? [] : [{ indice, valore }]))
+      : [],
     dadiPresagio: liv >= 14 ? 3 : 2, // Presagio Superiore al 14°
     haRecuperoArcano: c.info.classe === "Mago",
     budgetRecuperoArcano: Math.ceil(liv / 2),
@@ -472,16 +481,32 @@ export function usaRisorsa(c: CharacterData, id: string, quantita = 1): Characte
 
 // --- Effetti attivi ---
 
+// Un privilegio di classe si attiva solo con la classe e il livello giusti e, se consuma una risorsa, con un uso libero.
+function privilegioDisponibile(c: CharacterData, def: DefinizioneEffetto) {
+  if (def.classe !== c.info.classe || c.info.livello < (def.livelloMinimo ?? 1)) return false;
+  if (!def.consuma) return true;
+  const r = derivate(c).risorse.find(x => x.id === def.consuma);
+  return !!r && (r.rimasti === null || r.rimasti > 0);
+}
+
+// Effetti che si possono segnare dal pannello: i privilegi del personaggio e gli incantesimi che un alleato
+// può lanciare su di lui. Gli incantesimi solo personali (Scudo, Immagine Speculare) partono solo dal lancio.
+export function effettiAttivabili(c: CharacterData): { privilegi: DefinizioneEffetto[]; daAlleato: DefinizioneEffetto[] } {
+  const liberi = EFFETTI.filter(e => !c.effetti.some(x => x.id === e.id));
+  return {
+    privilegi: liberi.filter(e => e.classe && privilegioDisponibile(c, e)),
+    daAlleato: liberi.filter(e => !e.classe && e.bersaglio === "altri"),
+  };
+}
+
 // Attivare un effetto che consuma una risorsa (l'Ira) richiede un uso disponibile.
-export function attivaEffetto(c: CharacterData, id: string): CharacterData {
+// Senza `daIncantesimo` valgono i limiti del pannello (effettiAttivabili).
+export function attivaEffetto(c: CharacterData, id: string, opzioni: { daIncantesimo?: boolean } = {}): CharacterData {
   const def = effetto(id);
   if (!def || c.effetti.some(e => e.id === id)) return c;
-  let prossimo = c;
-  if (def.consuma) {
-    const r = derivate(c).risorse.find(x => x.id === def.consuma);
-    if (!r || (r.rimasti !== null && r.rimasti <= 0)) return c;
-    prossimo = usaRisorsa(c, def.consuma);
-  }
+  if (def.classe && !privilegioDisponibile(c, def)) return c;
+  if (!def.classe && !opzioni.daIncantesimo && def.bersaglio !== "altri") return c;
+  const prossimo = def.consuma ? usaRisorsa(c, def.consuma) : c;
   return {
     ...prossimo,
     concentrazione: def.finisceConcentrazione ? null : prossimo.concentrazione,
@@ -545,3 +570,87 @@ export function privilegiMancanti(c: CharacterData, catalogo: PrivilegioClasse[]
     .map(x => x.privilegio)
     .filter(p => !posseduti.has(chiave(p)));
 }
+
+// --- Presagio (Scuola di Divinazione) ---
+
+// Segna come usato un dado del Presagio che ha sostituito un tiro.
+export function usaPresagio(c: CharacterData, indice: number): CharacterData {
+  const { presagio, usati } = c.divinazione;
+  if (indice < 0 || indice >= presagio.length || usati[indice]) return c;
+  return { ...c, divinazione: { presagio, usati: presagio.map((_, i) => (i === indice ? true : usati[i] === true)) } };
+}
+
+// --- Armi del personaggio ---
+
+// Nuova copia di un'arma del catalogo: senza bonus, senza contatori, intatta.
+export const nuovaArma = (arma: Arma, id: number): ArmaPersonaggio =>
+  ({ ...arma, id, bonus: 0, munizioni: null, durabilita: null, danneggiata: null, rotta: false });
+
+// Armi che sparano munizioni (archi, balestre, fionde): all'inizio se ne hanno 20.
+export const MUNIZIONI_INIZIALI = 20;
+export const usaMunizioni = (a: Arma) => /munizioni/i.test(a.proprieta);
+
+// Un'arma rotta o senza munizioni non si può usare per attaccare.
+export function statoArma(a: ArmaPersonaggio): { utilizzabile: boolean; motivo: string | null } {
+  if (a.rotta) return { utilizzabile: false, motivo: "Arma rotta: riparala per usarla." };
+  if (a.munizioni && a.munizioni.rimasti <= 0) return { utilizzabile: false, motivo: "Munizioni esaurite." };
+  return { utilizzabile: true, motivo: null };
+}
+
+const modificaArma = (c: CharacterData, id: number, f: (a: ArmaPersonaggio) => ArmaPersonaggio): CharacterData => {
+  const indice = c.armi.findIndex(a => a.id === id);
+  if (indice < 0) return c;
+  const nuova = f(c.armi[indice]);
+  return nuova === c.armi[indice] ? c : { ...c, armi: c.armi.map((a, i) => (i === indice ? nuova : a)) };
+};
+
+// Dopo un tiro per colpire: una munizione e un punto di durabilità (o un colpo, se è danneggiata) in meno.
+// Quando la durabilità o i colpi arrivano a 0 l'arma si rompe.
+export const usaArma = (c: CharacterData, id: number): CharacterData =>
+  modificaArma(c, id, a => {
+    if (!statoArma(a).utilizzabile) return a;
+    const munizioni = a.munizioni && { ...a.munizioni, rimasti: a.munizioni.rimasti - 1 };
+    const durabilita = a.durabilita && { ...a.durabilita, rimasti: Math.max(0, a.durabilita.rimasti - 1) };
+    const danneggiata = a.danneggiata === null ? null : Math.max(0, a.danneggiata - 1);
+    if (!munizioni && !durabilita && danneggiata === null) return a;
+    return { ...a, munizioni, durabilita, danneggiata, rotta: durabilita?.rimasti === 0 || danneggiata === 0 };
+  });
+
+// Danneggiare un'arma le lascia `colpi` attacchi prima di rompersi: con la durabilità ne abbassa i punti rimasti
+// (senza mai alzarli), senza durabilità la segna come danneggiata. Con 0 colpi si rompe subito.
+export function danneggiaArma(c: CharacterData, id: number, colpi: number): CharacterData {
+  const n = Math.trunc(colpi);
+  if (!Number.isFinite(n) || n <= 0) return rompiArma(c, id);
+  return modificaArma(c, id, a => {
+    if (a.rotta) return a;
+    if (a.durabilita) {
+      const rimasti = Math.min(a.durabilita.rimasti, n);
+      return rimasti === a.durabilita.rimasti ? a : { ...a, durabilita: { ...a.durabilita, rimasti } };
+    }
+    const danneggiata = Math.min(a.danneggiata ?? n, n);
+    return danneggiata === a.danneggiata ? a : { ...a, danneggiata };
+  });
+}
+
+// Riparare un'arma la rimette in uso intatta: durabilità al massimo e nessun danno.
+export const riparaArma = (c: CharacterData, id: number): CharacterData =>
+  modificaArma(c, id, a => ({
+    ...a, rotta: false, danneggiata: null, durabilita: a.durabilita && { ...a.durabilita, rimasti: a.durabilita.massimo },
+  }));
+
+export const rompiArma = (c: CharacterData, id: number): CharacterData =>
+  modificaArma(c, id, a => (a.rotta ? a : { ...a, rotta: true }));
+
+// Aggiunge (o toglie, con `quantita` negativa) munizioni, tra 0 e il massimo.
+export const ricaricaArma = (c: CharacterData, id: number, quantita: number): CharacterData =>
+  modificaArma(c, id, a => {
+    if (!a.munizioni) return a;
+    const rimasti = Math.max(0, Math.min(a.munizioni.massimo, a.munizioni.rimasti + quantita));
+    return rimasti === a.munizioni.rimasti ? a : { ...a, munizioni: { ...a.munizioni, rimasti } };
+  });
+
+// Dopo uno scontro si recupera metà delle munizioni spese (per difetto).
+export const recuperaMunizioni = (c: CharacterData, id: number): CharacterData => {
+  const a = c.armi.find(x => x.id === id);
+  return a?.munizioni ? ricaricaArma(c, id, Math.floor((a.munizioni.massimo - a.munizioni.rimasti) / 2)) : c;
+};

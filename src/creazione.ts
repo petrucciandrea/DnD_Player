@@ -2,7 +2,7 @@ import type {
   Arma, Armatura, BackgroundCatalogo, Caratteristica, CatalogoCreazione, CharacterData, IncantesimoCatalogo, InventoryItem,
   Privilegio, RazzaCatalogo, Spell,
 } from "./tipi.ts";
-import { ABILITA, CARATTERISTICHE, pfPrimoLivello } from "./regole.ts";
+import { ABILITA, CARATTERISTICHE, MUNIZIONI_INIZIALI, nuovaArma, pfPrimoLivello, usaMunizioni } from "./regole.ts";
 import { personaggioVuoto } from "./scheda.ts";
 import {
   CLASSI, GIOCHI, incantesimiIniziali, STRUMENTI_ARTIGIANO, STRUMENTI_MUSICALI, type NomeClasse, type RegoleClasse,
@@ -54,6 +54,7 @@ export interface SceltePersonaggio {
     occhi: string;
     capelli: string;
     carnagione: string;
+    avatar: string;
   } & CharacterData["lore"];
 }
 
@@ -65,7 +66,7 @@ export const scelteVuote = (): SceltePersonaggio => ({
   equipaggiamento: [],
   trucchetti: [], incantesimi: [],
   dettagli: {
-    nome: "", allineamento: "", giocatore: "", eta: 0, altezza: "", peso: "", occhi: "", capelli: "", carnagione: "",
+    nome: "", allineamento: "", giocatore: "", eta: 0, altezza: "", peso: "", occhi: "", capelli: "", carnagione: "", avatar: "",
     tratti: "", ideali: "", legami: "", difetti: "", backgroundBio: "",
   },
 });
@@ -288,7 +289,7 @@ export function personaggioIniziale(s: SceltePersonaggio, catalogo: CatalogoCrea
     nome: d.nome.trim(), classe: s.classe, sottoclasse: regole.livelloSottoclasse === 1 ? s.sottoclasse : "", livello: 1,
     razza: razza.nome, background: bg.nome, allineamento: d.allineamento, giocatore: d.giocatore, eta: d.eta,
     altezza: d.altezza, peso: d.peso, occhi: d.occhi, capelli: d.capelli, carnagione: d.carnagione,
-    velocita: razza.velocita ?? "9 m", taglia: razza.taglia ?? "Media",
+    velocita: razza.velocita ?? "9 m", taglia: razza.taglia ?? "Media", avatar: d.avatar,
   };
   for (const k of CARATTERISTICHE) c.caratteristiche[k] = { valore: punteggi[k], compTS: regole.tiriSalvezza.includes(k) };
   c.competenzeAbilita = abilitaFinali(s, razza, bg);
@@ -312,7 +313,11 @@ export function personaggioIniziale(s: SceltePersonaggio, catalogo: CatalogoCrea
 
   // Equipaggiamento e monete.
   const eq = equipaggiamentoIniziale(regole, s.equipaggiamento, bg, catalogo);
-  c.armi = eq.armi;
+  // Archi e balestre partono con la loro faretra (20 munizioni).
+  c.armi = eq.armi.map((a, i) => ({
+    ...nuovaArma(a, i + 1),
+    munizioni: usaMunizioni(a) ? { rimasti: MUNIZIONI_INIZIALI, massimo: MUNIZIONI_INIZIALI } : null,
+  }));
   c.armatura = eq.armatura;
   c.scudo = eq.scudo;
   c.inventario = eq.oggetti.map((o, i) => ({ ...o, id: i + 1 }));

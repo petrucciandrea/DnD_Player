@@ -15,6 +15,7 @@ export interface RiassuntoPersonaggio {
   sottoclasse: string;
   livello: number;
   razza: string;
+  avatar?: string; // data URL; manca con un server di una versione precedente
 }
 
 // Voce del catalogo condiviso degli incantesimi.

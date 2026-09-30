@@ -3,9 +3,10 @@ import { Minus, Plus, ShieldAlert, Sparkles, X } from "lucide-react";
 import type { CharacterData, SetChar } from "../tipi";
 import type { Derivate } from "../regole";
 import {
-  aggiungiCondizione, attivaEffetto, cambiaConteggioEffetto, impostaIndebolimento, rimuoviCondizione, rimuoviEffetto,
+  aggiungiCondizione, attivaEffetto, cambiaConteggioEffetto, effettiAttivabili, impostaIndebolimento, rimuoviCondizione,
+  rimuoviEffetto,
 } from "../regole";
-import { CONDIZIONI, EFFETTI, LIVELLI_INDEBOLIMENTO, condizione, effetto } from "../dati/condizioni";
+import { CONDIZIONI, LIVELLI_INDEBOLIMENTO, condizione, effetto } from "../dati/condizioni";
 
 interface Props {
   char: CharacterData;
@@ -19,13 +20,9 @@ const piccolo = "p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disa
 export default function PannelloCondizioni({ char, d, setChar }: Props) {
   const [nuovo, setNuovo] = useState("");
 
-  // Gli effetti di un privilegio di classe si offrono solo a chi lo ha, e solo se c'è un uso libero.
-  const attivabili = EFFETTI.filter(e => !char.effetti.some(x => x.id === e.id) && (!e.classe || e.classe === char.info.classe));
-  const senzaUsi = (id: string) => {
-    const consuma = effetto(id)?.consuma;
-    const r = consuma ? d.risorse.find(x => x.id === consuma) : undefined;
-    return !!consuma && (!r || r.rimasti === 0);
-  };
+  // Dal pannello: i propri privilegi (con un uso libero) e gli incantesimi che può lanciarti un alleato.
+  // Scudo, Immagine Speculare e simili si attivano solo lanciandoli dal grimorio.
+  const { privilegi, daAlleato } = effettiAttivabili(char);
 
   const aggiungi = () => {
     if (!nuovo) return;
@@ -121,7 +118,7 @@ export default function PannelloCondizioni({ char, d, setChar }: Props) {
             );
           })}
         </div>
-        {attivabili.length > 0 && (
+        {privilegi.length + daAlleato.length > 0 && (
           <div className="flex gap-2 mt-3">
             <select
               value={nuovo}
@@ -129,11 +126,16 @@ export default function PannelloCondizioni({ char, d, setChar }: Props) {
               className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500"
             >
               <option value="">Aggiungi effetto...</option>
-              {attivabili.map(e => (
-                <option key={e.id} value={e.id} disabled={senzaUsi(e.id)}>
-                  {e.nome}{senzaUsi(e.id) ? " (nessun uso rimasto)" : ""}
-                </option>
-              ))}
+              {privilegi.length > 0 && (
+                <optgroup label="Privilegi">
+                  {privilegi.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                </optgroup>
+              )}
+              {daAlleato.length > 0 && (
+                <optgroup label="Lanciato da un alleato">
+                  {daAlleato.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                </optgroup>
+              )}
             </select>
             <button onClick={aggiungi} disabled={!nuovo} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-semibold">
               Attiva
