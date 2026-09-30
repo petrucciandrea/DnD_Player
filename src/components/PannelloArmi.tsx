@@ -135,7 +135,7 @@ export default function PannelloArmi({ char, d, setChar, onAttacco }: Props) {
 
       <div className="space-y-2">
         {char.armi.map(arma => {
-          const { bonus, modDanno } = d.attaccoArma(arma);
+          const { bonus, modDanno, competente } = d.attaccoArma(arma);
           const { utilizzabile, motivo } = statoArma(arma);
           const danno = formulaDanno(arma.dado, modDanno) + (arma.dadoVersatile ? ` / ${formulaDanno(arma.dadoVersatile, modDanno)}` : "");
           return (
@@ -151,6 +151,11 @@ export default function PannelloArmi({ char, d, setChar, onAttacco }: Props) {
                     {arma.nome}{arma.bonus !== 0 && ` ${segno(arma.bonus)}`}
                   </span>
                   {arma.rotta && <span className="ml-2 text-[10px] uppercase font-bold text-rose-400">Rotta</span>}
+                  {!competente && (
+                    <span title="Nessuna competenza in quest'arma: il bonus di competenza non si aggiunge all'attacco" className="ml-2 text-[10px] uppercase font-bold text-amber-400">
+                      Non competente
+                    </span>
+                  )}
                   <span className="block text-[11px] text-slate-500">{arma.proprieta}</span>
                 </span>
                 <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-mono">

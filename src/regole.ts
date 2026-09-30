@@ -3,6 +3,7 @@ import type { Arma, ArmaPersonaggio, Caratteristica, CharacterData, DettagliInca
 import { CARATTERISTICA_MAGICA_RAZZIALE, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi.ts";
 import { bonusIra, risorseDelPersonaggio } from "./dati/risorse.ts";
 import { EFFETTI, condizione, effetto, type DefinizioneEffetto } from "./dati/condizioni.ts";
+import { competenteArma, competenteArmatura } from "./dati/competenze.ts";
 
 // Quanto serve per calcolare danni e attacchi di un incantesimo lanciato con un certo slot.
 type IncantesimoDaLanciare = { livello: number } & Pick<DettagliIncantesimo, "danni" | "attacco">;
@@ -302,16 +303,21 @@ export function derivate(c: CharacterData) {
   };
   // Armi a distanza con la DES, accurate con la migliore tra FOR e DES, le altre con la FOR.
   // Mentre è in ira il bonus ai danni si aggiunge alle armi da mischia usate con la Forza.
-  // Il bonus di un'arma magica vale per l'attacco e per i danni.
+  // Il bonus di un'arma magica vale per l'attacco e per i danni; quello di competenza solo con la competenza nell'arma.
   const iraAttiva = c.effetti.some(e => e.id === "ira");
   const attaccoArma = (arma: Arma & { bonus?: number }) => {
-    const m = arma.distanza && !arma.accurata ? mod("DES") : arma.accurata ? Math.max(mod("FOR"), mod("DES")) : mod("FOR");
-    const conForza = !arma.distanza && m === mod("FOR");
+    const usaDES = arma.distanza && !arma.accurata ? true : arma.accurata ? mod("DES") > mod("FOR") : false;
+    const car: Caratteristica = usaDES ? "DES" : "FOR";
+    const m = mod(car);
+    const conForza = !arma.distanza && car === "FOR";
     const magico = arma.bonus ?? 0;
+    const competente = competenteArma(c, arma);
     return {
-      bonus: m + comp + magico, mod: m, modDanno: m + magico + (iraAttiva && conForza ? bonusIra(liv) : 0), mischiaFOR: conForza,
+      bonus: m + (competente ? comp : 0) + magico, mod: m, car, competente,
+      modDanno: m + magico + (iraAttiva && conForza ? bonusIra(liv) : 0), mischiaFOR: conForza,
     };
   };
+  const armaturaCompetente = competenteArmatura(c);
   const prossimaSoglia = liv < 20 ? SOGLIE_XP[liv] : null;
   const { ca, nota: notaCA } = classeArmatura(c, mod);
   const modoIncantesimi = inc?.modo ?? null;
@@ -352,7 +358,11 @@ export function derivate(c: CharacterData) {
     avvisiArmatura: [
       c.armatura?.svantaggioFurtivita && "Svantaggio alle prove di Destrezza (Furtività).",
       c.armatura && c.armatura.forzaMin > c.caratteristiche.FOR.valore && `Forza inferiore a ${c.armatura.forzaMin}: velocità ridotta di 3 m.`,
+      !armaturaCompetente && "Armatura o scudo senza competenza: svantaggio a prove, TS e attacchi di FOR e DES, niente incantesimi.",
     ].filter((x): x is string => typeof x === "string"),
+    armaturaCompetente,
+    // Motivo per cui ora non si possono lanciare incantesimi (null = si può).
+    incantesimiBloccati: armaturaCompetente ? null : "Indossi un'armatura o uno scudo senza averne la competenza.",
     capacitaCarico: c.caratteristiche.FOR.valore * 15,
     prossimaSoglia,
     puoSalire: prossimaSoglia !== null && c.xp.totale >= prossimaSoglia,

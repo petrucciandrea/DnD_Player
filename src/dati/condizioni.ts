@@ -1,5 +1,6 @@
 import type { Caratteristica, CharacterData } from "../tipi.ts";
 import type { Modalita } from "../regole.ts";
+import { competenteArmatura } from "./competenze.ts";
 
 // Condizioni (appendice A del Manuale del Giocatore, 5e 2014), indebolimento ed effetti attivi
 // (incantesimi e privilegi con una durata). Nella scheda si salvano solo gli id: qui c'è tutto il resto.
@@ -127,7 +128,7 @@ export const effettoDaIncantesimo = (nome: string) =>
 
 export interface ContestoTiro {
   tipo: TipoTiro;
-  car?: Caratteristica; // caratteristica della prova o del tiro salvezza
+  car?: Caratteristica; // caratteristica della prova, del tiro salvezza o dell'attacco con un'arma
   mischiaFOR?: boolean; // attacco in mischia con la Forza
 }
 
@@ -137,7 +138,9 @@ export interface SuggerimentoTiro {
   note: string[];
 }
 
-type StatoEffetti = Pick<CharacterData, "condizioni" | "indebolimento" | "effetti">;
+// Armatura, scudo e competenze sono facoltativi: senza, non si controlla la competenza nell'armatura.
+type StatoEffetti = Pick<CharacterData, "condizioni" | "indebolimento" | "effetti">
+  & Partial<Pick<CharacterData, "armatura" | "scudo" | "competenzeAltre">>;
 
 // Cosa dicono le condizioni e gli effetti attivi su un tiro: vantaggio e svantaggio si annullano,
 // qualunque sia il loro numero (regola base della 5e).
@@ -163,6 +166,12 @@ export function suggerimentoTiro(c: StatoEffetti, x: ContestoTiro): Suggerimento
   const stanchezza = `Indebolimento ${c.indebolimento}`;
   if (x.tipo === "prova" && c.indebolimento >= 1) svantaggi.push(stanchezza);
   if (x.tipo !== "prova" && c.indebolimento >= 3) svantaggi.push(stanchezza);
+
+  // Armatura senza competenza: svantaggio a prove, TS e attacchi con FOR o DES.
+  const { armatura = null, scudo = false, competenzeAltre } = c;
+  if (competenzeAltre && (x.car === "FOR" || x.car === "DES") && !competenteArmatura({ armatura, scudo, competenzeAltre })) {
+    svantaggi.push("armatura senza competenza");
+  }
 
   for (const attivo of c.effetti) {
     const def = effetto(attivo.id);

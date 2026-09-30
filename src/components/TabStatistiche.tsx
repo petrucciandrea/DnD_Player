@@ -66,7 +66,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
   };
 
   const attaccoArma = (arma: ArmaPersonaggio) => {
-    const { bonus, modDanno, mischiaFOR } = d.attaccoArma(arma);
+    const { bonus, modDanno, mischiaFOR, car } = d.attaccoArma(arma);
     const nome = `${arma.nome}${arma.bonus !== 0 ? ` ${segno(arma.bonus)}` : ""}`;
     const opzioniDanno: OpzioneDanno[] = arma.dadoVersatile
       ? [
@@ -74,7 +74,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
           { etichetta: `${nome} (due mani)`, danni: dannoArma(arma, modDanno, true) },
         ]
       : [{ etichetta: nome, danni: dannoArma(arma, modDanno) }];
-    return tira(`Attacco: ${nome}`, 20, bonus, { opzioniDanno, contesto: { tipo: "attacco", mischiaFOR } });
+    return tira(`Attacco: ${nome}`, 20, bonus, { opzioniDanno, contesto: { tipo: "attacco", mischiaFOR, car } });
   };
 
   // Con un 20 naturale sul tiro per colpire i dadi dei danni raddoppiano.

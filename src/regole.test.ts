@@ -10,6 +10,8 @@ import {
   danneggiaArma,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
+import { competenteArmatura, competenzaCopreArma } from "./dati/competenze";
+import { regoleClasse } from "./dati/classi";
 import { completaConEsistente, daJSON } from "./scheda";
 import { SCHEDE_INCANTESIMI } from "../server/semi/incantesimi.ts";
 import type { CharacterData } from "./tipi";
@@ -289,6 +291,7 @@ describe("regole per classe", () => {
     const c = alston();
     c.info = { ...c.info, classe, livello, sottoclasse, razza: "Umano" };
     for (const [k, v] of Object.entries(punteggi)) c.caratteristiche[k as keyof typeof punteggi] = { valore: v, compTS: false };
+    c.competenzeAltre = { ...c.competenzeAltre, armi: [...regoleClasse(classe)!.armi], armature: [...regoleClasse(classe)!.armature] };
     c.privilegi = [];
     c.incantesimi = [];
     return c;
@@ -453,6 +456,7 @@ describe("effetti attivi", () => {
   const barbaro = (livello = 3): CharacterData => {
     const c = alston();
     c.info = { ...c.info, classe: "Barbaro", livello, sottoclasse: "", razza: "Umano" };
+    c.competenzeAltre = { ...c.competenzeAltre, armi: ["Armi semplici", "Armi da guerra"] };
     c.caratteristiche.FOR = { valore: 16, compTS: false };
     c.caratteristiche.DES = { valore: 12, compTS: false };
     c.armatura = null;
@@ -779,6 +783,7 @@ describe("armi del personaggio", () => {
 
   it("il bonus magico vale per attacco e danni", () => {
     const c = alston(); // DES 13, competenza +2
+    c.competenzeAltre.armi.push("Archi corti");
     const d = derivate(c);
     expect(d.attaccoArma({ ...nuovaArma(arco, 1), bonus: 2 })).toMatchObject({ bonus: 5, modDanno: 3 });
     expect(d.attaccoArma(arco)).toMatchObject({ bonus: 3, modDanno: 1 });
@@ -815,3 +820,48 @@ describe("salvataggio: armi, avatar e campi delle note", () => {
   });
 });
 
+
+describe("competenze in armi e armature", () => {
+  const cotta = { nome: "Cotta di Maglia", categoria: "pesante" as const, ca: 16, maxDes: 0, forzaMin: 13, svantaggioFurtivita: true, peso: 55 };
+
+  it("categorie, nomi al plurale e al singolare", () => {
+    expect(competenzaCopreArma("Armi semplici", { nome: "Pugnale", categoria: "semplice" })).toBe(true);
+    expect(competenzaCopreArma("Armi semplici", { nome: "Stocco", categoria: "guerra" })).toBe(false);
+    expect(competenzaCopreArma("Armi da guerra", { nome: "Stocco", categoria: "guerra" })).toBe(true);
+    expect(competenzaCopreArma("Pugnali", { nome: "Pugnale", categoria: "semplice" })).toBe(true);
+    expect(competenzaCopreArma("balestre leggere", { nome: "Balestra Leggera", categoria: "semplice" })).toBe(true);
+    expect(competenzaCopreArma("Spade lunghe", { nome: "Spada Corta", categoria: "guerra" })).toBe(false);
+    expect(competenzaCopreArma("Spada lunga", { nome: "Spada Lunga", categoria: "guerra" })).toBe(true);
+  });
+
+  it("senza competenza nell'arma non si aggiunge il bonus di competenza", () => {
+    const d = derivate(alston());
+    const spadone = { nome: "Spadone", dado: "2d6", tipoDanno: "Tagliente", proprieta: "Pesante, Due mani", accurata: false, categoria: "guerra" as const };
+    expect(d.attaccoArma(spadone)).toMatchObject({ bonus: -1, competente: false, car: "FOR" });
+    expect(d.attaccoArma(INITIAL_CHARACTER.armi[1])).toMatchObject({ bonus: 3, competente: true, car: "DES" });
+  });
+
+  it("armatura senza competenza: svantaggio con FOR e DES e niente incantesimi", () => {
+    const c = { ...alston(), armatura: cotta };
+    expect(competenteArmatura(c)).toBe(false);
+    const d = derivate(c);
+    expect(d.armaturaCompetente).toBe(false);
+    expect(d.incantesimiBloccati).not.toBeNull();
+    expect(suggerimentoTiro(c, { tipo: "ts", car: "DES" }).modalita).toBe("svantaggio");
+    expect(suggerimentoTiro(c, { tipo: "attacco", car: "FOR" }).modalita).toBe("svantaggio");
+    expect(suggerimentoTiro(c, { tipo: "ts", car: "INT" }).modalita).toBe("normale");
+    const guerriero = { ...c, competenzeAltre: { ...c.competenzeAltre, armature: ["Tutte le armature", "Scudi"] }, scudo: true };
+    expect(competenteArmatura(guerriero)).toBe(true);
+    expect(derivate(guerriero).incantesimiBloccati).toBeNull();
+    expect(competenteArmatura({ ...alston(), scudo: true })).toBe(false);
+  });
+
+  it("i vecchi salvataggi senza competenze in armi e armature prendono quelle della classe", () => {
+    const c = alston();
+    const vecchio = { ...c, competenzeAltre: { ...c.competenzeAltre, armi: [], armature: [] } };
+    expect(daJSON(vecchio).competenzeAltre.armi).toEqual(["Balestre leggere", "Bastoni ferrati", "Dardi", "Fionde", "Pugnali"]);
+    expect(daJSON({ ...vecchio, info: { ...c.info, classe: "Guerriero" } }).competenzeAltre.armature).toEqual(["Tutte le armature", "Scudi"]);
+    // Con almeno una competenza la scheda resta com'è.
+    expect(daJSON({ ...vecchio, competenzeAltre: { ...vecchio.competenzeAltre, armi: ["Pugnali"] } }).competenzeAltre.armi).toEqual(["Pugnali"]);
+  });
+});

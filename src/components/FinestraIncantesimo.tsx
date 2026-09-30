@@ -52,8 +52,9 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
   const danni: Danni | null = conLivello ? dannoIncantesimo(conLivello, livelloEffettivo, char.info.livello) : null;
   const totAttacchi = conLivello ? numeroAttacchi(conLivello, livelloEffettivo) : 0;
   const pronto = spell.livello === 0 || spell.preparato || !d.prepara; // chi li conosce non li prepara
-  const puoLanciare = spell.livello === 0 || (pronto && disponibili.length > 0);
-  const puoRituale = !!scheda?.rituale;
+  const bloccato = d.incantesimiBloccati; // per esempio un'armatura senza competenza
+  const puoLanciare = !bloccato && (spell.livello === 0 || (pronto && disponibili.length > 0));
+  const puoRituale = !bloccato && !!scheda?.rituale;
 
   const lancia = (livelloSlot: number | null, rituale = false) => {
     const concentrazione = scheda?.concentrazione ? spell.nome : undefined;
@@ -158,6 +159,7 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
         {/* LANCIO */}
         {!lancio ? (
           <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-3">
+            {bloccato && <p className="text-xs text-rose-300">Non puoi lanciare incantesimi: {bloccato.toLowerCase()}</p>}
             {spell.livello > 0 && pronto && (
               disponibili.length > 0 ? (
                 <label className="flex items-center justify-between gap-2 text-sm text-slate-300">

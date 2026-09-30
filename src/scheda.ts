@@ -2,6 +2,7 @@ import type {
   ArmaPersonaggio, Armatura, CategoriaNota, CharacterData, Contatore, EffettoAttivo, NotaSessione,
 } from "./tipi.ts";
 import { CARATTERISTICHE } from "./regole.ts";
+import { regoleClasse } from "./dati/classi.ts";
 
 // Validazione e normalizzazione della scheda, senza dipendenze dal browser:
 // la usano sia il client (import JSON, cache locale) sia il server (prima di salvare nell'archivio).
@@ -167,6 +168,16 @@ function normalizza(d: Obj): CharacterData {
   const slot = Array.isArray(d.slotSpesi) ? d.slotSpesi : [];
   const xp = sezione("xp", base.xp);
   const info = sezione("info", base.info);
+  // Ogni classe ha almeno una competenza nelle armi: se armi e armature mancano entrambe la scheda
+  // viene da una versione che non le salvava, e si prendono quelle della classe.
+  const competenze = obj(d.competenzeAltre);
+  let armi = stringhe(competenze.armi);
+  let armature = stringhe(competenze.armature);
+  const regole = regoleClasse(typeof info.classe === "string" ? info.classe : "");
+  if (armi.length === 0 && armature.length === 0 && regole) {
+    armi = [...regole.armi];
+    armature = [...regole.armature];
+  }
 
   return {
     ...base,
@@ -175,10 +186,10 @@ function normalizza(d: Obj): CharacterData {
     caratteristiche,
     competenzeAbilita: stringhe(d.competenzeAbilita),
     competenzeAltre: {
-      lingue: stringhe(obj(d.competenzeAltre).lingue),
-      strumenti: stringhe(obj(d.competenzeAltre).strumenti),
-      armi: stringhe(obj(d.competenzeAltre).armi),
-      armature: stringhe(obj(d.competenzeAltre).armature),
+      lingue: stringhe(competenze.lingue),
+      strumenti: stringhe(competenze.strumenti),
+      armi,
+      armature,
     },
     armatura: armaturaDa(d.armatura),
     scudo: d.scudo === true,
