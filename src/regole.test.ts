@@ -9,6 +9,7 @@ import {
   effettiAttivabili, usaPresagio, nuovaArma, statoArma, usaArma, riparaArma, rompiArma, ricaricaArma, recuperaMunizioni, usaMunizioni,
   danneggiaArma, dannoCritico, attacchiPerAzione, sogliaCritico, dadiCriticoBrutale, danniExtraArma,
   dadiAttaccoFurtivo, dannoPunizione, spendiSlot, armaDaMonaco, dadoArtiMarziali, COLPO_SENZA_ARMI,
+  sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { competenteArmatura, competenzaCopreArma } from "./dati/competenze";
@@ -934,5 +935,72 @@ describe("privilegi che cambiano attacchi e danni", () => {
   it("il colpo senz'armi di chi non è monaco fa 1 + FOR", () => {
     const d = derivate(pg("Guerriero", 1, "", { FOR: 16 }));
     expect(d.attaccoArma(COLPO_SENZA_ARMI)).toMatchObject({ bonus: 5, danni: { numero: 0, mod: 4 } });
+  });
+});
+
+describe("scelte di privilegio: Metamagia, Fonte di Magia, stili di combattimento", () => {
+  const pg = (classe: string, livello: number, sottoclasse = ""): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe, livello, sottoclasse };
+    c.privilegi = [];
+    c.competenzeAltre = { ...c.competenzeAltre, armi: [...regoleClasse(classe)!.armi], armature: [...regoleClasse(classe)!.armature] };
+    return c;
+  };
+  const stile = (nome: string) => ({ nome, fonte: "Stile di Combattimento", descrizione: "" });
+  const metamagiaP = (nome: string) => ({ nome, fonte: "Metamagia", descrizione: "" });
+
+  it("scelte dovute per classe, sottoclasse e livello", () => {
+    expect(sceltePendenti(pg("Stregone", 2))).toEqual([]);
+    expect(sceltePendenti(pg("Stregone", 3)).map(x => [x.scelta.id, x.mancano])).toEqual([["metamagia", 2]]);
+    const stregone = { ...pg("Stregone", 10), privilegi: [metamagiaP("Incantesimo Rapido"), metamagiaP("Incantesimo Gemello")] };
+    expect(sceltePendenti(stregone).map(x => x.mancano)).toEqual([1]);
+    expect(sceltePendenti(pg("Guerriero", 1)).map(x => x.scelta.id)).toEqual(["stile-guerriero"]);
+    const campione = { ...pg("Guerriero", 9, "Campione"), privilegi: [stile("Difesa")] };
+    expect(sceltePendenti(campione)).toEqual([]);
+    expect(sceltePendenti(campione, { livello: 10 }).map(x => [x.scelta.id, x.mancano])).toEqual([["stile-campione", 1]]);
+    // Un Ranger conta solo gli stili ammessi per lui.
+    expect(sceltePendenti({ ...pg("Ranger", 2), privilegi: [stile("Protezione")] }).map(x => x.mancano)).toEqual([1]);
+    expect(sceltePendenti(pg("Druido", 3, "Circolo della Terra")).map(x => x.scelta.id)).toEqual(["terreno"]);
+    expect(sceltePendenti(pg("Druido", 3, "Circolo della Luna"))).toEqual([]);
+  });
+
+  it("costo della Metamagia e spesa dei punti stregoneria", () => {
+    expect(costoMetamagia(["Incantesimo Gemello"], 0)).toBe(1);
+    expect(costoMetamagia(["Incantesimo Gemello", "Incantesimo Rapido"], 3)).toBe(5);
+    expect(costoMetamagia(["Incantesimo Intensificato"], 1)).toBe(3);
+    const c = pg("Stregone", 3);
+    expect(usaMetamagia(c, ["Incantesimo Rapido"], 1).risorseUsate["punti-stregoneria"]).toBe(2);
+    expect(usaMetamagia(c, ["Incantesimo Intensificato", "Incantesimo Rapido"], 1)).toBe(c); // servono 5 punti, ne ha 3
+  });
+
+  it("Fonte di Magia: slot in punti e punti in slot", () => {
+    const c = { ...pg("Stregone", 5), risorseUsate: { "punti-stregoneria": 3 } };
+    const convertito = slotInPunti(c, 2);
+    expect(convertito.slotSpesi[1]).toBe(1);
+    expect(convertito.risorseUsate["punti-stregoneria"]).toBe(1);
+    expect(slotInPunti({ ...c, risorseUsate: {} }, 2)).toEqual({ ...c, risorseUsate: {} }); // i punti sono già al massimo
+    const speso = { ...c, risorseUsate: {}, slotSpesi: [0, 1, 0, 0, 0, 0, 0, 0, 0] };
+    const creato = puntiInSlot(speso, 2);
+    expect(creato.slotSpesi[1]).toBe(0);
+    expect(creato.risorseUsate["punti-stregoneria"]).toBe(3);
+    expect(puntiInSlot({ ...speso, slotSpesi: [0, 0, 0, 0, 0, 0, 0, 0, 0] }, 2).slotSpesi[1]).toBe(0); // nessuno slot speso: non cambia
+    expect(puntiInSlot(speso, 6)).toBe(speso);
+    expect(slotInPunti(pg("Mago", 5), 1)).toEqual(pg("Mago", 5)); // senza punti stregoneria
+  });
+
+  it("stili: Difesa con armatura, Tiro a distanza, Duellare in mischia a una mano", () => {
+    const cotta = { nome: "Cotta di Maglia", categoria: "pesante" as const, ca: 16, maxDes: 0, forzaMin: 13, svantaggioFurtivita: true, peso: 55 };
+    const g = { ...pg("Guerriero", 1), armatura: cotta, scudo: false };
+    expect(derivate({ ...g, privilegi: [stile("Difesa")] }).ca).toBe(derivate(g).ca + 1);
+    expect(derivate({ ...g, armatura: null, privilegi: [stile("Difesa")] }).ca).toBe(derivate({ ...g, armatura: null }).ca);
+    const arco = { nome: "Arco Lungo", dado: "1d8", tipoDanno: "Perforante", proprieta: "Munizioni, Pesante, Due mani", accurata: false, distanza: true, categoria: "guerra" as const };
+    const spada = { nome: "Spada Lunga", dado: "1d8", dadoVersatile: "1d10", tipoDanno: "Tagliente", proprieta: "Versatile", accurata: false, categoria: "guerra" as const };
+    const spadone = { nome: "Spadone", dado: "2d6", tipoDanno: "Tagliente", proprieta: "Pesante, Due mani", accurata: false, categoria: "guerra" as const };
+    expect(derivate({ ...g, privilegi: [stile("Tiro")] }).attaccoArma(arco).bonus).toBe(derivate(g).attaccoArma(arco).bonus + 2);
+    const duellante = derivate({ ...g, privilegi: [stile("Duellare")] });
+    expect(duellante.attaccoArma(spada).danni.mod).toBe(derivate(g).attaccoArma(spada).danni.mod + 2);
+    expect(duellante.attaccoArma(spada).danniDueMani?.mod).toBe(derivate(g).attaccoArma(spada).danniDueMani?.mod);
+    expect(duellante.attaccoArma(spadone).danni.mod).toBe(derivate(g).attaccoArma(spadone).danni.mod);
+    expect(derivate({ ...g, privilegi: [stile("Combattere con Armi Possenti")] }).attaccoArma(spadone).note[0]).toMatch(/ritira/);
   });
 });

@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Plus, Trash2, ArrowUpCircle, LoaderCircle, X } from "lucide-react";
 import type { CharacterData, Privilegio, SetChar, XPRecord } from "../tipi";
 import type { Derivate } from "../regole";
-import { haAumentoCaratteristiche, pfPerLivello, privilegiMancanti, saliDiLivello, slotMassimi } from "../regole";
+import { haAumentoCaratteristiche, pfPerLivello, privilegiMancanti, saliDiLivello, sceltePendenti, slotMassimi } from "../regole";
 import { incantatoreDi, regoleClasse } from "../dati/classi";
-import { privilegiDiLivello, privilegiFinoAlLivello } from "../accesso";
+import { opzioniScelta, type DefinizioneScelta } from "../dati/scelte";
+import { catalogoCreazione, privilegiDiLivello, privilegiFinoAlLivello } from "../accesso";
+import ScegliMolti from "./ScegliMolti";
 
 interface Props {
   char: CharacterData;
@@ -16,12 +18,46 @@ interface Props {
 interface Salita {
   sottoclasse: string;
   privilegi: Privilegio[] | null | "offline";
+  scelte: Record<string, string[]>; // opzioni scelte per id di scelta (Metamagia, stile...)
 }
+
+// Opzioni di una scelta di privilegio, senza quelle che la scheda ha già.
+function SceltaPrivilegio({ scelta, mancano, catalogo, posseduti, valori, onCambia }: {
+  scelta: DefinizioneScelta; mancano: number; catalogo: Privilegio[]; posseduti: Privilegio[];
+  valori: string[]; onCambia: (v: string[]) => void;
+}) {
+  const opzioni = opzioniScelta(scelta, catalogo).filter(o => !posseduti.some(p => p.fonte === o.fonte && p.nome === o.nome));
+  return (
+    <ScegliMolti
+      titolo={scelta.nome}
+      opzioni={opzioni.map(o => o.nome)}
+      scelte={valori}
+      massimo={mancano}
+      onCambia={onCambia}
+      suggerimento={v => opzioni.find(o => o.nome === v)?.descrizione}
+    />
+  );
+}
+
+// I privilegi corrispondenti alle opzioni scelte.
+const privilegiScelti = (scelte: Record<string, string[]>, pendenti: { scelta: DefinizioneScelta }[], catalogo: Privilegio[]) =>
+  pendenti.flatMap(({ scelta }) => opzioniScelta(scelta, catalogo).filter(o => (scelte[scelta.id] ?? []).includes(o.nome)));
 
 export default function TabProgresso({ char, d, setChar }: Props) {
   const [newXpInput, setNewXpInput] = useState({ valore: "", motivo: "" });
   const [salita, setSalita] = useState<Salita | null>(null);
   const [verifica, setVerifica] = useState<"attesa" | "offline" | Privilegio[] | null>(null);
+  // Opzioni delle scelte di privilegio dal catalogo (null = in caricamento o non raggiungibile).
+  const [opzioni, setOpzioni] = useState<Privilegio[] | null>(null);
+  const [scelteAttuali, setScelteAttuali] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    let attivo = true;
+    catalogoCreazione().then(c => {
+      if (attivo && c) setOpzioni(c.opzioniPrivilegio);
+    });
+    return () => { attivo = false; };
+  }, []);
   const livello = char.info.livello;
   const nuovo = livello + 1;
   const regole = regoleClasse(char.info.classe);
@@ -55,16 +91,38 @@ export default function TabProgresso({ char, d, setChar }: Props) {
 
   // Privilegi del nuovo livello dal catalogo (con quelli della sottoclasse, se c'è).
   const caricaPrivilegi = async (sottoclasse: string) => {
-    setSalita({ sottoclasse, privilegi: null });
+    setSalita({ sottoclasse, privilegi: null, scelte: {} });
     const r = await privilegiDiLivello(char.info.classe, nuovo, sottoclasse);
-    setSalita(prev => (prev?.sottoclasse === sottoclasse ? { sottoclasse, privilegi: r ? r.map(x => x.privilegio) : "offline" } : prev));
+    setSalita(prev => (prev?.sottoclasse === sottoclasse ? { ...prev, privilegi: r ? r.map(x => x.privilegio) : "offline" } : prev));
   };
 
+  // Scelte di privilegio dovute al nuovo livello (con la sottoclasse scelta salendo).
+  const pendentiSalita = salita ? sceltePendenti(char, { livello: nuovo, sottoclasse: serveSottoclasse ? salita.sottoclasse : char.info.sottoclasse }) : [];
+  // Senza catalogo le scelte non bloccano la salita: si potranno completare dopo.
+  const scelteComplete = !opzioni || pendentiSalita.every(x => (salita?.scelte[x.scelta.id] ?? []).length >= Math.min(
+    x.mancano, opzioniScelta(x.scelta, opzioni).filter(o => !char.privilegi.some(p => p.fonte === o.fonte && p.nome === o.nome)).length,
+  ));
+
   const confermaSalita = () => {
-    if (!salita || (serveSottoclasse && !salita.sottoclasse)) return;
-    const privilegi = Array.isArray(salita.privilegi) ? salita.privilegi : [];
+    if (!salita || (serveSottoclasse && !salita.sottoclasse) || !scelteComplete) return;
+    const privilegi = [
+      ...(Array.isArray(salita.privilegi) ? salita.privilegi : []),
+      ...(opzioni ? privilegiScelti(salita.scelte, pendentiSalita, opzioni) : []),
+    ];
     setChar(prev => saliDiLivello(prev, { privilegi, sottoclasse: serveSottoclasse ? salita.sottoclasse : undefined }));
     setSalita(null);
+  };
+
+  // Scelte che mancano già al livello attuale (personaggi creati prima delle scelte di privilegio).
+  const pendentiAttuali = sceltePendenti(char);
+  const aggiungiScelte = () => {
+    if (!opzioni) return;
+    const nuovi = privilegiScelti(scelteAttuali, pendentiAttuali, opzioni);
+    setChar(prev => ({
+      ...prev,
+      privilegi: [...prev.privilegi, ...nuovi.filter(p => !prev.privilegi.some(x => x.nome === p.nome && x.fonte === p.fonte))],
+    }));
+    setScelteAttuali({});
   };
 
   // Un personaggio salito di livello quando il catalogo era parziale può recuperare i privilegi che gli mancano.
@@ -174,9 +232,20 @@ export default function TabProgresso({ char, d, setChar }: Props) {
                 </ul>
               )}
             </div>
+            {opzioni && pendentiSalita.map(({ scelta, mancano }) => (
+              <SceltaPrivilegio
+                key={scelta.id}
+                scelta={scelta}
+                mancano={mancano}
+                catalogo={opzioni}
+                posseduti={char.privilegi}
+                valori={salita.scelte[scelta.id] ?? []}
+                onCambia={v => setSalita(prev => prev && { ...prev, scelte: { ...prev.scelte, [scelta.id]: v } })}
+              />
+            ))}
             <button
               onClick={confermaSalita}
-              disabled={salita.privilegi === null || (serveSottoclasse && !salita.sottoclasse)}
+              disabled={salita.privilegi === null || (serveSottoclasse && !salita.sottoclasse) || !scelteComplete}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold"
             >
               <ArrowUpCircle className="w-4 h-4" /> Conferma livello {nuovo}
@@ -184,6 +253,33 @@ export default function TabProgresso({ char, d, setChar }: Props) {
           </div>
         )}
       </div>
+
+      {opzioni && pendentiAttuali.length > 0 && (
+        <div className="bg-slate-900 border border-amber-900/50 p-4 rounded-xl space-y-3 text-sm">
+          <div>
+            <h3 className="font-bold text-slate-200">Scelte da completare</h3>
+            <p className="text-xs text-slate-500">Al livello {livello} la classe ti fa scegliere queste opzioni.</p>
+          </div>
+          {pendentiAttuali.map(({ scelta, mancano }) => (
+            <SceltaPrivilegio
+              key={scelta.id}
+              scelta={scelta}
+              mancano={mancano}
+              catalogo={opzioni}
+              posseduti={char.privilegi}
+              valori={scelteAttuali[scelta.id] ?? []}
+              onCambia={v => setScelteAttuali(prev => ({ ...prev, [scelta.id]: v }))}
+            />
+          ))}
+          <button
+            onClick={aggiungiScelte}
+            disabled={Object.values(scelteAttuali).every(v => v.length === 0)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold"
+          >
+            <Plus className="w-3.5 h-3.5" /> Aggiungi alla scheda
+          </button>
+        </div>
+      )}
 
       {livello > 1 && regole && (
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-2 text-sm">

@@ -4,6 +4,8 @@ import { CARATTERISTICA_MAGICA_RAZZIALE, incantatoreDi, regoleClasse, type Incan
 import { bonusIra, risorseDelPersonaggio } from "./dati/risorse.ts";
 import { EFFETTI, condizione, effetto, type DefinizioneEffetto } from "./dati/condizioni.ts";
 import { competenteArma, competenteArmatura } from "./dati/competenze.ts";
+import { FONTE_STILE, STILI, haScelto, scelteDelPersonaggio, totaleScelte, type DefinizioneScelta } from "./dati/scelte.ts";
+import { COSTO_SLOT_STREGONERIA, metamagia } from "./dati/metamagia.ts";
 
 // Quanto serve per calcolare danni e attacchi di un incantesimo lanciato con un certo slot.
 type IncantesimoDaLanciare = { livello: number } & Pick<DettagliIncantesimo, "danni" | "attacco">;
@@ -383,10 +385,12 @@ function classeArmatura(c: CharacterData, mod: (k: Caratteristica) => number) {
   for (const e of attivi) {
     if (e.caMinima !== undefined && base.ca < e.caMinima) base = { ca: e.caMinima, nota: e.nome };
   }
-  const bonus = attivi.filter(e => e.caBonus);
+  const bonus = attivi.filter(e => e.caBonus).map(e => ({ nome: e.nome, valore: e.caBonus ?? 0 }));
+  // Stile di Combattimento Difesa: +1 con un'armatura indossata.
+  if (c.armatura && haScelto(c, FONTE_STILE, STILI.difesa)) bonus.unshift({ nome: STILI.difesa, valore: 1 });
   return {
-    ca: base.ca + bonus.reduce((acc, e) => acc + (e.caBonus ?? 0), 0),
-    nota: [base.nota, ...bonus.map(e => `${e.nome} ${segno(e.caBonus ?? 0)}`)].join(", "),
+    ca: base.ca + bonus.reduce((acc, e) => acc + e.valore, 0),
+    nota: [base.nota, ...bonus.map(e => `${e.nome} ${segno(e.valore)}`)].join(", "),
   };
 }
 
@@ -417,23 +421,33 @@ export function derivate(c: CharacterData) {
     const ma = dadoArtiMarziali(liv);
     return numero * (facce + 1) < ma + 1 ? `1d${ma}` : dado;
   };
+  const stile = (nome: string) => haScelto(c, FONTE_STILE, nome);
   const attaccoArma = (arma: Arma & { bonus?: number }) => {
     const monaco = artiMarziali && armaDaMonaco(arma);
+    const colpo = eColpoSenzaArmi(arma);
+    const dueMani = /due mani/i.test(arma.proprieta);
     const usaDES = arma.distanza && !arma.accurata ? true : arma.accurata || monaco ? mod("DES") > mod("FOR") : false;
     const car: Caratteristica = usaDES ? "DES" : "FOR";
     const m = mod(car);
     const conForza = !arma.distanza && car === "FOR";
     const magico = arma.bonus ?? 0;
-    const colpo = eColpoSenzaArmi(arma);
     const competente = colpo || competenteArma(c, arma);
+    // Stili di combattimento: Tiro +2 a colpire a distanza, Duellare +2 ai danni in mischia a una mano.
+    const tiro = arma.distanza && stile(STILI.tiro) ? 2 : 0;
+    const duellare = !arma.distanza && !dueMani && !colpo && stile(STILI.duellare) ? 2 : 0;
+    const note = [
+      tiro > 0 && "Tiro: +2 al tiro per colpire.",
+      !arma.distanza && (dueMani || arma.dadoVersatile) && stile(STILI.armiPossenti)
+        && "Combattere con Armi Possenti: a due mani ritira i dadi di danno che fanno 1 o 2.",
+    ].filter((x): x is string => typeof x === "string");
     // Senza Arti Marziali il colpo senz'armi fa 1 + FOR.
     const modDanno = m + magico + (iraAttiva && conForza ? bonusIra(liv) : 0) + (colpo && !monaco ? 1 : 0);
     const dadi = monaco
       ? { ...arma, dado: dadoMonaco(arma.dado), ...(arma.dadoVersatile ? { dadoVersatile: dadoMonaco(arma.dadoVersatile) } : {}) }
       : arma;
     return {
-      bonus: m + (competente ? comp : 0) + magico, mod: m, car, competente, modDanno, mischiaFOR: conForza,
-      danni: dannoArma(dadi, modDanno),
+      bonus: m + (competente ? comp : 0) + magico + tiro, mod: m, car, competente, modDanno, mischiaFOR: conForza, note,
+      danni: dannoArma(dadi, modDanno + duellare), // Duellare solo impugnandola in una mano
       danniDueMani: dadi.dadoVersatile ? dannoArma(dadi, modDanno, true) : null,
     };
   };
@@ -703,6 +717,57 @@ export function privilegiMancanti(c: CharacterData, catalogo: PrivilegioClasse[]
     .sort((a, b) => a.livello - b.livello)
     .map(x => x.privilegio)
     .filter(p => !posseduti.has(chiave(p)));
+}
+
+// --- Scelte di privilegio (Metamagia, Stile di Combattimento, terreno del circolo) ---
+
+// Le scelte che mancano alla scheda: per ogni scelta quante opzioni sono dovute a quel livello e quante ne ha.
+// `info` permette di guardare al livello successivo (con la sottoclasse scelta salendo).
+export function sceltePendenti(
+  c: CharacterData, info: { livello?: number; sottoclasse?: string } = {},
+): { scelta: DefinizioneScelta; mancano: number }[] {
+  const livello = info.livello ?? c.info.livello;
+  const sottoclasse = info.sottoclasse ?? c.info.sottoclasse;
+  return scelteDelPersonaggio({ info: { ...c.info, livello, sottoclasse } }).flatMap(scelta => {
+    const scelte = c.privilegi.filter(p => p.fonte === scelta.fonte && (!scelta.ammesse || scelta.ammesse.includes(p.nome))).length;
+    const mancano = totaleScelte(scelta, livello) - scelte;
+    return mancano > 0 ? [{ scelta, mancano }] : [];
+  });
+}
+
+// --- Stregone: Metamagia e Fonte di Magia ---
+
+const PUNTI_STREGONERIA = "punti-stregoneria";
+const puntiStregoneria = (c: CharacterData) => derivate(c).risorse.find(r => r.id === PUNTI_STREGONERIA);
+
+// Costo complessivo delle metamagie scelte per un incantesimo di quel livello (0 = trucchetto).
+export const costoMetamagia = (nomi: string[], livelloIncantesimo: number) =>
+  nomi.reduce((acc, n) => acc + (metamagia(n)?.costo(livelloIncantesimo) ?? 0), 0);
+
+// Spende i punti delle metamagie; senza punti a sufficienza la scheda non cambia.
+export function usaMetamagia(c: CharacterData, nomi: string[], livelloIncantesimo: number): CharacterData {
+  const costo = costoMetamagia(nomi, livelloIncantesimo);
+  const r = puntiStregoneria(c);
+  if (costo === 0 || !r || (r.rimasti ?? 0) < costo) return c;
+  return usaRisorsa(c, PUNTI_STREGONERIA, costo);
+}
+
+// Fonte di Magia: uno slot libero diventa punti stregoneria pari al suo livello.
+// Semplificazione: si converte solo se i punti spesi bastano a riceverli tutti (non si supera il massimo).
+export function slotInPunti(c: CharacterData, livello: number): CharacterData {
+  const r = puntiStregoneria(c);
+  if (!r || r.usati < livello || !slotUtilizzabili(c, livello).includes(livello)) return c;
+  return usaRisorsa(spendiSlot(c, livello), PUNTI_STREGONERIA, -livello);
+}
+
+// Fonte di Magia: con 2/3/5/6/7 punti si crea uno slot dal 1° al 5° livello.
+// Semplificazione: lo slot creato ne recupera uno speso, quindi non si superano gli slot massimi.
+export function puntiInSlot(c: CharacterData, livello: number): CharacterData {
+  const costo = COSTO_SLOT_STREGONERIA[livello - 1];
+  const r = puntiStregoneria(c);
+  if (costo === undefined || !r || (r.rimasti ?? 0) < costo || (c.slotSpesi[livello - 1] ?? 0) <= 0) return c;
+  const slotSpesi = c.slotSpesi.map((n, i) => (i === livello - 1 ? n - 1 : n));
+  return usaRisorsa({ ...c, slotSpesi }, PUNTI_STREGONERIA, costo);
 }
 
 // --- Presagio (Scuola di Divinazione) ---

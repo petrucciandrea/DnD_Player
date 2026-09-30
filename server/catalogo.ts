@@ -4,6 +4,7 @@ import type {
   PrivilegioClasse, RazzaCatalogo,
 } from "../src/tipi.ts";
 import { CARATTERISTICHE } from "../src/regole.ts";
+import { SCELTE } from "../src/dati/scelte.ts";
 import { ARMATURE } from "./semi/armature.ts";
 import { ARMI } from "./semi/armi.ts";
 import { BACKGROUND } from "./semi/background.ts";
@@ -329,6 +330,14 @@ export function privilegiDiClasse(
   }));
 }
 
+// Opzioni ufficiali delle scelte di privilegio, nell'ordine del seed.
+function opzioniPrivilegio(db: DatabaseSync): Privilegio[] {
+  const fonti = [...new Set(SCELTE.map(s => s.fonte))];
+  return db.prepare(`
+    SELECT * FROM privilegi WHERE creato_da IS NULL AND fonte IN (${fonti.map(() => "?").join(", ")}) ORDER BY fonte, id
+  `).all(...fonti).map(privilegioDaRiga);
+}
+
 // Tutto ciò che serve alla procedura di creazione, in una sola risposta.
 export function catalogoCreazione(db: DatabaseSync): CatalogoCreazione {
   const classi = new Map<number, string[]>();
@@ -342,6 +351,7 @@ export function catalogoCreazione(db: DatabaseSync): CatalogoCreazione {
     armi: db.prepare("SELECT * FROM armi ORDER BY categoria, nome").all().map(armaDaRiga),
     armature: db.prepare("SELECT * FROM armature ORDER BY ca, nome").all().map(armaturaDaRiga),
     privilegiClasse: privilegiDiClasse(db, { livello: 1 }),
+    opzioniPrivilegio: opzioniPrivilegio(db),
     incantesimi: elencoIncantesimi(db).map((v): IncantesimoCatalogo => ({ ...v, classi: classi.get(v.id) ?? [] })),
   };
 }

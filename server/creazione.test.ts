@@ -46,18 +46,28 @@ describe("creazione: elementi", () => {
     expect(abilitaDoppie(scelte({ abilitaClasse: ["atletica", "percezione"] }), razza, soldato)).toEqual(["atletica", "intimidire"]);
   });
 
+  it("il catalogo contiene le opzioni delle scelte di privilegio", () => {
+    const perFonte = (fonte: string) => catalogo.opzioniPrivilegio.filter(p => p.fonte === fonte).map(p => p.nome);
+    expect(perFonte("Metamagia")).toHaveLength(8);
+    expect(perFonte("Stile di Combattimento")).toEqual(expect.arrayContaining(["Difesa", "Duellare", "Tiro", "Protezione"]));
+    expect(perFonte("Terreno del Circolo")).toHaveLength(8);
+  });
+
   it("i passi segnalano cosa manca", () => {
     expect(mancaNelPasso("razza", scelte({ razza: "Nano" }), catalogo)).toMatch(/sottorazza/);
     expect(mancaNelPasso("classe", scelte({ classe: "Chierico", abilitaClasse: ["storia", "medicina"] }), catalogo)).toMatch(/sottoclasse/);
     expect(mancaNelPasso("caratteristiche", scelte({ razza: "Umano" }), catalogo)).toMatch(/Assegna/);
     expect(mancaNelPasso("incantesimi", scelte({ classe: "Guerriero" }), catalogo)).toBeNull();
+    const guerriero = { classe: "Guerriero" as const, abilitaClasse: ["atletica", "percezione"] };
+    expect(mancaNelPasso("classe", scelte(guerriero), catalogo)).toMatch(/Stile di Combattimento/);
+    expect(mancaNelPasso("classe", scelte({ ...guerriero, scelteClasse: { "stile-guerriero": ["Tiro"] } }), catalogo)).toBeNull();
   });
 });
 
 describe("creazione: personaggi completi", () => {
   it("Mezzorco Guerriero con cotta di maglia, spada lunga e scudo", () => {
     const c = personaggioIniziale(scelte({
-      razza: "Mezzorco", classe: "Guerriero", abilitaClasse: ["atletica", "percezione"],
+      razza: "Mezzorco", classe: "Guerriero", abilitaClasse: ["atletica", "percezione"], scelteClasse: { "stile-guerriero": ["Difesa"] },
       assegnazione: { FOR: 0, COS: 1, DES: 2, SAG: 3, CAR: 4, INT: 5 },
       background: "Soldato", abilitaSostitutive: ["sopravvivenza", "storia"], strumentoBackground: "Dadi",
       equipaggiamento: [{ opzione: 0, armi: [] }, { opzione: 0, armi: ["Spada Lunga"] }, { opzione: 1, armi: [] }, { opzione: 1, armi: [] }],
@@ -74,7 +84,8 @@ describe("creazione: personaggi completi", () => {
     expect(c.competenzeAltre.lingue).toEqual(["Comune", "Orchesco"]);
     expect(c.monete.mo).toBe(10);
     const d = derivate(c);
-    expect(d.ca).toBe(18);
+    expect(d.ca).toBe(19); // cotta di maglia 16, scudo +2, stile Difesa +1
+    expect(c.privilegi).toContainEqual(expect.objectContaining({ nome: "Difesa", fonte: "Stile di Combattimento" }));
     expect(d.haIncantesimi).toBe(false);
     expect(d.haPresagio).toBe(false);
     expect(c.privilegi.map(p => p.nome)).toEqual(expect.arrayContaining(["Tenacia Implacabile", "Grado Militare", "Recuperare Energie"]));

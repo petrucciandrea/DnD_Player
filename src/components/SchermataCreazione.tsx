@@ -6,12 +6,13 @@ import { CLASSI, incantesimiIniziali, LINGUE, NOMI_CLASSI, type NomeClasse } fro
 import {
   abilitaDoppie, abilitaPrimaDelBackground, ALLINEAMENTI, armiDisponibili, bonusRazziali, incantesimiDellaClasse,
   listaAbilitaClasse, mancaNelPasso, numeroTrucchettiIniziali, PASSI, personaggioIniziale, punteggiFinali, razzaCompleta,
-  scelteVuote, sommaMigliori3, sottorazzeDi, strumentiTra, type SceltePersonaggio,
+  scelteIniziali, scelteVuote, sommaMigliori3, sottorazzeDi, strumentiTra, type SceltePersonaggio,
 } from "../creazione";
 import { catalogoCreazione, importaPersonaggio } from "../accesso";
 import { useRichiestaTiro } from "../tiroDadi";
 import DialogoTiro from "./DialogoTiro";
 import Avatar from "./Avatar";
+import ScegliMolti from "./ScegliMolti";
 
 interface Props {
   giocatore: string; // proposto nel campo "Giocatore"
@@ -46,34 +47,6 @@ function Opzione({ scelta, onClick, titolo, sotto, children }: {
       {sotto && <div className="text-xs text-slate-400 mt-0.5">{sotto}</div>}
       {children}
     </button>
-  );
-}
-
-// Scelta multipla con un massimo di voci.
-function ScegliMolti({ titolo, opzioni, scelte, massimo, onCambia, nome = (v: string) => v }: {
-  titolo: string; opzioni: string[]; scelte: string[]; massimo: number; onCambia: (v: string[]) => void; nome?: (v: string) => string;
-}) {
-  const cambia = (v: string) =>
-    onCambia(scelte.includes(v) ? scelte.filter(x => x !== v) : scelte.length < massimo ? [...scelte, v] : scelte);
-  return (
-    <div className="space-y-2">
-      <div className={etichetta}>{titolo} <span className="normal-case text-slate-500">({scelte.length}/{massimo})</span></div>
-      <div className="flex flex-wrap gap-1.5">
-        {opzioni.map(v => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => cambia(v)}
-            className={`px-2.5 py-1 rounded-lg border text-xs transition ${scelte.includes(v)
-              ? "bg-indigo-600 border-indigo-500 text-white"
-              : "bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-600 disabled:opacity-40"}`}
-            disabled={!scelte.includes(v) && scelte.length >= massimo}
-          >
-            {nome(v)}
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -277,7 +250,7 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
             <Opzione
               key={nome}
               scelta={s.classe === nome}
-              onClick={() => cambia({ classe: nome as NomeClasse, sottoclasse: "", abilitaClasse: [], strumentiClasse: [], equipaggiamento: [], trucchetti: [], incantesimi: [] })}
+              onClick={() => cambia({ classe: nome as NomeClasse, sottoclasse: "", abilitaClasse: [], strumentiClasse: [], scelteClasse: {}, equipaggiamento: [], trucchetti: [], incantesimi: [] })}
               titolo={nome}
               sotto={`d${r.dadoVita} · TS ${r.tiriSalvezza.join(", ")}${magia}`}
             />
@@ -306,6 +279,17 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
               onCambia={v => cambia({ strumentiClasse: v })}
             />
           )}
+          {scelteIniziali(s, cat).map(({ scelta, numero, opzioni }) => (
+            <ScegliMolti
+              key={scelta.id}
+              titolo={scelta.nome}
+              opzioni={opzioni.map(o => o.nome)}
+              scelte={s.scelteClasse[scelta.id] ?? []}
+              massimo={numero}
+              onCambia={v => cambia({ scelteClasse: { ...s.scelteClasse, [scelta.id]: v } })}
+              suggerimento={v => opzioni.find(o => o.nome === v)?.descrizione}
+            />
+          ))}
           <p className="text-xs text-slate-400">
             Armature: {regole.armature.join(", ") || "nessuna"} · Armi: {regole.armi.join(", ")}
             {regole.strumenti.length > 0 && ` · Strumenti: ${regole.strumenti.join(", ")}`}

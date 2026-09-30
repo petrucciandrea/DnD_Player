@@ -39,7 +39,7 @@ const PRIMO_LIVELLO: SemePrivilegioClasse[] = [
   c("Druido", 1, "Druidico", "Conosce il druidico, la lingua segreta dei druidi, e sa lasciare messaggi nascosti."),
   c("Druido", 1, "Incantesimi (Druido)", "Lancia incantesimi da druido usando la Saggezza; ogni giorno prepara livello + mod SAG incantesimi dall'intera lista. Usa un focus druidico."),
 
-  c("Guerriero", 1, "Stile di Combattimento", "Sceglie uno stile tra Arma a Due Mani, Combattere con Due Armi, Difesa, Duellare, Protezione e Tiro, che gli dà un beneficio permanente."),
+  c("Guerriero", 1, "Stile di Combattimento", "Sceglie uno stile tra Combattere con Armi Possenti, Combattere con Due Armi, Difesa, Duellare, Protezione e Tiro, che gli dà un beneficio permanente."),
   c("Guerriero", 1, "Recuperare Energie", "Con un'azione bonus recupera 1d10 + livello da guerriero PF. Una volta per riposo breve o lungo."),
 
   c("Ladro", 1, "Maestria", "Sceglie due competenze (abilità o arnesi da scasso): il bonus di competenza raddoppia."),

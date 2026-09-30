@@ -4,6 +4,7 @@ import type {
 } from "./tipi.ts";
 import { ABILITA, CARATTERISTICHE, MUNIZIONI_INIZIALI, nuovaArma, pfPrimoLivello, usaMunizioni } from "./regole.ts";
 import { personaggioVuoto } from "./scheda.ts";
+import { opzioniScelta, scelteDelPersonaggio, totaleScelte } from "./dati/scelte.ts";
 import {
   CLASSI, GIOCHI, incantesimiIniziali, STRUMENTI_ARTIGIANO, STRUMENTI_MUSICALI, type NomeClasse, type RegoleClasse,
   type VoceEquipaggiamento,
@@ -30,6 +31,7 @@ export interface SceltePersonaggio {
   sottoclasse: string; // solo per chi la sceglie al 1° livello
   abilitaClasse: string[];
   strumentiClasse: string[]; // Bardo (3 strumenti musicali), Monaco (1)
+  scelteClasse: Record<string, string[]>; // scelte di privilegio del 1° livello per id (Stile di Combattimento del Guerriero)
 
   tiri: number[][]; // sei tiri di 4d6
   assegnazione: Partial<Record<Caratteristica, number>>; // caratteristica → indice del tiro
@@ -60,7 +62,7 @@ export interface SceltePersonaggio {
 
 export const scelteVuote = (): SceltePersonaggio => ({
   razza: "", sottorazza: "", bonusAScelta: [], abilitaRazza: [], lingueRazza: [], strumentoRazza: "", trucchettoRazza: "",
-  classe: "", sottoclasse: "", abilitaClasse: [], strumentiClasse: [],
+  classe: "", sottoclasse: "", abilitaClasse: [], strumentiClasse: [], scelteClasse: {},
   tiri: [], assegnazione: {},
   background: "", abilitaSostitutive: [], lingueBackground: [], strumentoBackground: "",
   equipaggiamento: [],
@@ -216,6 +218,16 @@ export const PASSI: { id: Passo; titolo: string }[] = [
   { id: "dettagli", titolo: "Dettagli" },
 ];
 
+// Scelte di privilegio del 1° livello, con le opzioni del catalogo (senza catalogo non si chiedono).
+export function scelteIniziali(s: SceltePersonaggio, catalogo: CatalogoCreazione) {
+  if (!s.classe) return [];
+  return scelteDelPersonaggio({ info: { classe: s.classe, sottoclasse: s.sottoclasse, livello: 1 } }).flatMap(scelta => {
+    const opzioni = opzioniScelta(scelta, catalogo.opzioniPrivilegio);
+    const numero = Math.min(totaleScelte(scelta, 1), opzioni.length);
+    return numero > 0 ? [{ scelta, numero, opzioni }] : [];
+  });
+}
+
 // Messaggio che spiega cosa manca per completare il passo, oppure null.
 export function mancaNelPasso(passo: Passo, s: SceltePersonaggio, catalogo: CatalogoCreazione): string | null {
   const razza = razzaCompleta(catalogo, s.razza, s.sottorazza);
@@ -237,6 +249,9 @@ export function mancaNelPasso(passo: Passo, s: SceltePersonaggio, catalogo: Cata
       if (new Set(s.abilitaClasse).size < regole.abilita.numero) return `Scegli ${regole.abilita.numero} abilità.`;
       if (regole.strumentiAScelta && new Set(s.strumentiClasse.filter(Boolean)).size < regole.strumentiAScelta.numero) {
         return "Scegli gli strumenti.";
+      }
+      for (const x of scelteIniziali(s, catalogo)) {
+        if ((s.scelteClasse[x.scelta.id] ?? []).length < x.numero) return `Scegli: ${x.scelta.nome}.`;
       }
       return null;
     case "caratteristiche":
@@ -306,7 +321,8 @@ export function personaggioIniziale(s: SceltePersonaggio, catalogo: CatalogoCrea
     .filter(p => p.classe === s.classe && p.livello === 1 && (p.sottoclasse === null || p.sottoclasse === c.info.sottoclasse))
     .map(p => p.privilegio);
   const privilegi: Privilegio[] = [];
-  for (const p of [...razza.privilegi, bg.privilegio, ...privilegiClasse]) {
+  const opzioniScelte = scelteIniziali(s, catalogo).flatMap(x => x.opzioni.filter(o => (s.scelteClasse[x.scelta.id] ?? []).includes(o.nome)));
+  for (const p of [...razza.privilegi, bg.privilegio, ...privilegiClasse, ...opzioniScelte]) {
     if (!privilegi.some(x => x.nome === p.nome && x.fonte === p.fonte)) privilegi.push(p);
   }
   c.privilegi = privilegi;

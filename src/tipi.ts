@@ -261,6 +261,7 @@ export interface CatalogoCreazione {
   armi: Arma[];
   armature: Armatura[];
   privilegiClasse: PrivilegioClasse[]; // 1° livello
+  opzioniPrivilegio: Privilegio[]; // opzioni delle scelte di privilegio (Metamagia, stili, terreni: dati/scelte.ts)
   incantesimi: IncantesimoCatalogo[];
 }
 

@@ -3,8 +3,11 @@ import { Sparkles, X, Target, Flame, Hourglass, BookOpen } from "lucide-react";
 import type { CharacterData, SetChar, Spell } from "../tipi";
 import type { Danni, Derivate } from "../regole";
 import {
-  attivaEffetto, critico, dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, segno, slotUtilizzabili, testoDanni,
+  attivaEffetto, costoMetamagia, critico, dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, segno, slotUtilizzabili, testoDanni,
+  usaMetamagia,
 } from "../regole";
+import { FONTE_METAMAGIA } from "../dati/scelte";
+import { metamagia } from "../dati/metamagia";
 import type { ChiediD20, ChiediTiro } from "../tiroDadi";
 import { conSuggerimento, tiraDanni } from "../tiroDadi";
 import { effettoDaIncantesimo } from "../dati/condizioni";
@@ -53,7 +56,13 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
   const totAttacchi = conLivello ? numeroAttacchi(conLivello, livelloEffettivo) : 0;
   const pronto = spell.livello === 0 || spell.preparato || !d.prepara; // chi li conosce non li prepara
   const bloccato = d.incantesimiBloccati; // per esempio un'armatura senza competenza
-  const puoLanciare = !bloccato && (spell.livello === 0 || (pronto && disponibili.length > 0));
+  // Metamagia: le opzioni che lo stregone conosce, pagate con i punti stregoneria al lancio.
+  const puntiStregoneria = d.risorse.find(r => r.id === "punti-stregoneria");
+  const metamagieNote = puntiStregoneria ? char.privilegi.filter(p => p.fonte === FONTE_METAMAGIA && metamagia(p.nome)) : [];
+  const [metamagieScelte, setMetamagieScelte] = useState<string[]>([]);
+  const costoMeta = costoMetamagia(metamagieScelte, livelloEffettivo); // lanciato con uno slot più alto, conta quel livello
+  const puntiMancanti = costoMeta > (puntiStregoneria?.rimasti ?? 0);
+  const puoLanciare = !bloccato && !puntiMancanti && (spell.livello === 0 || (pronto && disponibili.length > 0));
   const puoRituale = !bloccato && !!scheda?.rituale;
 
   const lancia = (livelloSlot: number | null, rituale = false) => {
@@ -61,9 +70,11 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
     if (concentrazione && char.concentrazione && char.concentrazione !== spell.nome
       && !confirm(`Stai mantenendo la concentrazione su ${char.concentrazione}. Lanciando ${spell.nome} la interrompi. Continuare?`)) return;
     // Gli incantesimi che danno un effetto con una durata (Scudo, Armatura Magica...) lo attivano da soli.
+    // Con la Metamagia si spendono anche i punti stregoneria (il Gemello costa quanto il livello a cui si lancia).
     setChar(prev => {
       const lanciato = lanciaIncantesimo(prev, livelloSlot, { concentrazione });
-      return effetto && effettoSuDiMe && lanciato !== prev ? attivaEffetto(lanciato, effetto.id, { daIncantesimo: true }) : lanciato;
+      const conEffetto = effetto && effettoSuDiMe && lanciato !== prev ? attivaEffetto(lanciato, effetto.id, { daIncantesimo: true }) : lanciato;
+      return metamagieScelte.length > 0 ? usaMetamagia(conEffetto, metamagieScelte, livelloSlot ?? spell.livello) : conEffetto;
     });
     setLancio({ livelloSlot, rituale });
   };
@@ -181,6 +192,29 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
                 Non preparato{puoRituale ? ": puoi lanciarlo solo come rituale." : "."}
               </p>
             )}
+            {metamagieNote.length > 0 && (
+              <div className="space-y-1 text-sm text-slate-300">
+                <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+                  Metamagia ({puntiStregoneria?.rimasti ?? 0} punti stregoneria)
+                </span>
+                {metamagieNote.map(p => {
+                  const m = metamagia(p.nome)!;
+                  const scelta = metamagieScelte.includes(p.nome);
+                  return (
+                    <label key={p.nome} className="flex items-start gap-2" title={m.nota}>
+                      <input
+                        type="checkbox"
+                        checked={scelta}
+                        onChange={() => setMetamagieScelte(prev => (scelta ? prev.filter(x => x !== p.nome) : [...prev, p.nome]))}
+                        className="accent-indigo-500 mt-1"
+                      />
+                      <span>{p.nome} <span className="text-xs text-slate-500">({m.costo(livelloEffettivo)} pt) · {m.nota}</span></span>
+                    </label>
+                  );
+                })}
+                {puntiMancanti && <p className="text-xs text-rose-300">Punti stregoneria insufficienti: servono {costoMeta}.</p>}
+              </div>
+            )}
             {effetto?.bersaglio === "altri" && (
               <label className="flex items-center gap-2 text-sm text-slate-300">
                 <input type="checkbox" checked={suDiMe} onChange={e => setSuDiMe(e.target.checked)} className="accent-indigo-500" />
@@ -208,6 +242,11 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
             </p>
             {effetto && effettoSuDiMe && (
               <p className="text-xs text-indigo-300">Effetto attivo: {effetto.nome} (lo gestisci nella tab Statistiche).</p>
+            )}
+            {metamagieScelte.length > 0 && (
+              <p className="text-xs text-indigo-300">
+                Metamagia ({costoMeta} punti): {metamagieScelte.map(n => `${n}: ${metamagia(n)?.nota}`).join(" ")}
+              </p>
             )}
 
             {totAttacchi > 0 && (

@@ -69,7 +69,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
   };
 
   const attaccoArma = (arma: ArmaPersonaggio) => {
-    const { bonus, mischiaFOR, car, danni, danniDueMani } = d.attaccoArma(arma);
+    const { bonus, mischiaFOR, car, danni, danniDueMani, note } = d.attaccoArma(arma);
     const nome = `${arma.nome}${arma.bonus !== 0 ? ` ${segno(arma.bonus)}` : ""}`;
     const opzioniDanno: OpzioneDanno[] = danniDueMani
       ? [
@@ -78,7 +78,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
         ]
       : [{ etichetta: nome, danni }];
     return tira(`Attacco: ${nome}`, 20, bonus, {
-      opzioniDanno, extra: danniExtraArma(char, arma), sogliaCritico: d.sogliaCritico,
+      opzioniDanno, extra: danniExtraArma(char, arma), sogliaCritico: d.sogliaCritico, descrizione: note.join(" ") || undefined,
       dadiCriticoBrutale: arma.distanza ? 0 : d.dadiCriticoBrutale,
       contesto: { tipo: "attacco", mischiaFOR, car },
     });
@@ -222,7 +222,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
       </div>
 
       <div className="space-y-4">
-        <PannelloRisorse d={d} setChar={setChar} />
+        <PannelloRisorse char={char} d={d} setChar={setChar} />
         <PannelloCondizioni char={char} d={d} setChar={setChar} />
 
         {d.haPresagio && (
