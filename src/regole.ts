@@ -106,11 +106,13 @@ export const segno = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 export const formulaDanno = (dado: string, mod: number) =>
   mod === 0 ? dado : `${dado} ${mod > 0 ? "+" : "-"} ${Math.abs(mod)}`;
 
+// Una parte dei danni: i danni di un colpo possono averne più di una (arma + Attacco Furtivo, Punizione Divina...).
 export interface Danni {
-  numero: number;
+  numero: number; // 0 = danno fisso (colpo senz'armi di chi non è monaco)
   facce: number;
   mod: number;
   tipo: string;
+  etichetta?: string; // da dove vengono, per le parti aggiunte all'arma
 }
 
 export function parseDado(espressione: string) {
@@ -119,15 +121,113 @@ export function parseDado(espressione: string) {
   return { numero: Number(m[1]), facce: Number(m[2]) };
 }
 
-export const testoDanni = (x: Danni) => formulaDanno(`${x.numero}d${x.facce}`, x.mod);
+const testoParte = (x: Danni) => (x.numero === 0 ? String(x.mod) : formulaDanno(`${x.numero}d${x.facce}`, x.mod));
+
+// Più parti si scrivono una dopo l'altra: "1d8 + 3 + 2d6".
+export const testoDanni = (x: Danni | Danni[]) => (Array.isArray(x) ? x.map(testoParte).join(" + ") : testoParte(x));
+
+// "1d8 + 3 danni taglienti + 2d6 danni perforanti (Attacco Furtivo)"
+export const descrizioneDanni = (parti: Danni[]) =>
+  parti.map(p => `${testoParte(p)} danni ${p.tipo}${p.etichetta ? ` (${p.etichetta})` : ""}`).join(" + ");
 
 // Con un colpo critico si tirano il doppio dei dadi (il modificatore no).
 export const critico = (x: Danni): Danni => ({ ...x, numero: x.numero * 2 });
 
+// Critico di un colpo in più parti: raddoppiano i dadi di tutte; `dadiExtra` (Critico Brutale)
+// aggiunge dadi dell'arma alla prima parte.
+export const dannoCritico = (parti: Danni[], dadiExtra = 0): Danni[] =>
+  parti.map((p, i) => ({ ...critico(p), numero: p.numero * 2 + (i === 0 && p.numero > 0 ? dadiExtra : 0) }));
+
+// "Contundente" → "danni contundenti"
+const tipoDanni = (tipoArma: string) => tipoArma.toLowerCase().replace(/e$/, "i");
+
 export function dannoArma(arma: Arma, mod: number, dueMani = false): Danni {
   const dado = parseDado(dueMani && arma.dadoVersatile ? arma.dadoVersatile : arma.dado);
-  // "Contundente" → "danni contundenti"
-  return { ...dado, mod, tipo: arma.tipoDanno.toLowerCase().replace(/e$/, "i") };
+  return { ...dado, mod, tipo: tipoDanni(arma.tipoDanno) };
+}
+
+// Il colpo senz'armi: tutti ne sono competenti. Fa 1 + FOR (0d1 = nessun dado), o il dado delle Arti Marziali.
+export const COLPO_SENZA_ARMI: ArmaPersonaggio = {
+  id: -1, nome: "Colpo senz'armi", dado: "0d1", tipoDanno: "Contundente", proprieta: "", accurata: false, categoria: "semplice",
+  bonus: 0, munizioni: null, durabilita: null, danneggiata: null, rotta: false,
+};
+const eColpoSenzaArmi = (a: Arma) => a.nome === COLPO_SENZA_ARMI.nome;
+
+// --- Privilegi di classe che cambiano attacchi e danni ---
+// Si riconoscono da classe, sottoclasse e livello (come le risorse), così valgono anche se la scheda non ha il privilegio.
+
+type InfoClasse = Pick<CharacterData, "info">;
+const eClasse = (c: InfoClasse, classe: string, livello = 1, sottoclasse?: string) =>
+  c.info.classe === classe && c.info.livello >= livello && (sottoclasse === undefined || c.info.sottoclasse === sottoclasse);
+
+// Attacco Extra: quanti attacchi con l'azione di Attacco.
+export function attacchiPerAzione(c: InfoClasse): number {
+  const liv = c.info.livello;
+  if (c.info.classe === "Guerriero") return liv >= 20 ? 4 : liv >= 11 ? 3 : liv >= 5 ? 2 : 1;
+  if (["Barbaro", "Monaco", "Paladino", "Ranger"].includes(c.info.classe) && liv >= 5) return 2;
+  if (eClasse(c, "Bardo", 6, "Collegio del Valore")) return 2;
+  return 1;
+}
+
+// Critico Migliorato e Critico Superiore del Campione: il d20 minimo per un colpo critico con un'arma.
+export const sogliaCritico = (c: InfoClasse) =>
+  eClasse(c, "Guerriero", 15, "Campione") ? 18 : eClasse(c, "Guerriero", 3, "Campione") ? 19 : 20;
+
+// Critico Brutale del Barbaro: dadi dell'arma in più su un critico in mischia.
+export const dadiCriticoBrutale = (c: InfoClasse) =>
+  !eClasse(c, "Barbaro", 9) ? 0 : c.info.livello >= 17 ? 3 : c.info.livello >= 13 ? 2 : 1;
+
+// Arti Marziali del Monaco: d4, d6 dal 5°, d8 dall'11°, d10 dal 17°.
+export const dadoArtiMarziali = (livello: number) => (livello >= 17 ? 10 : livello >= 11 ? 8 : livello >= 5 ? 6 : 4);
+
+// Armi da monaco: spada corta e armi semplici da mischia senza "Pesante" né "Due mani" (più il colpo senz'armi).
+export const armaDaMonaco = (a: Arma) =>
+  eColpoSenzaArmi(a) || a.nome === "Spada Corta"
+  || (a.categoria === "semplice" && !a.distanza && !/pesante|due mani/i.test(a.proprieta));
+
+export const dadiAttaccoFurtivo = (livello: number) => Math.ceil(livello / 2);
+
+// Punizione Divina: 2d8 con uno slot di 1°, +1d8 per livello in più (massimo 5d8), +1d8 contro immondi e non morti.
+export function dannoPunizione(livelloSlot: number, controImmondi = false): Danni {
+  const numero = Math.min(5, livelloSlot + 1) + (controImmondi ? 1 : 0);
+  return { numero, facce: 8, mod: 0, tipo: "radiosi", etichetta: "Punizione Divina" };
+}
+
+// Danni che si aggiungono a un colpo andato a segno con l'arma. `facoltativa`: il giocatore sceglie se applicarli
+// (una volta per turno, o spendendo uno slot se `slot`).
+export interface DannoExtra {
+  id: string;
+  etichetta: string;
+  danni: Danni;
+  facoltativa: boolean;
+  slot?: boolean; // si spende uno slot: i danni dipendono dal suo livello (dannoPunizione)
+  nota?: string;
+}
+
+export function danniExtraArma(c: CharacterData, arma: Arma): DannoExtra[] {
+  const liv = c.info.livello;
+  const extra: DannoExtra[] = [];
+  const mischia = !arma.distanza;
+  if (c.info.classe === "Ladro" && (arma.accurata || arma.distanza)) {
+    extra.push({
+      id: "attacco-furtivo", etichetta: "Attacco Furtivo", facoltativa: true,
+      danni: { numero: dadiAttaccoFurtivo(liv), facce: 6, mod: 0, tipo: tipoDanni(arma.tipoDanno), etichetta: "Attacco Furtivo" },
+      nota: "Una volta per turno, con vantaggio o con un alleato entro 1,5 m dal bersaglio.",
+    });
+  }
+  if (eClasse(c, "Paladino", 2) && mischia && !eColpoSenzaArmi(arma) && slotUtilizzabili(c, 1).length > 0) {
+    extra.push({
+      id: "punizione-divina", etichetta: "Punizione Divina", facoltativa: true, slot: true, danni: dannoPunizione(slotUtilizzabili(c, 1)[0]),
+      nota: "Spende uno slot incantesimo.",
+    });
+  }
+  if (eClasse(c, "Paladino", 11) && mischia && !eColpoSenzaArmi(arma)) {
+    extra.push({
+      id: "punizione-migliorata", etichetta: "Punizione Divina Migliorata", facoltativa: false,
+      danni: { numero: 1, facce: 8, mod: 0, tipo: "radiosi", etichetta: "Punizione Divina Migliorata" },
+    });
+  }
+  return extra;
 }
 
 // Trucchetti: 1 dado, 2 dal 5° livello, 3 dall'11°, 4 dal 17°.
@@ -156,19 +256,23 @@ export function slotUtilizzabili(c: CharacterData, livelloIncantesimo: number): 
     .map(x => x.livello);
 }
 
+// Spende uno slot di quel livello, se ce n'è uno libero (incantesimi, Punizione Divina...).
+export function spendiSlot(c: CharacterData, livello: number): CharacterData {
+  if (!slotUtilizzabili(c, livello).includes(livello)) return c;
+  const slotSpesi = [...c.slotSpesi];
+  slotSpesi[livello - 1] = (slotSpesi[livello - 1] ?? 0) + 1;
+  return { ...c, slotSpesi };
+}
+
 // livelloSlot null = trucchetto o rituale: nessuno slot speso.
 // Con `concentrazione` l'incantesimo sostituisce quello su cui ci si stava concentrando.
 export function lanciaIncantesimo(
   c: CharacterData, livelloSlot: number | null, opzioni: { concentrazione?: string } = {},
 ): CharacterData {
-  let slotSpesi = c.slotSpesi;
-  if (livelloSlot !== null) {
-    if (!slotUtilizzabili(c, livelloSlot).includes(livelloSlot)) return c;
-    slotSpesi = [...c.slotSpesi];
-    slotSpesi[livelloSlot - 1] = (slotSpesi[livelloSlot - 1] ?? 0) + 1;
-  }
-  if (slotSpesi === c.slotSpesi && !opzioni.concentrazione) return c;
-  return { ...c, slotSpesi, concentrazione: opzioni.concentrazione ?? c.concentrazione };
+  const speso = livelloSlot === null ? c : spendiSlot(c, livelloSlot);
+  if (livelloSlot !== null && speso === c) return c;
+  if (speso === c && !opzioni.concentrazione) return c;
+  return { ...speso, concentrazione: opzioni.concentrazione ?? c.concentrazione };
 }
 
 // --- Punti ferita, concentrazione e tiri salvezza contro morte ---
@@ -305,16 +409,32 @@ export function derivate(c: CharacterData) {
   // Mentre è in ira il bonus ai danni si aggiunge alle armi da mischia usate con la Forza.
   // Il bonus di un'arma magica vale per l'attacco e per i danni; quello di competenza solo con la competenza nell'arma.
   const iraAttiva = c.effetti.some(e => e.id === "ira");
+  // Arti Marziali: il Monaco senza armatura né scudo usa con le armi da monaco la migliore tra FOR e DES
+  // e il dado delle Arti Marziali se è più alto di quello dell'arma.
+  const artiMarziali = c.info.classe === "Monaco" && !c.armatura && !c.scudo;
+  const dadoMonaco = (dado: string) => {
+    const { numero, facce } = parseDado(dado);
+    const ma = dadoArtiMarziali(liv);
+    return numero * (facce + 1) < ma + 1 ? `1d${ma}` : dado;
+  };
   const attaccoArma = (arma: Arma & { bonus?: number }) => {
-    const usaDES = arma.distanza && !arma.accurata ? true : arma.accurata ? mod("DES") > mod("FOR") : false;
+    const monaco = artiMarziali && armaDaMonaco(arma);
+    const usaDES = arma.distanza && !arma.accurata ? true : arma.accurata || monaco ? mod("DES") > mod("FOR") : false;
     const car: Caratteristica = usaDES ? "DES" : "FOR";
     const m = mod(car);
     const conForza = !arma.distanza && car === "FOR";
     const magico = arma.bonus ?? 0;
-    const competente = competenteArma(c, arma);
+    const colpo = eColpoSenzaArmi(arma);
+    const competente = colpo || competenteArma(c, arma);
+    // Senza Arti Marziali il colpo senz'armi fa 1 + FOR.
+    const modDanno = m + magico + (iraAttiva && conForza ? bonusIra(liv) : 0) + (colpo && !monaco ? 1 : 0);
+    const dadi = monaco
+      ? { ...arma, dado: dadoMonaco(arma.dado), ...(arma.dadoVersatile ? { dadoVersatile: dadoMonaco(arma.dadoVersatile) } : {}) }
+      : arma;
     return {
-      bonus: m + (competente ? comp : 0) + magico, mod: m, car, competente,
-      modDanno: m + magico + (iraAttiva && conForza ? bonusIra(liv) : 0), mischiaFOR: conForza,
+      bonus: m + (competente ? comp : 0) + magico, mod: m, car, competente, modDanno, mischiaFOR: conForza,
+      danni: dannoArma(dadi, modDanno),
+      danniDueMani: dadi.dadoVersatile ? dannoArma(dadi, modDanno, true) : null,
     };
   };
   const armaturaCompetente = competenteArmatura(c);
@@ -330,6 +450,10 @@ export function derivate(c: CharacterData) {
     ts,
     abilita,
     attaccoArma,
+    attacchiPerAzione: attacchiPerAzione(c),
+    sogliaCritico: sogliaCritico(c),
+    dadiCriticoBrutale: dadiCriticoBrutale(c),
+    artiMarziali,
     ca,
     notaCA,
     iniziativa: mod("DES"),

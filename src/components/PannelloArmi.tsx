@@ -3,8 +3,8 @@ import { Check, Hammer, Minus, Plus, RotateCcw, ShieldAlert, Swords, Trash2, Wre
 import type { Arma, ArmaPersonaggio, CharacterData, SetChar } from "../tipi";
 import type { Derivate } from "../regole";
 import {
-  MUNIZIONI_INIZIALI, danneggiaArma, formulaDanno, nuovaArma, parseDado, recuperaMunizioni, ricaricaArma, riparaArma, rompiArma, segno,
-  statoArma, usaArma, usaMunizioni,
+  COLPO_SENZA_ARMI, MUNIZIONI_INIZIALI, danneggiaArma, nuovaArma, parseDado, recuperaMunizioni, ricaricaArma, riparaArma, rompiArma, segno,
+  statoArma, testoDanni, usaArma, usaMunizioni,
 } from "../regole";
 import { catalogoCreazione } from "../accesso";
 
@@ -131,13 +131,34 @@ export default function PannelloArmi({ char, d, setChar, onAttacco }: Props) {
         )}
       </div>
 
-      {char.armi.length === 0 && !aggiunta && <p className="text-xs text-slate-500">Nessuna arma.</p>}
+      {d.attacchiPerAzione > 1 && (
+        <p className="text-xs text-indigo-300 mb-2">Attacco Extra: {d.attacchiPerAzione} attacchi con l'azione di Attacco.</p>
+      )}
+      {char.armi.length === 0 && !aggiunta && <p className="text-xs text-slate-500 mb-2">Nessuna arma.</p>}
 
       <div className="space-y-2">
+        {(() => {
+          const { bonus, danni } = d.attaccoArma(COLPO_SENZA_ARMI);
+          return (
+            <button
+              onClick={() => onAttacco(COLPO_SENZA_ARMI)}
+              title="Tira per colpire"
+              className="w-full flex flex-wrap justify-between items-center gap-2 px-3 py-2 rounded-lg border border-slate-800/60 hover:bg-slate-800/40 text-sm text-left transition"
+            >
+              <span className="text-slate-400">
+                Colpo senz'armi{d.artiMarziali && <span className="ml-2 text-[10px] uppercase font-bold text-indigo-300">Arti Marziali</span>}
+              </span>
+              <span className="flex gap-4 text-xs font-mono">
+                <span className="text-indigo-300 font-bold">Attacco: {segno(bonus)}</span>
+                <span className="text-amber-300">Danno: {testoDanni(danni)}</span>
+              </span>
+            </button>
+          );
+        })()}
         {char.armi.map(arma => {
-          const { bonus, modDanno, competente } = d.attaccoArma(arma);
+          const { bonus, competente, danni, danniDueMani } = d.attaccoArma(arma);
           const { utilizzabile, motivo } = statoArma(arma);
-          const danno = formulaDanno(arma.dado, modDanno) + (arma.dadoVersatile ? ` / ${formulaDanno(arma.dadoVersatile, modDanno)}` : "");
+          const danno = testoDanni(danni) + (danniDueMani ? ` / ${testoDanni(danniDueMani)}` : "");
           return (
             <div key={arma.id} className={`rounded-lg border ${arma.rotta ? "border-rose-900/60 bg-rose-950/10" : "border-slate-800 bg-slate-950/60"}`}>
               <button

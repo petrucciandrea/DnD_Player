@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { Danni, Modalita } from "./regole";
-import { risultatoD20, testoDanni, totaleDanni } from "./regole";
+import { descrizioneDanni, risultatoD20, testoDanni, totaleDanni } from "./regole";
 import type { CharacterData } from "./tipi";
 import { suggerimentoTiro, type ContestoTiro, type TipoTiro } from "./dati/condizioni";
 
@@ -51,18 +51,28 @@ export interface TiroDanni {
   totale: number;
 }
 
-export async function tiraDanni(chiediTiro: ChiediTiro, titolo: string, danni: Danni): Promise<TiroDanni | null> {
+// Un solo dialogo per tutte le parti del danno (arma, Attacco Furtivo...). Senza dadi (danno fisso) il dialogo non si apre.
+export async function tiraDanni(chiediTiro: ChiediTiro, titolo: string, danni: Danni | Danni[]): Promise<TiroDanni | null> {
+  const parti = Array.isArray(danni) ? danni : [danni];
+  const mod = parti.reduce((acc, p) => acc + p.mod, 0);
+  const totDadi = parti.reduce((acc, p) => acc + p.numero, 0);
+  if (totDadi === 0) return { tiri: [], totale: totaleDanni([], mod) };
+  let n = 0;
+  const dadi = parti.flatMap(p => Array.from({ length: p.numero }, () => {
+    n += 1;
+    return {
+      etichetta: totDadi === 1 ? "Risultato" : `${n}° dado${p.etichetta ? ` (${p.etichetta})` : ""}`,
+      facce: p.facce,
+    };
+  }));
   const tiri = await chiediTiro({
     titolo,
-    descrizione: `${testoDanni(danni)} danni ${danni.tipo}`,
-    dadi: Array.from({ length: danni.numero }, (_, i) => ({
-      etichetta: danni.numero === 1 ? "Risultato" : `${i + 1}° dado`,
-      facce: danni.facce,
-    })),
-    bonus: danni.mod,
+    descrizione: parti.length === 1 ? `${testoDanni(parti[0])} danni ${parti[0].tipo}` : descrizioneDanni(parti),
+    dadi,
+    bonus: mod,
     ammettiTotale: true,
   });
-  return tiri && { tiri, totale: totaleDanni(tiri, danni.mod) };
+  return tiri && { tiri, totale: totaleDanni(tiri, mod) };
 }
 
 // Ogni tiro passa di qui: il dialogo chiede se tirare con dadi fisici

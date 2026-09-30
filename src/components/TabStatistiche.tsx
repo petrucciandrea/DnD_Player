@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Shield, Eye, Dices, Pencil, Check, Minus, Plus } from "lucide-react";
 import type { ArmaPersonaggio, Caratteristica, CharacterData, SetChar } from "../tipi";
-import type { Danni, Derivate, Modalita } from "../regole";
+import type { Danni, DannoExtra, Derivate, Modalita } from "../regole";
 import {
-  ABILITA, CARATTERISTICHE, critico, dannoArma, modificaCaratteristica, segno, testoDanni,
+  ABILITA, CARATTERISTICHE, danniExtraArma, modificaCaratteristica, segno, slotUtilizzabili, spendiSlot,
 } from "../regole";
 import type { ChiediD20, ChiediTiro, TiroDanni } from "../tiroDadi";
 import { conSuggerimento, tiraDanni } from "../tiroDadi";
@@ -11,11 +11,7 @@ import type { ContestoTiro } from "../dati/condizioni";
 import PannelloRisorse from "./PannelloRisorse";
 import PannelloCondizioni from "./PannelloCondizioni";
 import PannelloArmi from "./PannelloArmi";
-
-interface OpzioneDanno {
-  etichetta: string;
-  danni: Danni;
-}
+import OpzioniDanno, { type OpzioneDanno } from "./OpzioniDanno";
 
 interface Tiro {
   etichetta: string;
@@ -25,7 +21,11 @@ interface Tiro {
   tiri?: number[];
   modalita?: Modalita;
   presagio?: boolean;
+  id: number; // per ripartire da zero con le scelte dei danni a ogni tiro
   opzioniDanno?: OpzioneDanno[];
+  extra?: DannoExtra[];
+  sogliaCritico?: number; // Critico Migliorato: 19 o 18 con le armi
+  dadiCriticoBrutale?: number;
 }
 
 interface Props {
@@ -36,55 +36,64 @@ interface Props {
   chiediD20: ChiediD20;
 }
 
+const modTotale = (parti: Danni[]) => parti.reduce((acc, p) => acc + p.mod, 0);
+
 export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20 }: Props) {
   const [ultimoTiro, setUltimoTiro] = useState<Tiro | null>(null);
-  const [ultimoDanno, setUltimoDanno] = useState<(TiroDanni & { etichetta: string; danni: Danni }) | null>(null);
+  const [ultimoDanno, setUltimoDanno] = useState<(TiroDanni & { etichetta: string; danni: Danni[] }) | null>(null);
   const [modifica, setModifica] = useState(false);
+  const contatoreTiri = useRef(0);
 
   const astuziaGnomesca = char.privilegi.some(p => p.nome === "Astuzia Gnomesca");
 
   // true se il tiro è stato fatto, false se l'utente l'ha annullato.
   const tira = async (
     etichetta: string, facce: number, bonus = 0,
-    extra: { descrizione?: string; opzioniDanno?: OpzioneDanno[]; contesto?: ContestoTiro } = {},
+    extra: Pick<Tiro, "opzioniDanno" | "extra" | "sogliaCritico" | "dadiCriticoBrutale"> & { descrizione?: string; contesto?: ContestoTiro } = {},
   ) => {
+    const { descrizione, contesto, ...danni } = extra;
+    contatoreTiri.current += 1;
+    const id = contatoreTiri.current;
     if (facce === 20) {
-      const richiesta = { titolo: etichetta, bonus, descrizione: extra.descrizione };
-      const r = await chiediD20(extra.contesto ? conSuggerimento(char, extra.contesto, richiesta) : richiesta);
+      const richiesta = { titolo: etichetta, bonus, descrizione };
+      const r = await chiediD20(contesto ? conSuggerimento(char, contesto, richiesta) : richiesta);
       if (!r) return false;
-      setUltimoTiro({
-        etichetta, facce, risultato: r.risultato, bonus, tiri: r.tiri, modalita: r.modalita, presagio: r.presagio,
-        opzioniDanno: extra.opzioniDanno,
-      });
+      setUltimoTiro({ id, etichetta, facce, risultato: r.risultato, bonus, tiri: r.tiri, modalita: r.modalita, presagio: r.presagio, ...danni });
     } else {
       const tiri = await chiediTiro({ titolo: etichetta, dadi: [{ etichetta: "Risultato", facce }], bonus });
       if (!tiri) return false;
-      setUltimoTiro({ etichetta, facce, risultato: tiri[0], bonus });
+      setUltimoTiro({ id, etichetta, facce, risultato: tiri[0], bonus });
     }
     setUltimoDanno(null);
     return true;
   };
 
   const attaccoArma = (arma: ArmaPersonaggio) => {
-    const { bonus, modDanno, mischiaFOR, car } = d.attaccoArma(arma);
+    const { bonus, mischiaFOR, car, danni, danniDueMani } = d.attaccoArma(arma);
     const nome = `${arma.nome}${arma.bonus !== 0 ? ` ${segno(arma.bonus)}` : ""}`;
-    const opzioniDanno: OpzioneDanno[] = arma.dadoVersatile
+    const opzioniDanno: OpzioneDanno[] = danniDueMani
       ? [
-          { etichetta: `${nome} (una mano)`, danni: dannoArma(arma, modDanno) },
-          { etichetta: `${nome} (due mani)`, danni: dannoArma(arma, modDanno, true) },
+          { etichetta: `${nome} (una mano)`, danni },
+          { etichetta: `${nome} (due mani)`, danni: danniDueMani },
         ]
-      : [{ etichetta: nome, danni: dannoArma(arma, modDanno) }];
-    return tira(`Attacco: ${nome}`, 20, bonus, { opzioniDanno, contesto: { tipo: "attacco", mischiaFOR, car } });
+      : [{ etichetta: nome, danni }];
+    return tira(`Attacco: ${nome}`, 20, bonus, {
+      opzioniDanno, extra: danniExtraArma(char, arma), sogliaCritico: d.sogliaCritico,
+      dadiCriticoBrutale: arma.distanza ? 0 : d.dadiCriticoBrutale,
+      contesto: { tipo: "attacco", mischiaFOR, car },
+    });
   };
 
-  // Con un 20 naturale sul tiro per colpire i dadi dei danni raddoppiano.
-  const colpoCritico = ultimoTiro?.facce === 20 && ultimoTiro.risultato === 20;
+  // Con un 20 naturale (o 19–18 con Critico Migliorato) sul tiro per colpire i dadi dei danni raddoppiano.
+  const colpoCritico = ultimoTiro?.facce === 20 && ultimoTiro.risultato >= (ultimoTiro.sogliaCritico ?? 20);
 
-  const tiraDanniArma = async (o: OpzioneDanno) => {
-    const danni = colpoCritico ? critico(o.danni) : o.danni;
-    const etichetta = `Danni${colpoCritico ? " critici" : ""}: ${o.etichetta}`;
+  // Lo slot della Punizione Divina si spende solo se il tiro dei danni viene fatto.
+  const tiraDanniArma = async (nome: string, danni: Danni[], slotSpeso: number | null) => {
+    const etichetta = `Danni${colpoCritico ? " critici" : ""}: ${nome}`;
     const r = await tiraDanni(chiediTiro, etichetta, danni);
-    if (r) setUltimoDanno({ ...r, etichetta, danni });
+    if (!r) return;
+    setUltimoDanno({ ...r, etichetta, danni });
+    if (slotSpeso !== null) setChar(prev => spendiSlot(prev, slotSpeso));
   };
 
   const cambiaValore = (k: Caratteristica, delta: number) =>
@@ -277,7 +286,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
                       ? `${ultimoTiro.modalita} (${ultimoTiro.tiri.join(", ")}) → ${ultimoTiro.risultato}`
                       : `d${ultimoTiro.facce} = ${ultimoTiro.risultato}`}
                   {ultimoTiro.bonus !== 0 && ` ${segno(ultimoTiro.bonus)}`}
-                  {ultimoTiro.facce === 20 && ultimoTiro.risultato === 20 && " · Critico!"}
+                  {colpoCritico && " · Critico!"}
                   {ultimoTiro.facce === 20 && ultimoTiro.risultato === 1 && " · 1 naturale"}
                 </span>
               </span>
@@ -285,28 +294,23 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
             </div>
           )}
           {ultimoTiro?.opzioniDanno && (
-            <div className="mt-2 flex flex-col gap-1.5">
-              {ultimoTiro.opzioniDanno.map(o => (
-                <button
-                  key={o.etichetta}
-                  onClick={() => tiraDanniArma(o)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border text-left transition ${
-                    colpoCritico
-                      ? "bg-amber-500/20 border-amber-500/40 text-amber-200 hover:bg-amber-500/30"
-                      : "bg-slate-950 border-slate-800 text-slate-300 hover:border-indigo-500/50"
-                  }`}
-                >
-                  {colpoCritico ? "Danni critici" : "Danni"}{o.etichetta.includes("(") && ` ${o.etichetta.slice(o.etichetta.indexOf("("))}`}: <span className="font-mono">{testoDanni(colpoCritico ? critico(o.danni) : o.danni)}</span>
-                </button>
-              ))}
-            </div>
+            <OpzioniDanno
+              key={ultimoTiro.id}
+              opzioni={ultimoTiro.opzioniDanno}
+              extra={ultimoTiro.extra ?? []}
+              critico={colpoCritico}
+              dadiCriticoBrutale={ultimoTiro.dadiCriticoBrutale ?? 0}
+              vantaggio={ultimoTiro.modalita === "vantaggio"}
+              slotDisponibili={slotUtilizzabili(char, 1)}
+              onTira={tiraDanniArma}
+            />
           )}
           {ultimoDanno && (
             <div className="mt-2 p-3 bg-slate-950 rounded-lg border border-amber-900/50 flex justify-between items-center text-sm gap-2">
               <span className="text-slate-400">
                 {ultimoDanno.etichetta}
                 <span className="block text-xs text-slate-500 font-mono">
-                  {ultimoDanno.tiri.join(" + ")}{ultimoDanno.danni.mod !== 0 && ` ${segno(ultimoDanno.danni.mod)}`} · {ultimoDanno.danni.tipo}
+                  {ultimoDanno.tiri.join(" + ")}{modTotale(ultimoDanno.danni) !== 0 && ` ${segno(modTotale(ultimoDanno.danni))}`} · {[...new Set(ultimoDanno.danni.map(p => p.tipo))].join(", ")}
                 </span>
               </span>
               <span className="text-xl font-black text-rose-400 font-mono">{ultimoDanno.totale}</span>

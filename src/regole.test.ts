@@ -7,7 +7,8 @@ import {
   applicaCura, applicaDanno, cdConcentrazione, esitoTsMorte, statoVita, pfPerLivello, slotPatto,
   aggiungiCondizione, attivaEffetto, cambiaConteggioEffetto, impostaIndebolimento, privilegiMancanti, rimuoviEffetto, usaRisorsa,
   effettiAttivabili, usaPresagio, nuovaArma, statoArma, usaArma, riparaArma, rompiArma, ricaricaArma, recuperaMunizioni, usaMunizioni,
-  danneggiaArma,
+  danneggiaArma, dannoCritico, attacchiPerAzione, sogliaCritico, dadiCriticoBrutale, danniExtraArma,
+  dadiAttaccoFurtivo, dannoPunizione, spendiSlot, armaDaMonaco, dadoArtiMarziali, COLPO_SENZA_ARMI,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { competenteArmatura, competenzaCopreArma } from "./dati/competenze";
@@ -863,5 +864,75 @@ describe("competenze in armi e armature", () => {
     expect(daJSON({ ...vecchio, info: { ...c.info, classe: "Guerriero" } }).competenzeAltre.armature).toEqual(["Tutte le armature", "Scudi"]);
     // Con almeno una competenza la scheda resta com'è.
     expect(daJSON({ ...vecchio, competenzeAltre: { ...vecchio.competenzeAltre, armi: ["Pugnali"] } }).competenzeAltre.armi).toEqual(["Pugnali"]);
+  });
+});
+
+describe("privilegi che cambiano attacchi e danni", () => {
+  const pg = (classe: string, livello: number, sottoclasse = "", punteggi: Partial<Record<"FOR" | "DES" | "CAR", number>> = {}): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe, livello, sottoclasse };
+    for (const [k, v] of Object.entries(punteggi)) c.caratteristiche[k as keyof typeof punteggi] = { valore: v, compTS: false };
+    c.competenzeAltre = { ...c.competenzeAltre, armi: [...regoleClasse(classe)!.armi], armature: [...regoleClasse(classe)!.armature] };
+    c.armatura = null;
+    c.scudo = false;
+    return c;
+  };
+  const stocco = { nome: "Stocco", dado: "1d8", tipoDanno: "Perforante", proprieta: "Accurata", accurata: true, categoria: "guerra" as const };
+  const spada = { nome: "Spada Lunga", dado: "1d8", dadoVersatile: "1d10", tipoDanno: "Tagliente", proprieta: "Versatile", accurata: false, categoria: "guerra" as const };
+  const bastone = { nome: "Bastone Ferrato", dado: "1d6", dadoVersatile: "1d8", tipoDanno: "Contundente", proprieta: "Versatile", accurata: false, categoria: "semplice" as const };
+
+  it("danni in più parti: testo, critico e Critico Brutale", () => {
+    const parti = [{ numero: 1, facce: 8, mod: 3, tipo: "taglienti" }, { numero: 2, facce: 6, mod: 0, tipo: "taglienti", etichetta: "Attacco Furtivo" }];
+    expect(testoDanni(parti)).toBe("1d8 + 3 + 2d6");
+    expect(dannoCritico(parti).map(p => p.numero)).toEqual([2, 4]);
+    expect(dannoCritico(parti, 2).map(p => p.numero)).toEqual([4, 4]);
+    expect(testoDanni({ numero: 0, facce: 1, mod: 2, tipo: "contundenti" })).toBe("2");
+  });
+
+  it("Attacco Extra, Critico Migliorato e Critico Brutale per classe e livello", () => {
+    expect([4, 5, 11, 20].map(l => attacchiPerAzione(pg("Guerriero", l)))).toEqual([1, 2, 3, 4]);
+    expect(attacchiPerAzione(pg("Ranger", 5))).toBe(2);
+    expect(attacchiPerAzione(pg("Mago", 20))).toBe(1);
+    expect(attacchiPerAzione(pg("Bardo", 6, "Collegio del Valore"))).toBe(2);
+    expect(attacchiPerAzione(pg("Bardo", 6, "Collegio della Sapienza"))).toBe(1);
+    expect([sogliaCritico(pg("Guerriero", 3, "Campione")), sogliaCritico(pg("Guerriero", 15, "Campione")), sogliaCritico(pg("Guerriero", 15, "Maestro di Battaglia"))])
+      .toEqual([19, 18, 20]);
+    expect([8, 9, 13, 17].map(l => dadiCriticoBrutale(pg("Barbaro", l)))).toEqual([0, 1, 2, 3]);
+  });
+
+  it("Attacco Furtivo solo con armi accurate o a distanza", () => {
+    const ladro = pg("Ladro", 5);
+    expect(danniExtraArma(ladro, stocco)).toMatchObject([{ id: "attacco-furtivo", facoltativa: true, danni: { numero: 3, facce: 6, tipo: "perforanti" } }]);
+    expect(danniExtraArma(ladro, spada)).toEqual([]);
+    expect(dadiAttaccoFurtivo(1)).toBe(1);
+  });
+
+  it("Punizione Divina: dadi per slot, immondi, slot necessario e versione migliorata", () => {
+    expect([1, 2, 4, 5].map(l => dannoPunizione(l).numero)).toEqual([2, 3, 5, 5]);
+    expect(dannoPunizione(4, true).numero).toBe(6);
+    const paladino = pg("Paladino", 2);
+    expect(danniExtraArma(paladino, spada).map(e => e.id)).toEqual(["punizione-divina"]);
+    expect(danniExtraArma({ ...paladino, slotSpesi: [2, 0, 0, 0, 0, 0, 0, 0, 0] }, spada)).toEqual([]); // niente slot liberi
+    expect(danniExtraArma(paladino, { ...spada, distanza: true })).toEqual([]);
+    expect(danniExtraArma(pg("Paladino", 11), spada).map(e => e.id)).toEqual(["punizione-divina", "punizione-migliorata"]);
+    expect(spendiSlot(paladino, 1).slotSpesi[0]).toBe(1);
+    expect(spendiSlot(paladino, 3)).toBe(paladino);
+  });
+
+  it("Arti Marziali: DES e dado del monaco con le armi da monaco, senza armatura né scudo", () => {
+    const monaco = pg("Monaco", 5, "", { FOR: 10, DES: 16 });
+    const d = derivate(monaco);
+    expect(d.artiMarziali).toBe(true);
+    expect(d.attaccoArma(bastone)).toMatchObject({ car: "DES", danni: { numero: 1, facce: 6, mod: 3 }, danniDueMani: { facce: 8 } });
+    expect(d.attaccoArma(COLPO_SENZA_ARMI)).toMatchObject({ competente: true, danni: { numero: 1, facce: 6, mod: 3 } });
+    expect(armaDaMonaco(spada)).toBe(false);
+    expect(armaDaMonaco({ ...bastone, nome: "Randello Pesante", proprieta: "Due mani" })).toBe(false);
+    expect(derivate({ ...monaco, scudo: true }).attaccoArma(bastone)).toMatchObject({ car: "FOR" });
+    expect(dadoArtiMarziali(17)).toBe(10);
+  });
+
+  it("il colpo senz'armi di chi non è monaco fa 1 + FOR", () => {
+    const d = derivate(pg("Guerriero", 1, "", { FOR: 16 }));
+    expect(d.attaccoArma(COLPO_SENZA_ARMI)).toMatchObject({ bonus: 5, danni: { numero: 0, mod: 4 } });
   });
 });
