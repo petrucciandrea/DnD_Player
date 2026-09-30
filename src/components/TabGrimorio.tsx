@@ -5,7 +5,7 @@ import type { ChiediD20, ChiediTiro } from "../tiroDadi";
 import { catalogoIncantesimi, type VoceIncantesimo } from "../accesso";
 import FinestraIncantesimo from "./FinestraIncantesimo";
 import type { Derivate } from "../regole";
-import { SCUOLE, derivate, segno } from "../regole";
+import { SCUOLE, aggiungiIncantesimi, derivate, incantesimiSottoclasseMancanti, segno } from "../regole";
 
 interface Props {
   char: CharacterData;
@@ -57,7 +57,7 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
       return {
         ...prev,
         incantesimi: prev.incantesimi.map(s => {
-          if (s.id !== id) return s;
+          if (s.id !== id || derivate(prev).semprePreparato(s.nome)) return s;
           if (!s.preparato && maxPreparabili !== null && preparatiAttuali >= maxPreparabili) return s;
           return { ...s, preparato: !s.preparato };
         }),
@@ -92,6 +92,12 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
     if (!confirm(`Rimuovere "${s.nome}" dal grimorio?`)) return;
     setChar(prev => ({ ...prev, incantesimi: prev.incantesimi.filter(x => x.id !== s.id) }));
   };
+
+  // Incantesimi di dominio, giuramento o circolo che mancano al grimorio: si prendono dal catalogo.
+  const mancanti = incantesimiSottoclasseMancanti(char);
+  const mancantiNelCatalogo = catalogo.filter(v => mancanti.some(n => stessoNome(n, v.nome)));
+  const aggiungiMancanti = () =>
+    setChar(prev => aggiungiIncantesimi(prev, mancantiNelCatalogo.map(v => ({ ...v, preparato: true }))));
 
   const incantesimiOrdinati = [...char.incantesimi].sort(
     (a, b) => a.livello - b.livello || a.nome.localeCompare(b.nome, "it"),
@@ -169,6 +175,20 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
         </div>
       )}
 
+      {mancanti.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-amber-950/20 border border-amber-900/50 p-3 rounded-xl text-xs text-amber-200">
+          <span>
+            Mancano {mancanti.length} incantesimi di {d.fonteIncantesimiSottoclasse?.toLowerCase()} ({mancanti.join(", ")})
+            {mancantiNelCatalogo.length < mancanti.length && ": alcuni non sono ancora nel catalogo"}.
+          </span>
+          {mancantiNelCatalogo.length > 0 && (
+            <button onClick={aggiungiMancanti} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold">
+              <Plus className="w-3.5 h-3.5" /> Aggiungi
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
         <p className="px-3 py-2 text-xs text-slate-500 border-b border-slate-800">Clicca il nome di un incantesimo per aprirne la scheda e lanciarlo.</p>
         <div className="grid grid-cols-12 bg-slate-950/80 p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
@@ -199,6 +219,10 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
               <div className="col-span-2 sm:col-span-3 text-right">
                 {s.livello === 0 ? (
                   <span className="text-xs text-emerald-400 font-semibold">Sempre attivo</span>
+                ) : d.semprePreparato(s.nome) ? (
+                  <span title="Sempre preparato, non conta nel limite" className="text-xs text-amber-300 font-semibold">
+                    {d.fonteIncantesimiSottoclasse ?? "Sempre preparato"}
+                  </span>
                 ) : !d.prepara ? (
                   <span className="text-xs text-emerald-400 font-semibold">Conosciuto</span>
                 ) : (

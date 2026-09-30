@@ -9,13 +9,14 @@ import {
   effettiAttivabili, usaPresagio, nuovaArma, statoArma, usaArma, riparaArma, rompiArma, ricaricaArma, recuperaMunizioni, usaMunizioni,
   danneggiaArma, dannoCritico, attacchiPerAzione, sogliaCritico, dadiCriticoBrutale, danniExtraArma,
   dadiAttaccoFurtivo, dannoPunizione, spendiSlot, armaDaMonaco, dadoArtiMarziali, COLPO_SENZA_ARMI,
-  sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot,
+  sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot, incantesimiSottoclasseMancanti, aggiungiIncantesimi,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { competenteArmatura, competenzaCopreArma } from "./dati/competenze";
 import { regoleClasse } from "./dati/classi";
 import { completaConEsistente, daJSON } from "./scheda";
-import { SCHEDE_INCANTESIMI } from "../server/semi/incantesimi.ts";
+import { CLASSI_INCANTESIMI, SCHEDE_INCANTESIMI } from "../server/semi/incantesimi.ts";
+import { TUTTE_LE_LISTE, incantesimiDiSottoclasse } from "./dati/incantesimiSottoclasse";
 import type { CharacterData } from "./tipi";
 
 const alston = (): CharacterData => structuredClone(INITIAL_CHARACTER);
@@ -1002,5 +1003,53 @@ describe("scelte di privilegio: Metamagia, Fonte di Magia, stili di combattiment
     expect(duellante.attaccoArma(spada).danniDueMani?.mod).toBe(derivate(g).attaccoArma(spada).danniDueMani?.mod);
     expect(duellante.attaccoArma(spadone).danni.mod).toBe(derivate(g).attaccoArma(spadone).danni.mod);
     expect(derivate({ ...g, privilegi: [stile("Combattere con Armi Possenti")] }).attaccoArma(spadone).note[0]).toMatch(/ritira/);
+  });
+});
+
+describe("incantesimi di dominio, giuramento, circolo e patrono", () => {
+  const pg = (classe: string, livello: number, sottoclasse: string): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe, livello, sottoclasse };
+    c.privilegi = [];
+    c.incantesimi = [];
+    return c;
+  };
+  const spell = (nome: string, livello = 1, preparato = false) => ({ id: nome.length, nome, livello, scuola: "Invocazione", tempo: "1 azione", preparato });
+
+  it("il catalogo ha una scheda valida per ogni incantesimo delle liste", () => {
+    const nomi = new Set(TUTTE_LE_LISTE.flatMap(l => l.flatMap(([, n]) => n)));
+    expect([...nomi].filter(n => !SCHEDE_INCANTESIMI[n])).toEqual([]);
+    for (const [nome, s] of Object.entries(SCHEDE_INCANTESIMI)) {
+      expect(CLASSI_INCANTESIMI[nome]?.length, nome).toBeGreaterThan(0);
+      if (s.danni) expect(() => parseDado(s.danni!.dado), nome).not.toThrow();
+      if (s.danni?.perLivello) expect(() => parseDado(s.danni!.perLivello!), nome).not.toThrow();
+    }
+  });
+
+  it("domini e giuramenti per livello, terreni dal privilegio scelto, patroni come lista ampliata", () => {
+    expect(incantesimiDiSottoclasse(pg("Chierico", 1, "Dominio della Vita"))).toEqual({ sempre: ["Benedizione", "Cura Ferite"], ampliata: [], fonte: "Dominio" });
+    expect(incantesimiDiSottoclasse(pg("Chierico", 3, "Dominio della Vita")).sempre).toHaveLength(4);
+    expect(incantesimiDiSottoclasse(pg("Paladino", 2, "Giuramento di Vendetta")).sempre).toEqual([]);
+    expect(incantesimiDiSottoclasse(pg("Paladino", 5, "Giuramento di Vendetta")).sempre).toEqual(["Anatema", "Marchio del Cacciatore", "Blocca Persone", "Passo Velato"]);
+    const druido = pg("Druido", 5, "Circolo della Terra");
+    expect(incantesimiDiSottoclasse(druido).sempre).toEqual([]); // terreno non ancora scelto
+    druido.privilegi = [{ nome: "Montagna", fonte: "Terreno del Circolo", descrizione: "" }];
+    expect(incantesimiDiSottoclasse(druido).sempre).toEqual(["Movimenti del Ragno", "Crescita di Spine", "Fulmine", "Fondersi nella Pietra"]);
+    expect(incantesimiDiSottoclasse(pg("Warlock", 3, "L'Immondo"))).toMatchObject({ sempre: [], ampliata: ["Mani Brucianti", "Comando", "Cecità/Sordità", "Raggio Rovente"] });
+    expect(incantesimiDiSottoclasse(pg("Mago", 5, "Scuola di Divinazione")).fonte).toBeNull();
+  });
+
+  it("sempre preparati e fuori dal limite; i mancanti si aggiungono preparati senza doppioni", () => {
+    const c = { ...pg("Chierico", 1, "Dominio della Vita"), incantesimi: [spell("Benedizione", 1, true), spell("Santuario", 1, true)] };
+    const d = derivate(c);
+    expect(d.preparatiAttuali).toBe(1);
+    expect(d.semprePreparato("benedizione ")).toBe(true);
+    expect(d.semprePreparato("Santuario")).toBe(false);
+    expect(incantesimiSottoclasseMancanti(c)).toEqual(["Cura Ferite"]);
+    const aggiunto = aggiungiIncantesimi(c, [spell("Cura Ferite"), spell("Benedizione"), spell("Cura Ferite")]);
+    expect(aggiunto.incantesimi.map(s => [s.nome, s.preparato])).toEqual([["Benedizione", true], ["Santuario", true], ["Cura Ferite", true]]);
+    expect(aggiungiIncantesimi(c, [spell("Benedizione")])).toBe(c);
+    const salito = saliDiLivello({ ...c, incantesimi: [] }, { incantesimi: [spell("Ristorare Inferiore", 2)] });
+    expect(salito.incantesimi.map(s => s.nome)).toEqual(["Ristorare Inferiore"]);
   });
 });

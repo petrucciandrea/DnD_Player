@@ -2,10 +2,14 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Plus, Trash2, ArrowUpCircle, LoaderCircle, X } from "lucide-react";
 import type { CharacterData, Privilegio, SetChar, XPRecord } from "../tipi";
 import type { Derivate } from "../regole";
-import { haAumentoCaratteristiche, pfPerLivello, privilegiMancanti, saliDiLivello, sceltePendenti, slotMassimi } from "../regole";
+import {
+  aggiungiIncantesimi, haAumentoCaratteristiche, incantesimiSottoclasseMancanti, pfPerLivello, privilegiMancanti, saliDiLivello,
+  sceltePendenti, slotMassimi,
+} from "../regole";
 import { incantatoreDi, regoleClasse } from "../dati/classi";
 import { opzioniScelta, type DefinizioneScelta } from "../dati/scelte";
-import { catalogoCreazione, privilegiDiLivello, privilegiFinoAlLivello } from "../accesso";
+import { incantesimiDiSottoclasse } from "../dati/incantesimiSottoclasse";
+import { catalogoCreazione, privilegiDiLivello, privilegiFinoAlLivello, type VoceIncantesimo } from "../accesso";
 import ScegliMolti from "./ScegliMolti";
 
 interface Props {
@@ -49,12 +53,16 @@ export default function TabProgresso({ char, d, setChar }: Props) {
   const [verifica, setVerifica] = useState<"attesa" | "offline" | Privilegio[] | null>(null);
   // Opzioni delle scelte di privilegio dal catalogo (null = in caricamento o non raggiungibile).
   const [opzioni, setOpzioni] = useState<Privilegio[] | null>(null);
+  const [incantesimiCatalogo, setIncantesimiCatalogo] = useState<VoceIncantesimo[]>([]);
   const [scelteAttuali, setScelteAttuali] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     let attivo = true;
     catalogoCreazione().then(c => {
-      if (attivo && c) setOpzioni(c.opzioniPrivilegio);
+      if (attivo && c) {
+        setOpzioni(c.opzioniPrivilegio);
+        setIncantesimiCatalogo(c.incantesimi);
+      }
     });
     return () => { attivo = false; };
   }, []);
@@ -109,7 +117,14 @@ export default function TabProgresso({ char, d, setChar }: Props) {
       ...(Array.isArray(salita.privilegi) ? salita.privilegi : []),
       ...(opzioni ? privilegiScelti(salita.scelte, pendentiSalita, opzioni) : []),
     ];
-    setChar(prev => saliDiLivello(prev, { privilegi, sottoclasse: serveSottoclasse ? salita.sottoclasse : undefined }));
+    // Gli incantesimi di sottoclasse che il nuovo livello concede (e quelli che mancavano) arrivano dal catalogo.
+    setChar(prev => {
+      const salito = saliDiLivello(prev, { privilegi, sottoclasse: serveSottoclasse ? salita.sottoclasse : undefined });
+      const mancanti = incantesimiSottoclasseMancanti(salito);
+      return aggiungiIncantesimi(salito, incantesimiCatalogo
+        .filter(v => mancanti.some(n => n.toLowerCase() === v.nome.toLowerCase()))
+        .map(v => ({ ...v, preparato: true })));
+    });
     setSalita(null);
   };
 
@@ -149,12 +164,22 @@ export default function TabProgresso({ char, d, setChar }: Props) {
   const nuoviSlot = slotDopo.flatMap((n, i) => (n > (slotPrima[i] ?? 0) ? [`${n - (slotPrima[i] ?? 0)}× ${i + 1}°`] : []));
   const trucchettiInPiu = (incDopo?.trucchetti[nuovo - 1] ?? 0) - (incPrima?.trucchetti[livello - 1] ?? 0);
   const conosciutiInPiu = (incDopo?.conosciuti?.[nuovo - 1] ?? 0) - (incPrima?.conosciuti?.[livello - 1] ?? 0);
+  // Incantesimi di sottoclasse nuovi al livello successivo (il terreno del circolo può essere scelto salendo).
+  const sottoclasseInfo = (livelloInfo: number, sottoclasse: string, privilegiExtra: Privilegio[] = []) =>
+    incantesimiDiSottoclasse({ info: { ...char.info, livello: livelloInfo, sottoclasse }, privilegi: [...char.privilegi, ...privilegiExtra] });
+  const privilegiSceltiSalita = salita && opzioni ? privilegiScelti(salita.scelte, sceltePendenti(char, { livello: nuovo, sottoclasse: sottoclasseDopo }), opzioni) : [];
+  const sottoPrima = sottoclasseInfo(livello, char.info.sottoclasse);
+  const sottoDopo = sottoclasseInfo(nuovo, sottoclasseDopo, privilegiSceltiSalita);
+  const nuoviSempre = sottoDopo.sempre.filter(n => !sottoPrima.sempre.includes(n));
+  const nuoviAmpliati = sottoDopo.ampliata.filter(n => !sottoPrima.ampliata.includes(n));
   const note = [
     `+${pfPerLivello(char, d.dadoVita)} PF massimi e +1 Dado Vita (d${d.dadoVita}).`,
     nuoviSlot.length > 0 && `Nuovi slot incantesimo: ${nuoviSlot.join(", ")}.`,
     incDopo?.modo === "libro" && "Copia 2 nuovi incantesimi nel libro (tab Grimorio).",
     conosciutiInPiu > 0 && `Puoi imparare ${conosciutiInPiu} ${conosciutiInPiu === 1 ? "nuovo incantesimo" : "nuovi incantesimi"}.`,
     trucchettiInPiu > 0 && `Puoi imparare ${trucchettiInPiu === 1 ? "un nuovo trucchetto" : `${trucchettiInPiu} nuovi trucchetti`}.`,
+    nuoviSempre.length > 0 && `Incantesimi sempre preparati (${sottoDopo.fonte?.toLowerCase()}): ${nuoviSempre.join(", ")}.`,
+    nuoviAmpliati.length > 0 && `Nuovi incantesimi nella lista del patrono: ${nuoviAmpliati.join(", ")}.`,
     haAumentoCaratteristiche(nuovo) && "Aumento dei punteggi di caratteristica: usa \"Modifica\" nella tab Statistiche.",
   ].filter(Boolean);
 

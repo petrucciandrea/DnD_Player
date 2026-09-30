@@ -1,11 +1,12 @@
 // Regole D&D 5e (edizione 2014). Le regole delle singole classi stanno in dati/classi.ts.
-import type { Arma, ArmaPersonaggio, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, Privilegio, PrivilegioClasse } from "./tipi.ts";
+import type { Arma, ArmaPersonaggio, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, Privilegio, PrivilegioClasse, Spell } from "./tipi.ts";
 import { CARATTERISTICA_MAGICA_RAZZIALE, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi.ts";
 import { bonusIra, risorseDelPersonaggio } from "./dati/risorse.ts";
 import { EFFETTI, condizione, effetto, type DefinizioneEffetto } from "./dati/condizioni.ts";
 import { competenteArma, competenteArmatura } from "./dati/competenze.ts";
 import { FONTE_STILE, STILI, haScelto, scelteDelPersonaggio, totaleScelte, type DefinizioneScelta } from "./dati/scelte.ts";
 import { COSTO_SLOT_STREGONERIA, metamagia } from "./dati/metamagia.ts";
+import { incantesimiDiSottoclasse } from "./dati/incantesimiSottoclasse.ts";
 
 // Quanto serve per calcolare danni e attacchi di un incantesimo lanciato con un certo slot.
 type IncantesimoDaLanciare = { livello: number } & Pick<DettagliIncantesimo, "danni" | "attacco">;
@@ -457,6 +458,9 @@ export function derivate(c: CharacterData) {
   const modoIncantesimi = inc?.modo ?? null;
   const prepara = modoIncantesimi === "preparati" || modoIncantesimi === "libro";
   const haPresagio = c.info.sottoclasse === "Scuola di Divinazione" && liv >= 2;
+  // Incantesimi di dominio, giuramento e circolo: sempre preparati, fuori dal limite.
+  const sottoclasse = incantesimiDiSottoclasse(c);
+  const sempre = new Set(sottoclasse.sempre.map(nomeIncantesimo));
 
   return {
     comp,
@@ -484,7 +488,11 @@ export function derivate(c: CharacterData) {
     maxPreparabili: prepara
       ? Math.max(1, (inc?.preparatiMetaLivello ? Math.floor(liv / 2) : liv) + modMagia)
       : null,
-    preparatiAttuali: c.incantesimi.filter(s => s.livello > 0 && s.preparato).length,
+    preparatiAttuali: c.incantesimi.filter(s => s.livello > 0 && s.preparato && !sempre.has(nomeIncantesimo(s.nome))).length,
+    incantesimiSempre: sottoclasse.sempre,
+    incantesimiAmpliati: sottoclasse.ampliata, // lista ampliata del patrono del Warlock
+    fonteIncantesimiSottoclasse: sottoclasse.fonte, // "Dominio", "Giuramento", "Circolo", "Patrono"
+    semprePreparato: (nome: string) => sempre.has(nomeIncantesimo(nome)),
     maxConosciuti: inc?.modo === "conosciuti" ? (inc.conosciuti?.[liv - 1] ?? 0) : null,
     conosciutiAttuali: c.incantesimi.filter(s => s.livello > 0).length,
     maxTrucchetti: inc?.trucchetti[liv - 1] ?? 0,
@@ -566,17 +574,39 @@ export function riposoBreve(c: CharacterData, esito: EsitoRiposoBreve): Characte
   };
 }
 
+// Nomi degli incantesimi confrontati senza maiuscole né spazi ai lati.
+const nomeIncantesimo = (nome: string) => nome.trim().toLowerCase();
+
+// Incantesimi di sottoclasse (dominio, giuramento, circolo) che la scheda non ha ancora nel grimorio.
+export function incantesimiSottoclasseMancanti(c: CharacterData): string[] {
+  const presenti = new Set(c.incantesimi.map(s => nomeIncantesimo(s.nome)));
+  return incantesimiDiSottoclasse(c).sempre.filter(n => !presenti.has(nomeIncantesimo(n)));
+}
+
+// Aggiunge al grimorio gli incantesimi che non ci sono già (per nome), preparati.
+export function aggiungiIncantesimi(c: CharacterData, nuovi: Spell[]): CharacterData {
+  const presenti = new Set(c.incantesimi.map(s => nomeIncantesimo(s.nome)));
+  const daAggiungere = nuovi.filter(s => {
+    const n = nomeIncantesimo(s.nome);
+    if (presenti.has(n)) return false;
+    presenti.add(n);
+    return true;
+  });
+  if (daAggiungere.length === 0) return c;
+  return { ...c, incantesimi: [...c.incantesimi, ...daAggiungere.map(s => ({ ...s, preparato: true }))] };
+}
+
 // Aggiunge PF medi, un Dado Vita e i privilegi del nuovo livello (letti dal catalogo prima di salire),
-// ed eventualmente la sottoclasse scelta a quel livello.
+// ed eventualmente la sottoclasse scelta a quel livello e gli incantesimi nuovi (di sottoclasse o scelti).
 export function saliDiLivello(
-  c: CharacterData, extra: { privilegi?: CharacterData["privilegi"]; sottoclasse?: string } = {},
+  c: CharacterData, extra: { privilegi?: CharacterData["privilegi"]; sottoclasse?: string; incantesimi?: Spell[] } = {},
 ): CharacterData {
   const pf = pfPerLivello(c, regoleClasse(c.info.classe)?.dadoVita ?? 8);
   const nuovi: CharacterData["privilegi"] = [];
   for (const p of extra.privilegi ?? []) {
     if (![...c.privilegi, ...nuovi].some(x => x.nome === p.nome && x.fonte === p.fonte)) nuovi.push(p);
   }
-  return {
+  return aggiungiIncantesimi({
     ...c,
     info: { ...c.info, livello: c.info.livello + 1, sottoclasse: extra.sottoclasse ?? c.info.sottoclasse },
     privilegi: [...c.privilegi, ...nuovi],
@@ -586,7 +616,7 @@ export function saliDiLivello(
       pfAttuali: c.combattimento.pfAttuali + pf,
       dadiVitaRimanenti: c.combattimento.dadiVitaRimanenti + 1,
     },
-  };
+  }, extra.incantesimi ?? []);
 }
 
 export const haAumentoCaratteristiche = (livello: number) =>

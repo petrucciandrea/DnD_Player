@@ -54,7 +54,8 @@ export default function FinestraIncantesimo({ spell, char, d, setChar, chiediTir
   const conLivello = scheda && { ...scheda, livello: spell.livello };
   const danni: Danni | null = conLivello ? dannoIncantesimo(conLivello, livelloEffettivo, char.info.livello) : null;
   const totAttacchi = conLivello ? numeroAttacchi(conLivello, livelloEffettivo) : 0;
-  const pronto = spell.livello === 0 || spell.preparato || !d.prepara; // chi li conosce non li prepara
+  // Chi li conosce non li prepara; quelli di dominio, giuramento e circolo sono sempre preparati.
+  const pronto = spell.livello === 0 || spell.preparato || !d.prepara || d.semprePreparato(spell.nome);
   const bloccato = d.incantesimiBloccati; // per esempio un'armatura senza competenza
   // Metamagia: le opzioni che lo stregone conosce, pagate con i punti stregoneria al lancio.
   const puntiStregoneria = d.risorse.find(r => r.id === "punti-stregoneria");

@@ -1,9 +1,10 @@
 import type { SchedaIncantesimo } from "../../src/tipi.ts";
 import type { NomeClasse } from "../../src/dati/classi.ts";
+import { CLASSI_SOTTOCLASSI, SCHEDE_SOTTOCLASSI } from "./incantesimiSottoclassi.ts";
 
 // Catalogo ufficiale (creato_da NULL): a ogni avvio aggiorna la tabella `incantesimi` dell'archivio.
 // Schede complete (D&D 5e 2014, testi e gittate come nel manuale italiano).
-export const SCHEDE_INCANTESIMI: Record<string, SchedaIncantesimo> = {
+const SCHEDE_BASE: Record<string, SchedaIncantesimo> = {
   "Dardo di Fuoco": {
     livello: 0, scuola: "Invocazione", tempo: "1 azione", gittata: "36 metri", componenti: "V, S", durata: "Istantanea",
     concentrazione: false, rituale: false,
@@ -124,7 +125,7 @@ export const SCHEDE_INCANTESIMI: Record<string, SchedaIncantesimo> = {
 };
 
 // Classi che hanno l'incantesimo nella propria lista (tabella `incantesimo_classi`).
-export const CLASSI_INCANTESIMI: Record<string, NomeClasse[]> = {
+const CLASSI_BASE: Record<string, NomeClasse[]> = {
   "Dardo di Fuoco": ["Mago", "Stregone"],
   "Interdizione alle Lame": ["Bardo", "Mago", "Stregone", "Warlock"],
   "Tocco Gelido": ["Mago", "Stregone", "Warlock"],
@@ -144,3 +145,7 @@ export const CLASSI_INCANTESIMI: Record<string, NomeClasse[]> = {
   "Luci Danzanti": ["Bardo", "Mago", "Stregone"],
   "Taumaturgia": ["Chierico"],
 };
+
+// Con gli incantesimi di dominio, giuramento, circolo e patrono (incantesimiSottoclassi.ts).
+export const SCHEDE_INCANTESIMI: Record<string, SchedaIncantesimo> = { ...SCHEDE_BASE, ...SCHEDE_SOTTOCLASSI };
+export const CLASSI_INCANTESIMI: Record<string, NomeClasse[]> = { ...CLASSI_BASE, ...CLASSI_SOTTOCLASSI };

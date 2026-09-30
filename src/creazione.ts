@@ -5,6 +5,7 @@ import type {
 import { ABILITA, CARATTERISTICHE, MUNIZIONI_INIZIALI, nuovaArma, pfPrimoLivello, usaMunizioni } from "./regole.ts";
 import { personaggioVuoto } from "./scheda.ts";
 import { opzioniScelta, scelteDelPersonaggio, totaleScelte } from "./dati/scelte.ts";
+import { incantesimiDiSottoclasse } from "./dati/incantesimiSottoclasse.ts";
 import {
   CLASSI, GIOCHI, incantesimiIniziali, STRUMENTI_ARTIGIANO, STRUMENTI_MUSICALI, type NomeClasse, type RegoleClasse,
   type VoceEquipaggiamento,
@@ -339,7 +340,7 @@ export function personaggioIniziale(s: SceltePersonaggio, catalogo: CatalogoCrea
   c.inventario = eq.oggetti.map((o, i) => ({ ...o, id: i + 1 }));
   c.monete = { ...c.monete, mo: bg.mo };
 
-  // Incantesimi: trucchetti e incantesimi scelti, il trucchetto della razza e, per chi prepara
+  // Incantesimi: quelli di dominio, trucchetti e incantesimi scelti, il trucchetto della razza e, per chi prepara
   // dall'intera lista, tutti gli incantesimi di 1° livello della classe presenti nel catalogo.
   const perNome = (nome: string) => catalogo.incantesimi.find(i => i.nome === nome);
   const inc = regole.incantatore;
@@ -347,6 +348,8 @@ export function personaggioIniziale(s: SceltePersonaggio, catalogo: CatalogoCrea
   const aggiungi = (i: IncantesimoCatalogo | undefined, preparato: boolean) => {
     if (i && !scelti.some(x => x.nome === i.nome)) scelti.push(spellDa(i, preparato));
   };
+  // Gli incantesimi di dominio (Chierico) sono sempre preparati: prima di quelli della classe, per non restare non preparati.
+  for (const n of incantesimiDiSottoclasse(c).sempre) aggiungi(perNome(n), true);
   if (inc) {
     for (const n of s.trucchetti) aggiungi(perNome(n), true);
     for (const n of s.incantesimi) aggiungi(perNome(n), inc.modo === "conosciuti");

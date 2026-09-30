@@ -107,8 +107,13 @@ describe("creazione: personaggi completi", () => {
     expect(c.combattimento.pfMassimi).toBe(10); // 8 + COS 2
     expect(c.privilegi.map(p => p.nome)).toContain("Discepolo della Vita");
     expect(c.privilegi.map(p => p.nome)).not.toContain("Sacerdote Guerriero");
-    // Chi prepara dall'intera lista riceve gli incantesimi di 1° livello della classe presenti nel catalogo.
-    expect(c.incantesimi.map(s => [s.nome, s.preparato])).toEqual([["Taumaturgia", true], ["Individuazione del Magico", false]]);
+    // Gli incantesimi di dominio sono sempre preparati e non contano nel limite; chi prepara dall'intera lista
+    // riceve anche tutti quelli di 1° livello della classe presenti nel catalogo, da preparare.
+    const stato = Object.fromEntries(c.incantesimi.map(s => [s.nome, s.preparato]));
+    expect(stato).toMatchObject({ "Benedizione": true, "Cura Ferite": true, "Taumaturgia": true, "Individuazione del Magico": false, "Santuario": false });
+    expect(c.incantesimi.filter(s => s.nome === "Benedizione")).toHaveLength(1);
+    expect(d.incantesimiSempre).toEqual(["Benedizione", "Cura Ferite"]);
+    expect(d.preparatiAttuali).toBe(0);
     expect(c.competenzeAltre.lingue).toEqual(["Comune", "Celestiale", "Nanico", "Elfico"]);
     expect(c.armatura?.nome).toBe("Armatura di Scaglie");
   });
