@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { ChevronRight, LoaderCircle, LogOut, Sparkles, Upload, UserCog, UserPlus, UserRound } from "lucide-react";
+import { ChevronRight, LoaderCircle, LogOut, Sparkles, Upload, UserCog, UserPlus } from "lucide-react";
 import { elencoPersonaggi, importaPersonaggio, type RiassuntoPersonaggio, type Utente } from "../accesso";
 import { daJSON } from "../scheda";
+import Avatar from "./Avatar";
 
 const pulsanteNeutro = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700";
 
@@ -96,9 +97,7 @@ export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, 
                 disabled={inApertura !== null}
                 className="group text-left bg-slate-900 border border-slate-800 hover:border-indigo-500/60 rounded-xl p-4 transition disabled:opacity-60 flex items-center gap-3"
               >
-                <div className="w-10 h-10 rounded-full bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center shrink-0">
-                  <UserRound className="w-5 h-5 text-indigo-300" />
-                </div>
+                <Avatar avatar={p.avatar ?? ""} nome={p.nome} dimensione="piccola" />
                 <div className="min-w-0 flex-1">
                   <div className="font-bold text-slate-100 truncate">{p.nome || "Senza nome"}</div>
                   <div className="text-xs text-slate-400 truncate">

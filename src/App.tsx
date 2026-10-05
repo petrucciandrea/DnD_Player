@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import type { CharacterData, EsitoRiposoBreve } from "./tipi";
 import {
-  applicaCura, applicaDanno, cdConcentrazione, derivate, riposoBreve, riposoLungo, segno,
+  applicaCura, applicaDanno, cdConcentrazione, derivate, riposoBreve, riposoLungo, segno, usaPresagio,
 } from "./regole";
 import {
   carica, ricordaUltimoPersonaggio, salva, salvaRiferimento, scaricaDalServer, ultimoPersonaggio,
@@ -18,9 +18,10 @@ import SchermataAccesso from "./components/SchermataAccesso";
 import SchermataPersonaggi from "./components/SchermataPersonaggi";
 import SchermataCreazione from "./components/SchermataCreazione";
 import FinestraAccount from "./components/FinestraAccount";
-import { conSuggerimento, useRichiestaTiro } from "./tiroDadi";
+import { conSuggerimento, useRichiestaTiro, type RispostaTiro } from "./tiroDadi";
 import { condizione, effetto } from "./dati/condizioni";
 import DialogoTiro from "./components/DialogoTiro";
+import Avatar from "./components/Avatar";
 import PannelloRiposoBreve from "./components/PannelloRiposoBreve";
 import TiriMorte from "./components/TiriMorte";
 import TabStatistiche from "./components/TabStatistiche";
@@ -197,6 +198,13 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
   const d = derivate(char);
   const { combattimento: pf } = char;
 
+  // Un dado del Presagio scelto nel dialogo del tiro risulta usato.
+  const rispondiTiro = (risposta: RispostaTiro | null) => {
+    const indice = risposta?.presagio;
+    if (indice !== undefined) setChar(prev => usaPresagio(prev, indice));
+    rispondi(risposta);
+  };
+
   // Subire danni mentre ci si concentra richiede un TS su COS (CD 10 o metà del danno).
   const verificaConcentrazione = async (incantesimo: string, danno: number) => {
     const cd = cdConcentrazione(danno);
@@ -324,19 +332,26 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-black tracking-tight text-white">{char.info.nome}</h1>
-                {char.info.sottoclasse && (
-                  <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                    {char.info.sottoclasse}
-                  </span>
-                )}
+            <div className="flex items-center gap-4">
+              <Avatar
+                avatar={char.info.avatar}
+                nome={char.info.nome}
+                onCambia={avatar => setChar(prev => ({ ...prev, info: { ...prev.info, avatar } }))}
+              />
+              <div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h1 className="text-3xl font-black tracking-tight text-white">{char.info.nome}</h1>
+                  {char.info.sottoclasse && (
+                    <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      {char.info.sottoclasse}
+                    </span>
+                  )}
+                </div>
+                <p className="text-slate-400 text-sm mt-1">
+                  {char.info.razza} • {char.info.classe} Liv. {char.info.livello} • {char.info.background}
+                  {char.info.allineamento && ` (${char.info.allineamento})`}
+                </p>
               </div>
-              <p className="text-slate-400 text-sm mt-1">
-                {char.info.razza} • {char.info.classe} Liv. {char.info.livello} • {char.info.background}
-                {char.info.allineamento && ` (${char.info.allineamento})`}
-              </p>
             </div>
 
             <div className="relative flex flex-wrap items-center gap-2">
@@ -490,7 +505,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
           onAnnulla={() => setRiposoBreveAperto(false)}
         />
       )}
-      {richiesta && <DialogoTiro key={richiesta.id} richiesta={richiesta} onRisposta={rispondi} />}
+      {richiesta && <DialogoTiro key={richiesta.id} richiesta={richiesta} presagio={d.presagioDisponibile} onRisposta={rispondiTiro} />}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { DatabaseSync, SQLOutputValue } from "node:sqlite";
 import type {
-  CategoriaNota, Caratteristica, CharacterData, CompetenzeAltre, EffettoAttivo, InventoryItem, NotaSessione, Spell, XPRecord,
+  ArmaPersonaggio, CategoriaNota, Caratteristica, CharacterData, CompetenzeAltre, Contatore, EffettoAttivo, InventoryItem,
+  NotaSessione, Spell, XPRecord,
 } from "../src/tipi.ts";
 import { CARATTERISTICHE } from "../src/regole.ts";
 import { personaggioVuoto } from "../src/scheda.ts";
@@ -19,6 +20,7 @@ export interface RiassuntoPersonaggio {
   sottoclasse: string;
   livello: number;
   razza: string;
+  avatar: string;
 }
 
 const testo = (v: unknown) => (typeof v === "string" ? v : v === null || v === undefined ? "" : String(v));
@@ -26,12 +28,15 @@ const intero = (v: unknown, def = 0) => (typeof v === "number" && Number.isFinit
 const numero = (v: unknown, def = 0) => (typeof v === "number" && Number.isFinite(v) ? v : def);
 const flag = (v: unknown) => (v === true ? 1 : 0);
 const vero = (v: SQLOutputValue) => v === 1;
+const contatore = (rimasti: SQLOutputValue, massimo: SQLOutputValue): Contatore | null =>
+  massimo === null ? null : { rimasti: Number(rimasti ?? massimo), massimo: Number(massimo) };
 
 // Tabelle figlie riscritte a ogni salvataggio.
 const TABELLE_FIGLIE = [
   "personaggio_caratteristiche", "personaggio_abilita", "personaggio_slot", "personaggio_presagio",
   "personaggio_xp", "personaggio_oggetti", "personaggio_incantesimi", "personaggio_armi", "personaggio_privilegi",
   "personaggio_competenze", "personaggio_risorse", "personaggio_condizioni", "personaggio_effetti", "personaggio_note",
+  "personaggio_note_campi",
 ];
 
 // Competenze diverse da abilità e TS: tipo nella tabella `personaggio_competenze` → campo di CompetenzeAltre.
@@ -55,7 +60,10 @@ export function scomponi(db: DatabaseSync, id: number, c: CharacterData, utenteI
       const voce = { nome, livello: intero(s.livello), scuola: testo(s.scuola), tempo: testo(s.tempo), scheda: s.scheda };
       inserisciIncantesimo.run(id, idIncantesimo(db, voce, utenteId), flag(s.preparato), ordine);
     });
-    const inserisciArma = db.prepare("INSERT OR IGNORE INTO personaggio_armi (personaggio_id, arma_id, ordine) VALUES (?, ?, ?)");
+    const inserisciArma = db.prepare(`
+      INSERT INTO personaggio_armi (personaggio_id, ordine, id_locale, arma_id, bonus, munizioni_rimaste, munizioni_massime,
+        durabilita_rimasta, durabilita_massima, rotta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
     c.armi.forEach((a, ordine) => {
       const nome = testo(a.nome).trim();
       if (!nome) return;
@@ -65,7 +73,14 @@ export function scomponi(db: DatabaseSync, id: number, c: CharacterData, utenteI
         ...(a.categoria === "semplice" || a.categoria === "guerra" ? { categoria: a.categoria } : {}),
         ...(a.distanza ? { distanza: true } : {}),
       };
-      inserisciArma.run(id, idArma(db, arma, utenteId), ordine);
+      inserisciArma.run(
+        id, ordine, intero(a.id, ordine + 1), idArma(db, arma, utenteId), intero(a.bonus),
+        a.munizioni ? intero(a.munizioni.rimasti) : null, a.munizioni ? intero(a.munizioni.massimo) : null,
+        // Un'arma danneggiata senza durabilità propria: solo i colpi rimasti, con il massimo a NULL.
+        a.durabilita ? intero(a.durabilita.rimasti) : a.danneggiata !== null ? intero(a.danneggiata) : null,
+        a.durabilita ? intero(a.durabilita.massimo) : null,
+        flag(a.rotta),
+      );
     });
     const inserisciPrivilegio = db.prepare(
       "INSERT OR IGNORE INTO personaggio_privilegi (personaggio_id, privilegio_id, ordine) VALUES (?, ?, ?)",
@@ -97,7 +112,7 @@ export function scomponi(db: DatabaseSync, id: number, c: CharacterData, utenteI
         nome = :nome, classe = :classe, sottoclasse = :sottoclasse, livello = :livello, razza = :razza,
         background = :background, allineamento = :allineamento, giocatore = :giocatore, eta = :eta,
         altezza = :altezza, peso = :peso, occhi = :occhi, capelli = :capelli, carnagione = :carnagione,
-        velocita = :velocita, taglia = :taglia, ispirazione = :ispirazione, indebolimento = :indebolimento, armatura_id = :armatura_id, scudo = :scudo,
+        velocita = :velocita, taglia = :taglia, ispirazione = :ispirazione, avatar = :avatar, indebolimento = :indebolimento, armatura_id = :armatura_id, scudo = :scudo,
         pf_attuali = :pf_attuali, pf_massimi = :pf_massimi, pf_temporanei = :pf_temporanei,
         dadi_vita_rimanenti = :dadi_vita_rimanenti, ts_morte_successi = :ts_morte_successi,
         ts_morte_fallimenti = :ts_morte_fallimenti, stabile = :stabile,
@@ -112,7 +127,7 @@ export function scomponi(db: DatabaseSync, id: number, c: CharacterData, utenteI
       allineamento: testo(info.allineamento), giocatore: testo(info.giocatore), eta: intero(info.eta),
       altezza: testo(info.altezza), peso: testo(info.peso), occhi: testo(info.occhi), capelli: testo(info.capelli),
       carnagione: testo(info.carnagione), velocita: testo(info.velocita), taglia: testo(info.taglia) || "Media",
-      ispirazione: flag(info.ispirazione), indebolimento: Math.max(0, Math.min(6, intero(c.indebolimento))), armatura_id: armaturaId, scudo: flag(c.scudo),
+      ispirazione: flag(info.ispirazione), avatar: testo(info.avatar), indebolimento: Math.max(0, Math.min(6, intero(c.indebolimento))), armatura_id: armaturaId, scudo: flag(c.scudo),
       pf_attuali: intero(pf.pfAttuali), pf_massimi: intero(pf.pfMassimi), pf_temporanei: intero(pf.pfTemporanei),
       dadi_vita_rimanenti: intero(pf.dadiVitaRimanenti), ts_morte_successi: intero(pf.tsMorte?.successi),
       ts_morte_fallimenti: intero(pf.tsMorte?.fallimenti), stabile: flag(pf.stabile),
@@ -153,7 +168,13 @@ export function scomponi(db: DatabaseSync, id: number, c: CharacterData, utenteI
     const nota = db.prepare(
       "INSERT INTO personaggio_note (personaggio_id, ordine, id_locale, data, categoria, titolo, testo, fatto) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     );
-    c.note.forEach((n, i) => nota.run(id, i, intero(n.id, i + 1), testo(n.data), testo(n.categoria), testo(n.titolo), testo(n.testo), flag(n.fatto)));
+    const campo = db.prepare("INSERT OR IGNORE INTO personaggio_note_campi (personaggio_id, nota_ordine, campo, valore) VALUES (?, ?, ?, ?)");
+    c.note.forEach((n, i) => {
+      nota.run(id, i, intero(n.id, i + 1), testo(n.data), testo(n.categoria), testo(n.titolo), testo(n.testo), flag(n.fatto));
+      for (const [chiave, valore] of Object.entries(n.campi ?? {})) {
+        if (testo(valore).trim()) campo.run(id, i, chiave, testo(valore));
+      }
+    });
 
     const oggetto = db.prepare(
       "INSERT INTO personaggio_oggetti (personaggio_id, ordine, id_locale, nome, qta, peso) VALUES (?, ?, ?, ?, ?, ?)",
@@ -177,7 +198,7 @@ export function componi(db: DatabaseSync, id: number): CharacterData | null {
     razza: testo(p.razza), background: testo(p.background), allineamento: testo(p.allineamento),
     giocatore: testo(p.giocatore), eta: Number(p.eta), altezza: testo(p.altezza), peso: testo(p.peso),
     occhi: testo(p.occhi), capelli: testo(p.capelli), carnagione: testo(p.carnagione), velocita: testo(p.velocita),
-    taglia: testo(p.taglia), ispirazione: vero(p.ispirazione),
+    taglia: testo(p.taglia), ispirazione: vero(p.ispirazione), avatar: testo(p.avatar),
   };
   c.indebolimento = Number(p.indebolimento);
   c.risorseUsate = Object.fromEntries(
@@ -186,9 +207,14 @@ export function componi(db: DatabaseSync, id: number): CharacterData | null {
   c.condizioni = tutte("SELECT condizione FROM personaggio_condizioni WHERE personaggio_id = ? ORDER BY ordine").map(r => testo(r.condizione));
   c.effetti = tutte("SELECT effetto, valore FROM personaggio_effetti WHERE personaggio_id = ? ORDER BY ordine").map((r): EffettoAttivo =>
     r.valore === null ? { id: testo(r.effetto) } : { id: testo(r.effetto), valore: Number(r.valore) });
+  const campiNote = new Map<number, Record<string, string>>();
+  for (const r of tutte("SELECT nota_ordine, campo, valore FROM personaggio_note_campi WHERE personaggio_id = ?")) {
+    const ordine = Number(r.nota_ordine);
+    campiNote.set(ordine, { ...campiNote.get(ordine), [testo(r.campo)]: testo(r.valore) });
+  }
   c.note = tutte("SELECT * FROM personaggio_note WHERE personaggio_id = ? ORDER BY ordine").map((r): NotaSessione => ({
     id: Number(r.id_locale), data: testo(r.data), categoria: testo(r.categoria) as CategoriaNota, titolo: testo(r.titolo),
-    testo: testo(r.testo), fatto: vero(r.fatto),
+    testo: testo(r.testo), fatto: vero(r.fatto), campi: campiNote.get(Number(r.ordine)) ?? {},
   }));
   const armatura = p.armatura_id === null ? undefined : db.prepare("SELECT * FROM armature WHERE id = ?").get(p.armatura_id);
   c.armatura = armatura ? armaturaDaRiga(armatura) : null;
@@ -220,9 +246,18 @@ export function componi(db: DatabaseSync, id: number): CharacterData | null {
     })),
   };
   c.armi = tutte(`
-    SELECT a.* FROM personaggio_armi pa JOIN armi a ON a.id = pa.arma_id
+    SELECT a.*, pa.id_locale, pa.bonus, pa.munizioni_rimaste, pa.munizioni_massime, pa.durabilita_rimasta,
+      pa.durabilita_massima, pa.rotta AS arma_rotta
+    FROM personaggio_armi pa JOIN armi a ON a.id = pa.arma_id
     WHERE pa.personaggio_id = ? ORDER BY pa.ordine
-  `).map(armaDaRiga);
+  `).map((r): ArmaPersonaggio => ({
+    ...armaDaRiga(r),
+    id: Number(r.id_locale), bonus: Number(r.bonus),
+    munizioni: contatore(r.munizioni_rimaste, r.munizioni_massime),
+    durabilita: contatore(r.durabilita_rimasta, r.durabilita_massima),
+    danneggiata: r.durabilita_massima === null && r.durabilita_rimasta !== null ? Number(r.durabilita_rimasta) : null,
+    rotta: vero(r.arma_rotta),
+  }));
   for (const r of tutte("SELECT livello, spesi FROM personaggio_slot WHERE personaggio_id = ?")) {
     const i = Number(r.livello) - 1;
     if (i >= 0 && i < 9) c.slotSpesi[i] = Number(r.spesi);
@@ -256,11 +291,11 @@ export function creaPersonaggio(db: DatabaseSync, utenteId: number, c: Character
 }
 
 export const elencoPersonaggi = (db: DatabaseSync, utenteId: number): RiassuntoPersonaggio[] =>
-  db.prepare("SELECT id, nome, classe, sottoclasse, livello, razza FROM personaggi WHERE utente_id = ? ORDER BY id")
+  db.prepare("SELECT id, nome, classe, sottoclasse, livello, razza, avatar FROM personaggi WHERE utente_id = ? ORDER BY id")
     .all(utenteId)
     .map(r => ({
       id: Number(r.id), nome: testo(r.nome), classe: testo(r.classe), sottoclasse: testo(r.sottoclasse),
-      livello: Number(r.livello), razza: testo(r.razza),
+      livello: Number(r.livello), razza: testo(r.razza), avatar: testo(r.avatar),
     }));
 
 // true se il personaggio esiste ed è di quell'utente.

@@ -6,13 +6,22 @@ import {
   dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, slotUtilizzabili,
   applicaCura, applicaDanno, cdConcentrazione, esitoTsMorte, statoVita, pfPerLivello, slotPatto,
   aggiungiCondizione, attivaEffetto, cambiaConteggioEffetto, impostaIndebolimento, privilegiMancanti, rimuoviEffetto, usaRisorsa,
+  effettiAttivabili, usaPresagio, nuovaArma, statoArma, usaArma, riparaArma, rompiArma, ricaricaArma, recuperaMunizioni, usaMunizioni,
+  danneggiaArma, dannoCritico, attacchiPerAzione, sogliaCritico, dadiCriticoBrutale, danniExtraArma,
+  dadiAttaccoFurtivo, dannoPunizione, spendiSlot, armaDaMonaco, dadoArtiMarziali, COLPO_SENZA_ARMI,
+  sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot, incantesimiSottoclasseMancanti, aggiungiIncantesimi,
+  applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
+import { competenteArmatura, competenzaCopreArma } from "./dati/competenze";
+import { classeDellaLista, incantatoreDi, regoleClasse } from "./dati/classi";
 import { completaConEsistente, daJSON } from "./scheda";
-import { SCHEDE_INCANTESIMI } from "../server/semi/incantesimi.ts";
+import { CLASSI_INCANTESIMI, SCHEDE_INCANTESIMI } from "../server/semi/incantesimi.ts";
+import { TUTTE_LE_LISTE, incantesimiDiSottoclasse } from "./dati/incantesimiSottoclasse";
 import type { CharacterData } from "./tipi";
 
 const alston = (): CharacterData => structuredClone(INITIAL_CHARACTER);
+const lancio = { daIncantesimo: true }; // effetto attivato dal lancio dell'incantesimo
 
 describe("valori base", () => {
   it("modificatore e bonus di competenza", () => {
@@ -286,6 +295,7 @@ describe("regole per classe", () => {
     const c = alston();
     c.info = { ...c.info, classe, livello, sottoclasse, razza: "Umano" };
     for (const [k, v] of Object.entries(punteggi)) c.caratteristiche[k as keyof typeof punteggi] = { valore: v, compTS: false };
+    c.competenzeAltre = { ...c.competenzeAltre, armi: [...regoleClasse(classe)!.armi], armature: [...regoleClasse(classe)!.armature] };
     c.privilegi = [];
     c.incantesimi = [];
     return c;
@@ -450,6 +460,7 @@ describe("effetti attivi", () => {
   const barbaro = (livello = 3): CharacterData => {
     const c = alston();
     c.info = { ...c.info, classe: "Barbaro", livello, sottoclasse: "", razza: "Umano" };
+    c.competenzeAltre = { ...c.competenzeAltre, armi: ["Armi semplici", "Armi da guerra"] };
     c.caratteristiche.FOR = { valore: 16, compTS: false };
     c.caratteristiche.DES = { valore: 12, compTS: false };
     c.armatura = null;
@@ -486,7 +497,7 @@ describe("effetti attivi", () => {
   });
 
   it("il riposo breve fa finire l'ira, quello lungo anche gli effetti di un'intera giornata", () => {
-    let c = attivaEffetto(attivaEffetto(mago(), "armatura-magica"), "scudo");
+    let c = attivaEffetto(attivaEffetto(mago(), "armatura-magica"), "scudo", lancio);
     const breve = riposoBreve(c, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
     expect(breve.effetti.map(e => e.id)).toEqual(["armatura-magica"]);
     expect(riposoLungo(c).effetti).toEqual([]);
@@ -500,17 +511,17 @@ describe("effetti attivi", () => {
     const armatura = derivate(attivaEffetto(mago(), "armatura-magica"));
     expect(armatura.ca).toBe(14);
     expect(armatura.notaCA).toContain("Armatura Magica");
-    expect(derivate(attivaEffetto(attivaEffetto(mago(), "armatura-magica"), "scudo")).ca).toBe(19);
+    expect(derivate(attivaEffetto(attivaEffetto(mago(), "armatura-magica"), "scudo", lancio)).ca).toBe(19);
     expect(derivate(attivaEffetto(mago(), "pelle-coriacea")).ca).toBe(16);
     // Con un'armatura indossata Armatura Magica non conta.
     const c = mago();
     c.armatura = { nome: "Cotta di Maglia", categoria: "pesante", ca: 16, maxDes: 0, forzaMin: 13, svantaggioFurtivita: true, peso: 55 };
     expect(derivate(attivaEffetto(c, "armatura-magica")).ca).toBe(16);
-    expect(derivate(attivaEffetto(c, "scudo")).ca).toBe(21);
+    expect(derivate(attivaEffetto(c, "scudo", lancio)).ca).toBe(21);
   });
 
   it("Immagine Speculare conta i duplicati e finisce a zero", () => {
-    let c = attivaEffetto(mago(), "immagine-speculare");
+    let c = attivaEffetto(mago(), "immagine-speculare", lancio);
     expect(c.effetti).toEqual([{ id: "immagine-speculare", valore: 3 }]);
     c = cambiaConteggioEffetto(c, "immagine-speculare", -1);
     expect(c.effetti[0].valore).toBe(2);
@@ -519,8 +530,8 @@ describe("effetti attivi", () => {
   });
 
   it("un effetto non si attiva due volte e gli incantesimi li attivano per nome", () => {
-    const c = attivaEffetto(mago(), "scudo");
-    expect(attivaEffetto(c, "scudo")).toBe(c);
+    const c = attivaEffetto(mago(), "scudo", lancio);
+    expect(attivaEffetto(c, "scudo", lancio)).toBe(c);
     expect(attivaEffetto(c, "inesistente")).toBe(c);
     expect(effettoDaIncantesimo(" scudo ")?.id).toBe("scudo");
     expect(effettoDaIncantesimo("Dardo di Fuoco")).toBeUndefined();
@@ -642,5 +653,498 @@ describe("privilegi mancanti", () => {
     const c = alston();
     c.privilegi.push({ nome: "tradizione arcana", fonte: "MAGO", descrizione: "" });
     expect(privilegiMancanti(c, catalogo)).toEqual([]);
+  });
+});
+
+describe("effetti attivabili dal pannello", () => {
+  const barbaro = (livello: number): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe: "Barbaro", livello, sottoclasse: "" };
+    return c;
+  };
+  const ids = (c: CharacterData) => {
+    const { privilegi, daAlleato } = effettiAttivabili(c);
+    return { privilegi: privilegi.map(e => e.id), daAlleato: daAlleato.map(e => e.id) };
+  };
+
+  it("gli incantesimi solo personali partono solo dal lancio", () => {
+    const c = alston();
+    expect(attivaEffetto(c, "scudo")).toBe(c);
+    expect(attivaEffetto(c, "immagine-speculare")).toBe(c);
+    expect(attivaEffetto(c, "immagine-speculare", lancio).effetti).toEqual([{ id: "immagine-speculare", valore: 3 }]);
+    expect(ids(c).daAlleato).not.toContain("scudo");
+    expect(ids(c).daAlleato).not.toContain("immagine-speculare");
+  });
+
+  it("quelli che può lanciare un alleato si segnano dal pannello", () => {
+    const c = alston();
+    expect(ids(c).daAlleato).toEqual(["armatura-magica", "scudo-della-fede", "pelle-coriacea", "velocita", "benedizione"]);
+    expect(attivaEffetto(c, "benedizione").effetti).toEqual([{ id: "benedizione" }]);
+    // Già attivo: non si offre più.
+    expect(ids(attivaEffetto(c, "benedizione")).daAlleato).not.toContain("benedizione");
+  });
+
+  it("i privilegi solo alla classe e dal livello giusti, con un uso libero", () => {
+    expect(ids(alston()).privilegi).toEqual([]);
+    expect(attivaEffetto(alston(), "ira")).toEqual(alston());
+    expect(ids(barbaro(1)).privilegi).toEqual(["ira"]);
+    expect(attivaEffetto(barbaro(1), "attacco-sconsiderato").effetti).toEqual([]);
+    expect(ids(barbaro(2)).privilegi).toEqual(["ira", "attacco-sconsiderato"]);
+    expect(attivaEffetto(barbaro(2), "attacco-sconsiderato").effetti).toEqual([{ id: "attacco-sconsiderato" }]);
+    expect(ids(usaRisorsa(barbaro(1), "ira", 2)).privilegi).toEqual([]);
+    // Nemmeno il lancio aggira i limiti di un privilegio.
+    expect(attivaEffetto(alston(), "ira", lancio).effetti).toEqual([]);
+  });
+});
+
+describe("Presagio", () => {
+  it("offre i dadi non usati e li segna quando sostituiscono un tiro", () => {
+    const c = alston();
+    c.divinazione = { presagio: [4, 17], usati: [false, false] };
+    expect(derivate(c).presagioDisponibile).toEqual([{ indice: 0, valore: 4 }, { indice: 1, valore: 17 }]);
+    const usato = usaPresagio(c, 1);
+    expect(usato.divinazione).toEqual({ presagio: [4, 17], usati: [false, true] });
+    expect(derivate(usato).presagioDisponibile).toEqual([{ indice: 0, valore: 4 }]);
+    expect(usaPresagio(usato, 1)).toBe(usato);
+    expect(usaPresagio(c, 5)).toBe(c);
+  });
+
+  it("solo per la Scuola di Divinazione", () => {
+    const c = alston();
+    c.info.sottoclasse = "Scuola di Invocazione";
+    c.divinazione = { presagio: [4, 17], usati: [false, false] };
+    expect(derivate(c).presagioDisponibile).toEqual([]);
+  });
+});
+
+describe("armi del personaggio", () => {
+  const arco = { nome: "Arco Corto", dado: "1d6", tipoDanno: "Perforante", proprieta: "Munizioni (24/96 m), Due mani", accurata: false, distanza: true };
+  const conArma = (modifiche: Partial<ReturnType<typeof nuovaArma>>): CharacterData => {
+    const c = alston();
+    c.armi = [{ ...nuovaArma(arco, 9), ...modifiche }];
+    return c;
+  };
+
+  it("le munizioni scendono a ogni attacco e a 0 non si attacca", () => {
+    expect(usaMunizioni(arco)).toBe(true);
+    let c = conArma({ munizioni: { rimasti: 2, massimo: 20 } });
+    c = usaArma(c, 9);
+    expect(c.armi[0].munizioni).toEqual({ rimasti: 1, massimo: 20 });
+    c = usaArma(c, 9);
+    expect(statoArma(c.armi[0])).toEqual({ utilizzabile: false, motivo: "Munizioni esaurite." });
+    expect(usaArma(c, 9)).toBe(c);
+    expect(c.armi[0].rotta).toBe(false);
+  });
+
+  it("recuperare dà metà delle munizioni spese, ricaricare resta nel massimo", () => {
+    const c = conArma({ munizioni: { rimasti: 5, massimo: 20 } });
+    expect(recuperaMunizioni(c, 9).armi[0].munizioni?.rimasti).toBe(12);
+    expect(ricaricaArma(c, 9, 100).armi[0].munizioni?.rimasti).toBe(20);
+    expect(ricaricaArma(c, 9, -100).armi[0].munizioni?.rimasti).toBe(0);
+    expect(recuperaMunizioni(conArma({}), 9).armi[0].munizioni).toBeNull();
+  });
+
+  it("a durabilità 0 l'arma si rompe; riparata torna al massimo", () => {
+    let c = conArma({ durabilita: { rimasti: 1, massimo: 5 } });
+    c = usaArma(c, 9);
+    expect(c.armi[0]).toMatchObject({ rotta: true, durabilita: { rimasti: 0, massimo: 5 } });
+    expect(statoArma(c.armi[0]).utilizzabile).toBe(false);
+    c = riparaArma(c, 9);
+    expect(c.armi[0]).toMatchObject({ rotta: false, durabilita: { rimasti: 5, massimo: 5 } });
+  });
+
+  it("un'arma senza contatori si può rompere e riparare a mano", () => {
+    const c = conArma({});
+    expect(usaArma(c, 9)).toBe(c);
+    const rotta = rompiArma(c, 9);
+    expect(statoArma(rotta.armi[0]).utilizzabile).toBe(false);
+    expect(riparaArma(rotta, 9).armi[0]).toEqual(c.armi[0]);
+    expect(usaArma(c, 123)).toBe(c);
+  });
+
+  it("un'arma senza durabilità danneggiata regge i colpi indicati, poi riparata torna intatta", () => {
+    let c = danneggiaArma(conArma({}), 9, 2);
+    expect(c.armi[0]).toMatchObject({ danneggiata: 2, durabilita: null, rotta: false });
+    // Danneggiarla di nuovo non le ridà colpi.
+    expect(danneggiaArma(c, 9, 5)).toBe(c);
+    c = usaArma(c, 9);
+    expect(c.armi[0]).toMatchObject({ danneggiata: 1, rotta: false });
+    c = usaArma(c, 9);
+    expect(c.armi[0]).toMatchObject({ danneggiata: 0, rotta: true });
+    expect(usaArma(c, 9)).toBe(c);
+    c = riparaArma(c, 9);
+    expect(c.armi[0]).toMatchObject({ danneggiata: null, rotta: false });
+    expect(usaArma(c, 9)).toBe(c); // di nuovo senza limite di colpi
+  });
+
+  it("danneggiare un'arma con durabilità ne abbassa i punti rimasti; con 0 colpi si rompe", () => {
+    const c = conArma({ durabilita: { rimasti: 8, massimo: 10 } });
+    expect(danneggiaArma(c, 9, 3).armi[0]).toMatchObject({ durabilita: { rimasti: 3, massimo: 10 }, danneggiata: null });
+    expect(danneggiaArma(c, 9, 9)).toBe(c);
+    expect(danneggiaArma(conArma({}), 9, 0).armi[0].rotta).toBe(true);
+    expect(riparaArma(danneggiaArma(c, 9, 3), 9).armi[0].durabilita).toEqual({ rimasti: 10, massimo: 10 });
+  });
+
+  it("il bonus magico vale per attacco e danni", () => {
+    const c = alston(); // DES 13, competenza +2
+    c.competenzeAltre.armi.push("Archi corti");
+    const d = derivate(c);
+    expect(d.attaccoArma({ ...nuovaArma(arco, 1), bonus: 2 })).toMatchObject({ bonus: 5, modDanno: 3 });
+    expect(d.attaccoArma(arco)).toMatchObject({ bonus: 3, modDanno: 1 });
+  });
+});
+
+describe("salvataggio: armi, avatar e campi delle note", () => {
+  it("completa le vecchie armi e scarta i contatori non validi", () => {
+    const c = alston() as unknown as Record<string, unknown>;
+    c.armi = [
+      { nome: "Pugnale", dado: "1d4", tipoDanno: "Perforante", proprieta: "", accurata: true },
+      { nome: "Pugnale", dado: "1d4", tipoDanno: "Perforante", proprieta: "", accurata: true, id: 1, munizioni: { rimasti: 50, massimo: 5 }, durabilita: { massimo: 0 } },
+    ];
+    const [primo, secondo] = daJSON(c).armi;
+    expect(primo).toMatchObject({ id: 1, bonus: 0, munizioni: null, durabilita: null, danneggiata: null, rotta: false });
+    expect(secondo).toMatchObject({ id: 2, munizioni: { rimasti: 5, massimo: 5 }, durabilita: null });
+  });
+
+  it("accetta come avatar solo un'immagine in data URL", () => {
+    const c = alston();
+    expect(daJSON({ ...c, info: { ...c.info, avatar: "data:image/jpeg;base64,AAAA" } }).info.avatar).toBe("data:image/jpeg;base64,AAAA");
+    expect(daJSON({ ...c, info: { ...c.info, avatar: "javascript:alert(1)" } }).info.avatar).toBe("");
+    expect(daJSON({ ...c, info: { ...c.info, avatar: `data:image/png;base64,${"A".repeat(400_000)}` } }).info.avatar).toBe("");
+    const senza: Record<string, unknown> = { ...c.info };
+    delete senza.avatar;
+    expect(daJSON({ ...c, info: senza }).info.avatar).toBe("");
+  });
+
+  it("i campi delle note tengono solo testi", () => {
+    const c = alston();
+    const nota = { id: 1, data: "", categoria: "png", titolo: "Oste", testo: "", fatto: false, campi: { razza: "Nano", eta: 40 } };
+    expect(daJSON({ ...c, note: [nota] }).note[0].campi).toEqual({ razza: "Nano" });
+    expect(daJSON({ ...c, note: [{ ...nota, campi: undefined }] }).note[0].campi).toEqual({});
+  });
+});
+
+
+describe("competenze in armi e armature", () => {
+  const cotta = { nome: "Cotta di Maglia", categoria: "pesante" as const, ca: 16, maxDes: 0, forzaMin: 13, svantaggioFurtivita: true, peso: 55 };
+
+  it("categorie, nomi al plurale e al singolare", () => {
+    expect(competenzaCopreArma("Armi semplici", { nome: "Pugnale", categoria: "semplice" })).toBe(true);
+    expect(competenzaCopreArma("Armi semplici", { nome: "Stocco", categoria: "guerra" })).toBe(false);
+    expect(competenzaCopreArma("Armi da guerra", { nome: "Stocco", categoria: "guerra" })).toBe(true);
+    expect(competenzaCopreArma("Pugnali", { nome: "Pugnale", categoria: "semplice" })).toBe(true);
+    expect(competenzaCopreArma("balestre leggere", { nome: "Balestra Leggera", categoria: "semplice" })).toBe(true);
+    expect(competenzaCopreArma("Spade lunghe", { nome: "Spada Corta", categoria: "guerra" })).toBe(false);
+    expect(competenzaCopreArma("Spada lunga", { nome: "Spada Lunga", categoria: "guerra" })).toBe(true);
+  });
+
+  it("senza competenza nell'arma non si aggiunge il bonus di competenza", () => {
+    const d = derivate(alston());
+    const spadone = { nome: "Spadone", dado: "2d6", tipoDanno: "Tagliente", proprieta: "Pesante, Due mani", accurata: false, categoria: "guerra" as const };
+    expect(d.attaccoArma(spadone)).toMatchObject({ bonus: -1, competente: false, car: "FOR" });
+    expect(d.attaccoArma(INITIAL_CHARACTER.armi[1])).toMatchObject({ bonus: 3, competente: true, car: "DES" });
+  });
+
+  it("armatura senza competenza: svantaggio con FOR e DES e niente incantesimi", () => {
+    const c = { ...alston(), armatura: cotta };
+    expect(competenteArmatura(c)).toBe(false);
+    const d = derivate(c);
+    expect(d.armaturaCompetente).toBe(false);
+    expect(d.incantesimiBloccati).not.toBeNull();
+    expect(suggerimentoTiro(c, { tipo: "ts", car: "DES" }).modalita).toBe("svantaggio");
+    expect(suggerimentoTiro(c, { tipo: "attacco", car: "FOR" }).modalita).toBe("svantaggio");
+    expect(suggerimentoTiro(c, { tipo: "ts", car: "INT" }).modalita).toBe("normale");
+    const guerriero = { ...c, competenzeAltre: { ...c.competenzeAltre, armature: ["Tutte le armature", "Scudi"] }, scudo: true };
+    expect(competenteArmatura(guerriero)).toBe(true);
+    expect(derivate(guerriero).incantesimiBloccati).toBeNull();
+    expect(competenteArmatura({ ...alston(), scudo: true })).toBe(false);
+  });
+
+  it("i vecchi salvataggi senza competenze in armi e armature prendono quelle della classe", () => {
+    const c = alston();
+    const vecchio = { ...c, competenzeAltre: { ...c.competenzeAltre, armi: [], armature: [] } };
+    expect(daJSON(vecchio).competenzeAltre.armi).toEqual(["Balestre leggere", "Bastoni ferrati", "Dardi", "Fionde", "Pugnali"]);
+    expect(daJSON({ ...vecchio, info: { ...c.info, classe: "Guerriero" } }).competenzeAltre.armature).toEqual(["Tutte le armature", "Scudi"]);
+    // Con almeno una competenza la scheda resta com'è.
+    expect(daJSON({ ...vecchio, competenzeAltre: { ...vecchio.competenzeAltre, armi: ["Pugnali"] } }).competenzeAltre.armi).toEqual(["Pugnali"]);
+  });
+});
+
+describe("privilegi che cambiano attacchi e danni", () => {
+  const pg = (classe: string, livello: number, sottoclasse = "", punteggi: Partial<Record<"FOR" | "DES" | "CAR", number>> = {}): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe, livello, sottoclasse };
+    for (const [k, v] of Object.entries(punteggi)) c.caratteristiche[k as keyof typeof punteggi] = { valore: v, compTS: false };
+    c.competenzeAltre = { ...c.competenzeAltre, armi: [...regoleClasse(classe)!.armi], armature: [...regoleClasse(classe)!.armature] };
+    c.armatura = null;
+    c.scudo = false;
+    return c;
+  };
+  const stocco = { nome: "Stocco", dado: "1d8", tipoDanno: "Perforante", proprieta: "Accurata", accurata: true, categoria: "guerra" as const };
+  const spada = { nome: "Spada Lunga", dado: "1d8", dadoVersatile: "1d10", tipoDanno: "Tagliente", proprieta: "Versatile", accurata: false, categoria: "guerra" as const };
+  const bastone = { nome: "Bastone Ferrato", dado: "1d6", dadoVersatile: "1d8", tipoDanno: "Contundente", proprieta: "Versatile", accurata: false, categoria: "semplice" as const };
+
+  it("danni in più parti: testo, critico e Critico Brutale", () => {
+    const parti = [{ numero: 1, facce: 8, mod: 3, tipo: "taglienti" }, { numero: 2, facce: 6, mod: 0, tipo: "taglienti", etichetta: "Attacco Furtivo" }];
+    expect(testoDanni(parti)).toBe("1d8 + 3 + 2d6");
+    expect(dannoCritico(parti).map(p => p.numero)).toEqual([2, 4]);
+    expect(dannoCritico(parti, 2).map(p => p.numero)).toEqual([4, 4]);
+    expect(testoDanni({ numero: 0, facce: 1, mod: 2, tipo: "contundenti" })).toBe("2");
+  });
+
+  it("Attacco Extra, Critico Migliorato e Critico Brutale per classe e livello", () => {
+    expect([4, 5, 11, 20].map(l => attacchiPerAzione(pg("Guerriero", l)))).toEqual([1, 2, 3, 4]);
+    expect(attacchiPerAzione(pg("Ranger", 5))).toBe(2);
+    expect(attacchiPerAzione(pg("Mago", 20))).toBe(1);
+    expect(attacchiPerAzione(pg("Bardo", 6, "Collegio del Valore"))).toBe(2);
+    expect(attacchiPerAzione(pg("Bardo", 6, "Collegio della Sapienza"))).toBe(1);
+    expect([sogliaCritico(pg("Guerriero", 3, "Campione")), sogliaCritico(pg("Guerriero", 15, "Campione")), sogliaCritico(pg("Guerriero", 15, "Maestro di Battaglia"))])
+      .toEqual([19, 18, 20]);
+    expect([8, 9, 13, 17].map(l => dadiCriticoBrutale(pg("Barbaro", l)))).toEqual([0, 1, 2, 3]);
+  });
+
+  it("Attacco Furtivo solo con armi accurate o a distanza", () => {
+    const ladro = pg("Ladro", 5);
+    expect(danniExtraArma(ladro, stocco)).toMatchObject([{ id: "attacco-furtivo", facoltativa: true, danni: { numero: 3, facce: 6, tipo: "perforanti" } }]);
+    expect(danniExtraArma(ladro, spada)).toEqual([]);
+    expect(dadiAttaccoFurtivo(1)).toBe(1);
+  });
+
+  it("Punizione Divina: dadi per slot, immondi, slot necessario e versione migliorata", () => {
+    expect([1, 2, 4, 5].map(l => dannoPunizione(l).numero)).toEqual([2, 3, 5, 5]);
+    expect(dannoPunizione(4, true).numero).toBe(6);
+    const paladino = pg("Paladino", 2);
+    expect(danniExtraArma(paladino, spada).map(e => e.id)).toEqual(["punizione-divina"]);
+    expect(danniExtraArma({ ...paladino, slotSpesi: [2, 0, 0, 0, 0, 0, 0, 0, 0] }, spada)).toEqual([]); // niente slot liberi
+    expect(danniExtraArma(paladino, { ...spada, distanza: true })).toEqual([]);
+    expect(danniExtraArma(pg("Paladino", 11), spada).map(e => e.id)).toEqual(["punizione-divina", "punizione-migliorata"]);
+    expect(spendiSlot(paladino, 1).slotSpesi[0]).toBe(1);
+    expect(spendiSlot(paladino, 3)).toBe(paladino);
+  });
+
+  it("Arti Marziali: DES e dado del monaco con le armi da monaco, senza armatura né scudo", () => {
+    const monaco = pg("Monaco", 5, "", { FOR: 10, DES: 16 });
+    const d = derivate(monaco);
+    expect(d.artiMarziali).toBe(true);
+    expect(d.attaccoArma(bastone)).toMatchObject({ car: "DES", danni: { numero: 1, facce: 6, mod: 3 }, danniDueMani: { facce: 8 } });
+    expect(d.attaccoArma(COLPO_SENZA_ARMI)).toMatchObject({ competente: true, danni: { numero: 1, facce: 6, mod: 3 } });
+    expect(armaDaMonaco(spada)).toBe(false);
+    expect(armaDaMonaco({ ...bastone, nome: "Randello Pesante", proprieta: "Due mani" })).toBe(false);
+    expect(derivate({ ...monaco, scudo: true }).attaccoArma(bastone)).toMatchObject({ car: "FOR" });
+    expect(dadoArtiMarziali(17)).toBe(10);
+  });
+
+  it("il colpo senz'armi di chi non è monaco fa 1 + FOR", () => {
+    const d = derivate(pg("Guerriero", 1, "", { FOR: 16 }));
+    expect(d.attaccoArma(COLPO_SENZA_ARMI)).toMatchObject({ bonus: 5, danni: { numero: 0, mod: 4 } });
+  });
+});
+
+describe("scelte di privilegio: Metamagia, Fonte di Magia, stili di combattimento", () => {
+  const pg = (classe: string, livello: number, sottoclasse = ""): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe, livello, sottoclasse };
+    c.privilegi = [];
+    c.competenzeAltre = { ...c.competenzeAltre, armi: [...regoleClasse(classe)!.armi], armature: [...regoleClasse(classe)!.armature] };
+    return c;
+  };
+  const stile = (nome: string) => ({ nome, fonte: "Stile di Combattimento", descrizione: "" });
+  const metamagiaP = (nome: string) => ({ nome, fonte: "Metamagia", descrizione: "" });
+
+  it("scelte dovute per classe, sottoclasse e livello", () => {
+    expect(sceltePendenti(pg("Stregone", 2))).toEqual([]);
+    expect(sceltePendenti(pg("Stregone", 3)).map(x => [x.scelta.id, x.mancano])).toEqual([["metamagia", 2]]);
+    const stregone = { ...pg("Stregone", 10), privilegi: [metamagiaP("Incantesimo Rapido"), metamagiaP("Incantesimo Gemello")] };
+    expect(sceltePendenti(stregone).map(x => x.mancano)).toEqual([1]);
+    expect(sceltePendenti(pg("Guerriero", 1)).map(x => x.scelta.id)).toEqual(["stile-guerriero"]);
+    const campione = { ...pg("Guerriero", 9, "Campione"), privilegi: [stile("Difesa")] };
+    expect(sceltePendenti(campione)).toEqual([]);
+    expect(sceltePendenti(campione, { livello: 10 }).map(x => [x.scelta.id, x.mancano])).toEqual([["stile-campione", 1]]);
+    // Un Ranger conta solo gli stili ammessi per lui.
+    expect(sceltePendenti({ ...pg("Ranger", 2), privilegi: [stile("Protezione")] }).map(x => x.mancano)).toEqual([1]);
+    expect(sceltePendenti(pg("Druido", 3, "Circolo della Terra")).map(x => x.scelta.id)).toEqual(["terreno"]);
+    expect(sceltePendenti(pg("Druido", 3, "Circolo della Luna"))).toEqual([]);
+  });
+
+  it("costo della Metamagia e spesa dei punti stregoneria", () => {
+    expect(costoMetamagia(["Incantesimo Gemello"], 0)).toBe(1);
+    expect(costoMetamagia(["Incantesimo Gemello", "Incantesimo Rapido"], 3)).toBe(5);
+    expect(costoMetamagia(["Incantesimo Intensificato"], 1)).toBe(3);
+    const c = pg("Stregone", 3);
+    expect(usaMetamagia(c, ["Incantesimo Rapido"], 1).risorseUsate["punti-stregoneria"]).toBe(2);
+    expect(usaMetamagia(c, ["Incantesimo Intensificato", "Incantesimo Rapido"], 1)).toBe(c); // servono 5 punti, ne ha 3
+  });
+
+  it("Fonte di Magia: slot in punti e punti in slot", () => {
+    const c = { ...pg("Stregone", 5), risorseUsate: { "punti-stregoneria": 3 } };
+    const convertito = slotInPunti(c, 2);
+    expect(convertito.slotSpesi[1]).toBe(1);
+    expect(convertito.risorseUsate["punti-stregoneria"]).toBe(1);
+    expect(slotInPunti({ ...c, risorseUsate: {} }, 2)).toEqual({ ...c, risorseUsate: {} }); // i punti sono già al massimo
+    const speso = { ...c, risorseUsate: {}, slotSpesi: [0, 1, 0, 0, 0, 0, 0, 0, 0] };
+    const creato = puntiInSlot(speso, 2);
+    expect(creato.slotSpesi[1]).toBe(0);
+    expect(creato.risorseUsate["punti-stregoneria"]).toBe(3);
+    expect(puntiInSlot({ ...speso, slotSpesi: [0, 0, 0, 0, 0, 0, 0, 0, 0] }, 2).slotSpesi[1]).toBe(0); // nessuno slot speso: non cambia
+    expect(puntiInSlot(speso, 6)).toBe(speso);
+    expect(slotInPunti(pg("Mago", 5), 1)).toEqual(pg("Mago", 5)); // senza punti stregoneria
+  });
+
+  it("stili: Difesa con armatura, Tiro a distanza, Duellare in mischia a una mano", () => {
+    const cotta = { nome: "Cotta di Maglia", categoria: "pesante" as const, ca: 16, maxDes: 0, forzaMin: 13, svantaggioFurtivita: true, peso: 55 };
+    const g = { ...pg("Guerriero", 1), armatura: cotta, scudo: false };
+    expect(derivate({ ...g, privilegi: [stile("Difesa")] }).ca).toBe(derivate(g).ca + 1);
+    expect(derivate({ ...g, armatura: null, privilegi: [stile("Difesa")] }).ca).toBe(derivate({ ...g, armatura: null }).ca);
+    const arco = { nome: "Arco Lungo", dado: "1d8", tipoDanno: "Perforante", proprieta: "Munizioni, Pesante, Due mani", accurata: false, distanza: true, categoria: "guerra" as const };
+    const spada = { nome: "Spada Lunga", dado: "1d8", dadoVersatile: "1d10", tipoDanno: "Tagliente", proprieta: "Versatile", accurata: false, categoria: "guerra" as const };
+    const spadone = { nome: "Spadone", dado: "2d6", tipoDanno: "Tagliente", proprieta: "Pesante, Due mani", accurata: false, categoria: "guerra" as const };
+    expect(derivate({ ...g, privilegi: [stile("Tiro")] }).attaccoArma(arco).bonus).toBe(derivate(g).attaccoArma(arco).bonus + 2);
+    const duellante = derivate({ ...g, privilegi: [stile("Duellare")] });
+    expect(duellante.attaccoArma(spada).danni.mod).toBe(derivate(g).attaccoArma(spada).danni.mod + 2);
+    expect(duellante.attaccoArma(spada).danniDueMani?.mod).toBe(derivate(g).attaccoArma(spada).danniDueMani?.mod);
+    expect(duellante.attaccoArma(spadone).danni.mod).toBe(derivate(g).attaccoArma(spadone).danni.mod);
+    expect(derivate({ ...g, privilegi: [stile("Combattere con Armi Possenti")] }).attaccoArma(spadone).note[0]).toMatch(/ritira/);
+  });
+});
+
+describe("incantesimi di dominio, giuramento, circolo e patrono", () => {
+  const pg = (classe: string, livello: number, sottoclasse: string): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe, livello, sottoclasse };
+    c.privilegi = [];
+    c.incantesimi = [];
+    return c;
+  };
+  const spell = (nome: string, livello = 1, preparato = false) => ({ id: nome.length, nome, livello, scuola: "Invocazione", tempo: "1 azione", preparato });
+
+  it("il catalogo ha una scheda valida per ogni incantesimo delle liste", () => {
+    const nomi = new Set(TUTTE_LE_LISTE.flatMap(l => l.flatMap(([, n]) => n)));
+    expect([...nomi].filter(n => !SCHEDE_INCANTESIMI[n])).toEqual([]);
+    for (const [nome, s] of Object.entries(SCHEDE_INCANTESIMI)) {
+      expect(CLASSI_INCANTESIMI[nome]?.length, nome).toBeGreaterThan(0);
+      if (s.danni) expect(() => parseDado(s.danni!.dado), nome).not.toThrow();
+      if (s.danni?.perLivello) expect(() => parseDado(s.danni!.perLivello!), nome).not.toThrow();
+    }
+  });
+
+  it("domini e giuramenti per livello, terreni dal privilegio scelto, patroni come lista ampliata", () => {
+    expect(incantesimiDiSottoclasse(pg("Chierico", 1, "Dominio della Vita"))).toEqual({ sempre: ["Benedizione", "Cura Ferite"], ampliata: [], fonte: "Dominio" });
+    expect(incantesimiDiSottoclasse(pg("Chierico", 3, "Dominio della Vita")).sempre).toHaveLength(4);
+    expect(incantesimiDiSottoclasse(pg("Paladino", 2, "Giuramento di Vendetta")).sempre).toEqual([]);
+    expect(incantesimiDiSottoclasse(pg("Paladino", 5, "Giuramento di Vendetta")).sempre).toEqual(["Anatema", "Marchio del Cacciatore", "Blocca Persone", "Passo Velato"]);
+    const druido = pg("Druido", 5, "Circolo della Terra");
+    expect(incantesimiDiSottoclasse(druido).sempre).toEqual([]); // terreno non ancora scelto
+    druido.privilegi = [{ nome: "Montagna", fonte: "Terreno del Circolo", descrizione: "" }];
+    expect(incantesimiDiSottoclasse(druido).sempre).toEqual(["Movimenti del Ragno", "Crescita di Spine", "Fulmine", "Fondersi nella Pietra"]);
+    expect(incantesimiDiSottoclasse(pg("Warlock", 3, "L'Immondo"))).toMatchObject({ sempre: [], ampliata: ["Mani Brucianti", "Comando", "Cecità/Sordità", "Raggio Rovente"] });
+    expect(incantesimiDiSottoclasse(pg("Mago", 5, "Scuola di Divinazione")).fonte).toBeNull();
+  });
+
+  it("sempre preparati e fuori dal limite; i mancanti si aggiungono preparati senza doppioni", () => {
+    const c = { ...pg("Chierico", 1, "Dominio della Vita"), incantesimi: [spell("Benedizione", 1, true), spell("Santuario", 1, true)] };
+    const d = derivate(c);
+    expect(d.preparatiAttuali).toBe(1);
+    expect(d.semprePreparato("benedizione ")).toBe(true);
+    expect(d.semprePreparato("Santuario")).toBe(false);
+    expect(incantesimiSottoclasseMancanti(c)).toEqual(["Cura Ferite"]);
+    const aggiunto = aggiungiIncantesimi(c, [spell("Cura Ferite", 1, true), spell("Benedizione"), spell("Cura Ferite")]);
+    expect(aggiunto.incantesimi.map(s => [s.nome, s.preparato])).toEqual([["Benedizione", true], ["Santuario", true], ["Cura Ferite", true]]);
+    expect(aggiungiIncantesimi(c, [spell("Benedizione")])).toBe(c);
+    const salito = saliDiLivello({ ...c, incantesimi: [] }, { incantesimi: [spell("Ristorare Inferiore", 2)] });
+    expect(salito.incantesimi.map(s => s.nome)).toEqual(["Ristorare Inferiore"]);
+  });
+});
+
+describe("salita di livello guidata", () => {
+  const pg = (classe: string, livello: number, sottoclasse = ""): CharacterData => {
+    const c = alston();
+    c.info = { ...c.info, classe, livello, sottoclasse };
+    c.privilegi = [];
+    c.incantesimi = [];
+    return c;
+  };
+  const voce = (id: number, nome: string, livello: number, classi: string[]) => ({ id, nome, livello, scuola: "Invocazione", tempo: "1 azione", classi });
+
+  it("livelli dell'aumento dei punteggi, anche quelli propri della classe", () => {
+    expect([4, 6, 8, 10, 14, 19].map(l => haAumentoCaratteristiche("Guerriero", l))).toEqual([true, true, true, false, true, true]);
+    expect([6, 10].map(l => haAumentoCaratteristiche("Ladro", l))).toEqual([false, true]);
+    expect([5, 6].map(l => haAumentoCaratteristiche("Mago", l))).toEqual([false, false]);
+  });
+
+  it("aumento: +2 a una o +1 a due, massimo 20, COS retroattiva", () => {
+    const c = pg("Mago", 4);
+    c.caratteristiche.INT = { valore: 19, compTS: true };
+    expect(applicaAumento(c, { INT: 2 })).toBe(c); // supererebbe 20
+    expect(applicaAumento(c, { INT: 1, DES: 1 }).caratteristiche.INT.valore).toBe(20);
+    expect(applicaAumento(c, { DES: 1 })).toBe(c); // totale 1
+    expect(applicaAumento(c, { DES: 3 })).toBe(c);
+    const cos = c.caratteristiche.COS.valore; // 14 → 16: +1 al modificatore
+    const r = applicaAumento(c, { COS: 2 });
+    expect(r.caratteristiche.COS.valore).toBe(cos + 2);
+    expect(r.combattimento.pfMassimi).toBe(c.combattimento.pfMassimi + 4); // 1 PF per livello
+  });
+
+  it("salire con un aumento della COS: i PF del nuovo livello e quelli precedenti crescono insieme", () => {
+    const c = { ...pg("Mago", 3), caratteristiche: { ...pg("Mago", 3).caratteristiche, COS: { valore: 13, compTS: false } } };
+    const semplice = saliDiLivello(c);
+    const conCos = saliDiLivello(c, { aumenti: { COS: 1, INT: 1 } });
+    expect(conCos.info.livello).toBe(4);
+    expect(conCos.combattimento.pfMassimi).toBe(semplice.combattimento.pfMassimi + 4); // 13 → 14: +1 per 4 livelli
+    const talento = { nome: "Allerta", fonte: "Talento", descrizione: "" };
+    expect(saliDiLivello(c, { talento }).privilegi).toContainEqual(talento);
+  });
+
+  it("livello di slot più alto e incantesimi da imparare", () => {
+    expect(livelloMassimoIncantesimi(incantatoreDi("Mago", ""), 5)).toBe(3);
+    expect(livelloMassimoIncantesimi(incantatoreDi("Paladino", ""), 1)).toBe(0);
+    expect(livelloMassimoIncantesimi(incantatoreDi("Warlock", ""), 7)).toBe(4);
+    expect(classeDellaLista("Ladro", "Mistificatore Arcano")).toBe("Mago");
+    expect(classeDellaLista("Chierico", "Dominio della Vita")).toBe("Chierico");
+    const catalogo = [
+      voce(1, "Dardo di Fuoco", 0, ["Mago", "Stregone"]), voce(2, "Palla di Fuoco", 3, ["Mago", "Stregone"]),
+      voce(3, "Cono di Freddo", 5, ["Mago"]), voce(4, "Comando", 1, ["Chierico", "Paladino"]), voce(5, "Sonno", 1, ["Mago"]),
+    ];
+    const mago = { ...pg("Mago", 4), incantesimi: [{ id: 5, nome: "Sonno", livello: 1, scuola: "Ammaliamento", tempo: "1 azione", preparato: false }] };
+    const m = incantesimiDaImparare(mago, catalogo, 5);
+    expect(m.trucchetti.map(i => i.nome)).toEqual(["Dardo di Fuoco"]);
+    expect(m.incantesimi.map(i => i.nome)).toEqual(["Palla di Fuoco"]); // Sonno è già nel libro, Cono di Freddo è troppo alto
+    // Il patrono Immondo aggiunge Comando alla lista del Warlock.
+    expect(incantesimiDaImparare(pg("Warlock", 1, "L'Immondo"), catalogo, 2).incantesimi.map(i => i.nome)).toEqual(["Comando"]);
+    expect(incantesimiDaImparare(pg("Ladro", 2), catalogo, 3, "Mistificatore Arcano").incantesimi.map(i => i.nome)).toEqual(["Sonno"]);
+    expect(incantesimiDaImparare(pg("Guerriero", 4, "Campione"), catalogo, 5)).toEqual({ trucchetti: [], incantesimi: [] });
+  });
+});
+
+describe("ricerca degli incantesimi", () => {
+  const v = (nome: string, livello: number, scuola: string, classi: string[], scheda?: { concentrazione: boolean; rituale: boolean }) =>
+    ({ nome, livello, scuola, classi, ...(scheda ? { scheda: { gittata: "", componenti: "", durata: "", descrizione: "", ...scheda } } : {}) });
+  const catalogo = [
+    v("Scudo", 1, "Abiurazione", ["Mago"]),
+    v("Identificare", 1, "Divinazione", ["Mago", "Bardo"], { concentrazione: false, rituale: true }),
+    v("Dardo Incantato", 1, "Invocazione", ["Mago"]),
+    v("Dardo di Fuoco", 0, "Invocazione", ["Mago"]),
+    v("Luce", 0, "Invocazione", ["Mago", "Chierico"]),
+    v("Invisibilità", 2, "Illusione", ["Mago"], { concentrazione: true, rituale: false }),
+    v("Raggio Rovente", 2, "Invocazione", ["Mago"]),
+  ];
+
+  it("divide per livello e per scuola, in ordine", () => {
+    const g = raggruppaIncantesimi(catalogo);
+    expect(g.map(x => x.livello)).toEqual([0, 1, 2]);
+    expect(g[1].scuole.map(s => s.scuola)).toEqual(["Abiurazione", "Divinazione", "Invocazione"]);
+    expect(g[0].scuole[0].voci.map(i => i.nome)).toEqual(["Dardo di Fuoco", "Luce"]);
+  });
+
+  it("filtra per testo (senza accenti), livello, scuola, classe e contrassegni", () => {
+    const nomi = (f: Parameters<typeof raggruppaIncantesimi>[1]) =>
+      raggruppaIncantesimi(catalogo, f).flatMap(g => g.scuole.flatMap(s => s.voci.map(i => i.nome)));
+    expect(nomi({ testo: "invisibilita" })).toEqual(["Invisibilità"]);
+    expect(nomi({ testo: "  DARDO " })).toEqual(["Dardo di Fuoco", "Dardo Incantato"]);
+    expect(nomi({ livello: 0 })).toEqual(["Dardo di Fuoco", "Luce"]);
+    expect(nomi({ scuola: "Invocazione", livello: 2 })).toEqual(["Raggio Rovente"]);
+    expect(nomi({ classe: "Chierico" })).toEqual(["Luce"]);
+    expect(nomi({ concentrazione: true })).toEqual(["Invisibilità"]);
+    expect(nomi({ rituale: true })).toEqual(["Identificare"]);
+    expect(nomi({ testo: "zzz" })).toEqual([]);
   });
 });

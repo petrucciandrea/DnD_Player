@@ -244,7 +244,7 @@ const MONACO: SemePrivilegioClasse[] = [
 ];
 
 const PALADINO: SemePrivilegioClasse[] = [
-  c("Paladino", 2, "Stile di Combattimento (Paladino)", "Sceglie uno stile tra Difesa, Duellare, Combattere con Armi Pesanti e Protezione."),
+  c("Paladino", 2, "Stile di Combattimento (Paladino)", "Sceglie uno stile tra Combattere con Armi Possenti, Difesa, Duellare e Protezione."),
   c("Paladino", 2, "Incantesimi (Paladino)", "Lancia incantesimi da paladino usando il Carisma; prepara ogni giorno metà del livello + mod CAR incantesimi dall'intera lista. Usa un simbolo sacro come focus."),
   c("Paladino", 2, "Punizione Divina", "Quando colpisce in mischia con un'arma può spendere uno slot: 2d8 danni radiosi extra (+1d8 per ogni livello dello slot oltre il 1°, massimo 5d8; +1d8 contro immondi e non morti)."),
   c("Paladino", 3, "Salute Divina", "Immune alle malattie."),
@@ -273,7 +273,7 @@ const PALADINO: SemePrivilegioClasse[] = [
 ];
 
 const RANGER: SemePrivilegioClasse[] = [
-  c("Ranger", 2, "Stile di Combattimento (Ranger)", "Sceglie uno stile tra Arcieria, Difesa, Duellare e Combattere con Due Armi."),
+  c("Ranger", 2, "Stile di Combattimento (Ranger)", "Sceglie uno stile tra Combattere con Due Armi, Difesa, Duellare e Tiro."),
   c("Ranger", 2, "Incantesimi (Ranger)", "Lancia incantesimi da ranger usando la Saggezza; conosce un numero fisso di incantesimi e usa slot di mezzo incantatore."),
   c("Ranger", 3, "Archetipo del Ranger", "Sceglie un archetipo che gli concede privilegi al 3°, 7°, 11° e 15° livello."),
   c("Ranger", 3, "Consapevolezza Primordiale", "Spendendo uno slot percepisce la presenza di aberrazioni, celestiali, draghi, elementali, fatati, immondi e non morti entro 1,5 km."),

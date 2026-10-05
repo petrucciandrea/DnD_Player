@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Zap } from "lucide-react";
-import type { SetChar } from "../tipi";
+import type { CharacterData, SetChar } from "../tipi";
 import type { Derivate } from "../regole";
-import { usaRisorsa } from "../regole";
+import { puntiInSlot, slotInPunti, usaRisorsa } from "../regole";
 import type { RisorsaDerivata } from "../dati/risorse";
+import { COSTO_SLOT_STREGONERIA } from "../dati/metamagia";
 
 interface Props {
+  char: CharacterData;
   d: Derivate;
   setChar: SetChar;
 }
@@ -14,7 +16,7 @@ const RICARICA = { breve: "riposo breve", lunga: "riposo lungo" };
 const MAX_PALLINI = 12;
 
 // Risorse con usi limitati: Ira, Ki, Incanalare Divinità... Un pallino pieno è un uso disponibile.
-export default function PannelloRisorse({ d, setChar }: Props) {
+export default function PannelloRisorse({ char, d, setChar }: Props) {
   if (d.risorse.length === 0) return null;
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
@@ -22,7 +24,12 @@ export default function PannelloRisorse({ d, setChar }: Props) {
         <Zap className="w-4 h-4 text-amber-400" /> Risorse di classe
       </h3>
       <div className="space-y-3">
-        {d.risorse.map(r => <Risorsa key={r.id} risorsa={r} setChar={setChar} />)}
+        {d.risorse.map(r => (
+          <div key={r.id}>
+            <Risorsa risorsa={r} setChar={setChar} />
+            {r.id === "punti-stregoneria" && <FonteDiMagia char={char} d={d} risorsa={r} setChar={setChar} />}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -78,6 +85,45 @@ function Risorsa({ risorsa: r, setChar }: { risorsa: RisorsaDerivata; setChar: S
           {r.nota && <p className="text-xs text-slate-400">{r.nota}</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+// Fonte di Magia dello Stregone: slot in punti stregoneria e punti in slot (dal 1° al 5° livello).
+function FonteDiMagia({ char, d, risorsa: r, setChar }: { char: CharacterData; d: Derivate; risorsa: RisorsaDerivata; setChar: SetChar }) {
+  const livelli = d.slotMax.map((max, i) => ({ livello: i + 1, max, spesi: Math.min(char.slotSpesi[i] ?? 0, max) })).filter(x => x.max > 0);
+  if (livelli.length === 0) return null;
+  const pulsante = "px-1.5 py-0.5 rounded text-[11px] font-mono bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed";
+  return (
+    <div className="mt-2 pl-2 border-l-2 border-slate-800 space-y-1 text-xs text-slate-400">
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="mr-1">Slot → punti</span>
+        {livelli.map(x => (
+          <button
+            key={x.livello}
+            onClick={() => setChar(prev => slotInPunti(prev, x.livello))}
+            disabled={x.spesi >= x.max || r.usati < x.livello}
+            title={`Spendi uno slot di ${x.livello}° livello per ${x.livello} punti`}
+            className={pulsante}
+          >
+            {x.livello}°
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="mr-1">Punti → slot</span>
+        {livelli.filter(x => x.livello <= COSTO_SLOT_STREGONERIA.length).map(x => (
+          <button
+            key={x.livello}
+            onClick={() => setChar(prev => puntiInSlot(prev, x.livello))}
+            disabled={x.spesi === 0 || (r.rimasti ?? 0) < COSTO_SLOT_STREGONERIA[x.livello - 1]}
+            title={`Recupera uno slot di ${x.livello}° livello per ${COSTO_SLOT_STREGONERIA[x.livello - 1]} punti`}
+            className={pulsante}
+          >
+            {x.livello}° ({COSTO_SLOT_STREGONERIA[x.livello - 1]})
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

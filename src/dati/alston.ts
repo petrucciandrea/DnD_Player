@@ -20,7 +20,8 @@ export const INITIAL_CHARACTER: CharacterData = {
     carnagione: "Chiara",
     velocita: "7.5 m",
     taglia: "Piccola",
-    ispirazione: true
+    ispirazione: true,
+    avatar: ""
   },
   caratteristiche: {
     FOR: { valore: 8, compTS: false },
@@ -72,8 +73,10 @@ export const INITIAL_CHARACTER: CharacterData = {
     ]
   },
   armi: [
-    { nome: "Bastone Ferrato", dado: "1d6", dadoVersatile: "1d8", tipoDanno: "Contundente", proprieta: "Versatile", accurata: false, categoria: "semplice" },
-    { nome: "Pugnale", dado: "1d4", tipoDanno: "Perforante", proprieta: "Accurata, Leggera, Lancio (6/18 m)", accurata: true, categoria: "semplice" }
+    { nome: "Bastone Ferrato", dado: "1d6", dadoVersatile: "1d8", tipoDanno: "Contundente", proprieta: "Versatile", accurata: false, categoria: "semplice",
+      id: 1, bonus: 0, munizioni: null, durabilita: null, danneggiata: null, rotta: false },
+    { nome: "Pugnale", dado: "1d4", tipoDanno: "Perforante", proprieta: "Accurata, Leggera, Lancio (6/18 m)", accurata: true, categoria: "semplice",
+      id: 2, bonus: 0, munizioni: null, durabilita: null, danneggiata: null, rotta: false }
   ],
   slotSpesi: [0, 0, 0, 0, 0, 0, 0, 0, 0],
   incantesimi: [

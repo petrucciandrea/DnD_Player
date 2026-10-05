@@ -8,7 +8,7 @@ import { hashPassword, verificaCredenziali } from "./accesso.ts";
 import { apriArchivio, leggi } from "./archivio.ts";
 import { aggiornaCataloghi } from "./catalogo.ts";
 import { elencoPersonaggi } from "./personaggi.ts";
-import { MIGRAZIONE_V3, preparaSchema, SCHEMA_V2, VERSIONE_SCHEMA } from "./schema.ts";
+import { MIGRAZIONE_V3, MIGRAZIONE_V4, preparaSchema, SCHEMA_V2, VERSIONE_SCHEMA } from "./schema.ts";
 import { componi } from "./personaggi.ts";
 
 // Archivio come lo lasciava la versione 1 dell'app.
@@ -143,5 +143,46 @@ describe("migrazione dalla versione 3", () => {
     expect(alston.combattimento.pfAttuali).toBe(17);
     expect(alston).toMatchObject({ risorseUsate: {}, condizioni: [], indebolimento: 0, effetti: [], note: [] });
     expect(db.prepare("SELECT revisione FROM personaggi WHERE id = 1").get()?.revisione).toBe(4);
+  });
+});
+
+describe("migrazione dalla versione 4", () => {
+  const archivioV4 = (db: DatabaseSync) => {
+    db.exec(SCHEMA_V2);
+    db.exec(MIGRAZIONE_V3);
+    db.exec(MIGRAZIONE_V4);
+    db.exec("PRAGMA user_version = 4");
+    aggiornaCataloghi(db);
+    db.exec("INSERT INTO utenti (username, hash, creato) VALUES ('alan', 'h', 'oggi')");
+    db.exec(`INSERT INTO personaggi (utente_id, revisione, aggiornato, nome, classe, livello, pf_attuali)
+             VALUES (1, 6, 'oggi', 'Alston il Breve', 'Mago', 3, 17)`);
+    db.exec(`INSERT INTO personaggio_armi (personaggio_id, arma_id, ordine)
+             SELECT 1, id, CASE nome WHEN 'Bastone Ferrato' THEN 0 ELSE 1 END FROM armi WHERE nome IN ('Bastone Ferrato', 'Pugnale')`);
+    db.exec("INSERT INTO personaggio_note (personaggio_id, ordine, id_locale, data, categoria, titolo, testo) VALUES (1, 0, 5, 'ieri', 'png', 'Oste', '')");
+  };
+
+  it("conserva le armi (intatte, senza contatori) e le note, e aggiunge avatar e campi", () => {
+    const db = new DatabaseSync(":memory:");
+    archivioV4(db);
+    preparaSchema(db, ":memory:");
+    expect(db.prepare("PRAGMA user_version").get()?.user_version).toBe(VERSIONE_SCHEMA);
+    const alston = componi(db, 1)!;
+    expect(alston.armi.map(a => ({ id: a.id, nome: a.nome, bonus: a.bonus, munizioni: a.munizioni, durabilita: a.durabilita, rotta: a.rotta })))
+      .toEqual([
+        { id: 1, nome: "Bastone Ferrato", bonus: 0, munizioni: null, durabilita: null, rotta: false },
+        { id: 2, nome: "Pugnale", bonus: 0, munizioni: null, durabilita: null, rotta: false },
+      ]);
+    expect(alston.info.avatar).toBe("");
+    expect(alston.note).toEqual([{ id: 5, data: "ieri", categoria: "png", titolo: "Oste", testo: "", fatto: false, campi: {} }]);
+    expect(db.prepare("SELECT revisione FROM personaggi WHERE id = 1").get()?.revisione).toBe(6);
+  });
+
+  it("prima di migrare un archivio su file ne fa una copia", () => {
+    const percorso = join(mkdtempSync(join(tmpdir(), "dnd-")), "archivio.sqlite");
+    const v4 = new DatabaseSync(percorso);
+    archivioV4(v4);
+    v4.close();
+    apriArchivio(percorso).close();
+    expect(existsSync(`${percorso}.bak-v4`)).toBe(true);
   });
 });

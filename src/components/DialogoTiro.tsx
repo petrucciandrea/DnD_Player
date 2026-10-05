@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Dices, X } from "lucide-react";
+import { Dices, Eye, X } from "lucide-react";
 import type { Dado, RichiestaTiro, RispostaTiro } from "../tiroDadi";
 import type { Modalita } from "../regole";
 import { segno, tiraD } from "../regole";
 
 interface Props {
   richiesta: RichiestaTiro;
+  presagio?: { indice: number; valore: number }[]; // dadi del Presagio ancora disponibili
   onRisposta: (risposta: RispostaTiro | null) => void;
 }
 
@@ -15,7 +16,7 @@ const MODALITA: { id: Modalita; label: string }[] = [
   { id: "svantaggio", label: "Svantaggio" },
 ];
 
-export default function DialogoTiro({ richiesta, onRisposta }: Props) {
+export default function DialogoTiro({ richiesta, presagio = [], onRisposta }: Props) {
   const [modalita, setModalita] = useState<Modalita>(richiesta.modalita ?? "normale");
   const [valori, setValori] = useState<string[]>([]);
   const [totale, setTotale] = useState("");
@@ -56,6 +57,9 @@ export default function DialogoTiro({ richiesta, onRisposta }: Props) {
     }
     onRisposta({ tiri: numeri, modalita });
   };
+
+  // Il Presagio sostituisce un tiro per colpire, un TS o una prova, prima di tirare: vantaggio e svantaggio non contano.
+  const conPresagio = richiesta.d20 && richiesta.tipo !== undefined && presagio.length > 0;
 
   const tiraApp = () => onRisposta({ tiri: dadi.map(dado => tiraD(dado.facce)), modalita });
 
@@ -100,6 +104,26 @@ export default function DialogoTiro({ richiesta, onRisposta }: Props) {
                 {m.label}
               </button>
             ))}
+          </div>
+        )}
+
+        {conPresagio && (
+          <div className="p-3 rounded-xl border border-indigo-800/60 bg-indigo-950/40 space-y-2">
+            <p className="text-xs font-semibold text-indigo-200 flex items-center gap-1.5">
+              <Eye className="w-3.5 h-3.5 text-indigo-400" /> Presagio: sostituisci il tiro con
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {presagio.map(p => (
+                <button
+                  key={p.indice}
+                  type="button"
+                  onClick={() => onRisposta({ tiri: [p.valore], modalita: "normale", presagio: p.indice })}
+                  className="px-3 py-1.5 rounded-lg border border-indigo-500 bg-indigo-950/80 hover:border-indigo-300 text-indigo-100 font-mono font-black"
+                >
+                  {p.valore}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

@@ -46,18 +46,28 @@ describe("creazione: elementi", () => {
     expect(abilitaDoppie(scelte({ abilitaClasse: ["atletica", "percezione"] }), razza, soldato)).toEqual(["atletica", "intimidire"]);
   });
 
+  it("il catalogo contiene le opzioni delle scelte di privilegio", () => {
+    const perFonte = (fonte: string) => catalogo.opzioniPrivilegio.filter(p => p.fonte === fonte).map(p => p.nome);
+    expect(perFonte("Metamagia")).toHaveLength(8);
+    expect(perFonte("Stile di Combattimento")).toEqual(expect.arrayContaining(["Difesa", "Duellare", "Tiro", "Protezione"]));
+    expect(perFonte("Terreno del Circolo")).toHaveLength(8);
+  });
+
   it("i passi segnalano cosa manca", () => {
     expect(mancaNelPasso("razza", scelte({ razza: "Nano" }), catalogo)).toMatch(/sottorazza/);
     expect(mancaNelPasso("classe", scelte({ classe: "Chierico", abilitaClasse: ["storia", "medicina"] }), catalogo)).toMatch(/sottoclasse/);
     expect(mancaNelPasso("caratteristiche", scelte({ razza: "Umano" }), catalogo)).toMatch(/Assegna/);
     expect(mancaNelPasso("incantesimi", scelte({ classe: "Guerriero" }), catalogo)).toBeNull();
+    const guerriero = { classe: "Guerriero" as const, abilitaClasse: ["atletica", "percezione"] };
+    expect(mancaNelPasso("classe", scelte(guerriero), catalogo)).toMatch(/Stile di Combattimento/);
+    expect(mancaNelPasso("classe", scelte({ ...guerriero, scelteClasse: { "stile-guerriero": ["Tiro"] } }), catalogo)).toBeNull();
   });
 });
 
 describe("creazione: personaggi completi", () => {
   it("Mezzorco Guerriero con cotta di maglia, spada lunga e scudo", () => {
     const c = personaggioIniziale(scelte({
-      razza: "Mezzorco", classe: "Guerriero", abilitaClasse: ["atletica", "percezione"],
+      razza: "Mezzorco", classe: "Guerriero", abilitaClasse: ["atletica", "percezione"], scelteClasse: { "stile-guerriero": ["Difesa"] },
       assegnazione: { FOR: 0, COS: 1, DES: 2, SAG: 3, CAR: 4, INT: 5 },
       background: "Soldato", abilitaSostitutive: ["sopravvivenza", "storia"], strumentoBackground: "Dadi",
       equipaggiamento: [{ opzione: 0, armi: [] }, { opzione: 0, armi: ["Spada Lunga"] }, { opzione: 1, armi: [] }, { opzione: 1, armi: [] }],
@@ -68,11 +78,14 @@ describe("creazione: personaggi completi", () => {
     expect(c.armatura?.nome).toBe("Cotta di Maglia");
     expect(c.scudo).toBe(true);
     expect(c.armi.map(a => a.nome)).toEqual(["Spada Lunga", "Ascia"]);
+    expect(c.armi.map(a => a.id)).toEqual([1, 2]);
+    expect(c.armi.every(a => a.bonus === 0 && a.munizioni === null && a.durabilita === null && !a.rotta)).toBe(true);
     expect(c.competenzeAbilita.sort()).toEqual(["atletica", "intimidire", "percezione", "sopravvivenza", "storia"]);
     expect(c.competenzeAltre.lingue).toEqual(["Comune", "Orchesco"]);
     expect(c.monete.mo).toBe(10);
     const d = derivate(c);
-    expect(d.ca).toBe(18);
+    expect(d.ca).toBe(19); // cotta di maglia 16, scudo +2, stile Difesa +1
+    expect(c.privilegi).toContainEqual(expect.objectContaining({ nome: "Difesa", fonte: "Stile di Combattimento" }));
     expect(d.haIncantesimi).toBe(false);
     expect(d.haPresagio).toBe(false);
     expect(c.privilegi.map(p => p.nome)).toEqual(expect.arrayContaining(["Tenacia Implacabile", "Grado Militare", "Recuperare Energie"]));
@@ -94,8 +107,13 @@ describe("creazione: personaggi completi", () => {
     expect(c.combattimento.pfMassimi).toBe(10); // 8 + COS 2
     expect(c.privilegi.map(p => p.nome)).toContain("Discepolo della Vita");
     expect(c.privilegi.map(p => p.nome)).not.toContain("Sacerdote Guerriero");
-    // Chi prepara dall'intera lista riceve gli incantesimi di 1° livello della classe presenti nel catalogo.
-    expect(c.incantesimi.map(s => [s.nome, s.preparato])).toEqual([["Taumaturgia", true], ["Individuazione del Magico", false]]);
+    // Gli incantesimi di dominio sono sempre preparati e non contano nel limite; chi prepara dall'intera lista
+    // riceve anche tutti quelli di 1° livello della classe presenti nel catalogo, da preparare.
+    const stato = Object.fromEntries(c.incantesimi.map(s => [s.nome, s.preparato]));
+    expect(stato).toMatchObject({ "Benedizione": true, "Cura Ferite": true, "Taumaturgia": true, "Individuazione del Magico": false, "Santuario": false });
+    expect(c.incantesimi.filter(s => s.nome === "Benedizione")).toHaveLength(1);
+    expect(d.incantesimiSempre).toEqual(["Benedizione", "Cura Ferite"]);
+    expect(d.preparatiAttuali).toBe(0);
     expect(c.competenzeAltre.lingue).toEqual(["Comune", "Celestiale", "Nanico", "Elfico"]);
     expect(c.armatura?.nome).toBe("Armatura di Scaglie");
   });

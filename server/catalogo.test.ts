@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CLASSI, NOMI_CLASSI } from "../src/dati/classi.ts";
-import { ABILITA } from "../src/regole.ts";
+import { ABILITA, SCUOLE, parseDado } from "../src/regole.ts";
 import { apriArchivio } from "./archivio.ts";
 import { catalogoCreazione, privilegiDiClasse } from "./catalogo.ts";
 import { ARMATURE, SCUDO } from "./semi/armature.ts";
@@ -51,6 +51,36 @@ describe("seed dei cataloghi", () => {
       if (r.trucchetto && r.trucchetto !== "*") expect(r.trucchetto in SCHEDE_INCANTESIMI, r.nome).toBe(true);
     }
     for (const nome of Object.keys(CLASSI_INCANTESIMI)) expect(nome in SCHEDE_INCANTESIMI, nome).toBe(true);
+  });
+});
+
+describe("catalogo degli incantesimi", () => {
+  const voci = Object.entries(SCHEDE_INCANTESIMI);
+  const perLivello = (l: number) => voci.filter(([, v]) => v.livello === l).length;
+
+  it("copre tutti i livelli, dai trucchetti al 9°, con almeno 350 incantesimi", () => {
+    expect(voci.length).toBeGreaterThanOrEqual(350);
+    for (let l = 0; l <= 9; l++) expect(perLivello(l), `livello ${l}`).toBeGreaterThanOrEqual(l === 0 ? 20 : 15);
+  });
+
+  it("ogni voce ha una scuola valida, almeno una classe e dadi leggibili; i nomi non si ripetono", () => {
+    const nomi = new Set<string>();
+    for (const [nome, v] of voci) {
+      const chiave = nome.trim().toLowerCase();
+      expect(nomi.has(chiave), `duplicato: ${nome}`).toBe(false);
+      nomi.add(chiave);
+      expect(SCUOLE, nome).toContain(v.scuola);
+      expect((CLASSI_INCANTESIMI[nome] ?? []).length, `${nome}: nessuna classe`).toBeGreaterThan(0);
+      expect(v.descrizione.length, nome).toBeGreaterThan(20);
+      if (v.danni) expect(() => parseDado(v.danni!.dado), nome).not.toThrow();
+      if (v.danni?.perLivello) expect(() => parseDado(v.danni!.perLivello!), nome).not.toThrow();
+    }
+  });
+
+  it("i trucchetti hanno una lista di classe, e solo i lanciatori di trucchetti li hanno", () => {
+    for (const [nome] of voci.filter(([, x]) => x.livello === 0)) {
+      for (const c of CLASSI_INCANTESIMI[nome]) expect(["Bardo", "Chierico", "Druido", "Mago", "Stregone", "Warlock"], `${nome}: ${c}`).toContain(c);
+    }
   });
 });
 

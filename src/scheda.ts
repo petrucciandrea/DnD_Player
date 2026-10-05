@@ -1,5 +1,8 @@
-import type { Armatura, CategoriaNota, CharacterData, EffettoAttivo, NotaSessione } from "./tipi.ts";
+import type {
+  ArmaPersonaggio, Armatura, CategoriaNota, CharacterData, Contatore, EffettoAttivo, NotaSessione,
+} from "./tipi.ts";
 import { CARATTERISTICHE } from "./regole.ts";
+import { regoleClasse } from "./dati/classi.ts";
 
 // Validazione e normalizzazione della scheda, senza dipendenze dal browser:
 // la usano sia il client (import JSON, cache locale) sia il server (prima di salvare nell'archivio).
@@ -31,6 +34,10 @@ function effettiAttivi(v: unknown): EffettoAttivo[] {
   });
 }
 
+// Campi di una nota: solo valori testuali.
+const campiNota = (v: unknown): Record<string, string> =>
+  Object.fromEntries(Object.entries(obj(v)).filter((x): x is [string, string] => typeof x[1] === "string"));
+
 function noteSessione(v: unknown): NotaSessione[] {
   return (Array.isArray(v) ? v : []).filter(isObj).map((n, i): NotaSessione => ({
     id: intero(n.id, i + 1),
@@ -39,8 +46,42 @@ function noteSessione(v: unknown): NotaSessione[] {
     titolo: typeof n.titolo === "string" ? n.titolo : "",
     testo: typeof n.testo === "string" ? n.testo : "",
     fatto: n.fatto === true,
+    campi: campiNota(n.campi),
   }));
 }
+
+function contatore(v: unknown): Contatore | null {
+  if (!isObj(v) || typeof v.massimo !== "number" || !Number.isFinite(v.massimo) || v.massimo < 1) return null;
+  const massimo = Math.trunc(v.massimo);
+  return { massimo, rimasti: Math.max(0, Math.min(massimo, intero(v.rimasti, massimo))) };
+}
+
+// Armi del personaggio: i vecchi salvataggi non hanno id, bonus, contatori e stato.
+function armiPersonaggio(v: unknown): ArmaPersonaggio[] {
+  const usati = new Set<number>();
+  return (Array.isArray(v) ? v : []).filter(isObj).map((a, i): ArmaPersonaggio => {
+    let id = intero(a.id, i + 1);
+    while (usati.has(id)) id++;
+    usati.add(id);
+    const durabilita = contatore(a.durabilita);
+    // "danneggiata" vale solo per le armi senza durabilità propria.
+    const danneggiata = durabilita ? null : intero(a.danneggiata, -1);
+    return {
+      ...(a as unknown as ArmaPersonaggio),
+      id,
+      bonus: intero(a.bonus, 0),
+      munizioni: contatore(a.munizioni),
+      durabilita,
+      danneggiata: danneggiata !== null && danneggiata >= 0 ? danneggiata : null,
+      rotta: a.rotta === true,
+    };
+  });
+}
+
+// Solo immagini in data URL e di dimensioni ragionevoli: l'avatar viaggia con la scheda.
+const MAX_AVATAR = 300_000; // caratteri
+const avatarDa = (v: unknown) =>
+  typeof v === "string" && v.length <= MAX_AVATAR && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(v) ? v : "";
 
 function armaturaDa(v: unknown): Armatura | null {
   if (!isObj(v) || typeof v.nome !== "string" || typeof v.ca !== "number") return null;
@@ -60,7 +101,7 @@ export const personaggioVuoto = (): CharacterData => ({
   info: {
     nome: "", classe: "", sottoclasse: "", livello: 1, razza: "", background: "", allineamento: "",
     giocatore: "", eta: 0, altezza: "", peso: "", occhi: "", capelli: "", carnagione: "", velocita: "",
-    taglia: "Media", ispirazione: false,
+    taglia: "Media", ispirazione: false, avatar: "",
   },
   caratteristiche: {
     FOR: { valore: 10, compTS: false },
@@ -126,18 +167,29 @@ function normalizza(d: Obj): CharacterData {
   for (const k of CARATTERISTICHE) caratteristiche[k] = { ...base.caratteristiche[k], ...caratteristiche[k] };
   const slot = Array.isArray(d.slotSpesi) ? d.slotSpesi : [];
   const xp = sezione("xp", base.xp);
+  const info = sezione("info", base.info);
+  // Ogni classe ha almeno una competenza nelle armi: se armi e armature mancano entrambe la scheda
+  // viene da una versione che non le salvava, e si prendono quelle della classe.
+  const competenze = obj(d.competenzeAltre);
+  let armi = stringhe(competenze.armi);
+  let armature = stringhe(competenze.armature);
+  const regole = regoleClasse(typeof info.classe === "string" ? info.classe : "");
+  if (armi.length === 0 && armature.length === 0 && regole) {
+    armi = [...regole.armi];
+    armature = [...regole.armature];
+  }
 
   return {
     ...base,
     versione: 2,
-    info: sezione("info", base.info),
+    info: { ...info, avatar: avatarDa(info.avatar) },
     caratteristiche,
     competenzeAbilita: stringhe(d.competenzeAbilita),
     competenzeAltre: {
-      lingue: stringhe(obj(d.competenzeAltre).lingue),
-      strumenti: stringhe(obj(d.competenzeAltre).strumenti),
-      armi: stringhe(obj(d.competenzeAltre).armi),
-      armature: stringhe(obj(d.competenzeAltre).armature),
+      lingue: stringhe(competenze.lingue),
+      strumenti: stringhe(competenze.strumenti),
+      armi,
+      armature,
     },
     armatura: armaturaDa(d.armatura),
     scudo: d.scudo === true,
@@ -151,7 +203,7 @@ function normalizza(d: Obj): CharacterData {
     effetti: effettiAttivi(d.effetti),
     monete: sezione("monete", base.monete),
     xp: { ...xp, storico: Array.isArray(xp.storico) ? xp.storico.filter(isObj) : [] } as CharacterData["xp"],
-    armi: lista("armi", base.armi),
+    armi: armiPersonaggio(d.armi),
     slotSpesi: Array.from({ length: 9 }, (_, i) => num(slot[i], 0)),
     incantesimi: lista("incantesimi", base.incantesimi),
     inventario: lista("inventario", base.inventario),
