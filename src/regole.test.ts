@@ -10,7 +10,7 @@ import {
   danneggiaArma, dannoCritico, attacchiPerAzione, sogliaCritico, dadiCriticoBrutale, danniExtraArma,
   dadiAttaccoFurtivo, dannoPunizione, spendiSlot, armaDaMonaco, dadoArtiMarziali, COLPO_SENZA_ARMI,
   sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot, incantesimiSottoclasseMancanti, aggiungiIncantesimi,
-  applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi,
+  applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { competenteArmatura, competenzaCopreArma } from "./dati/competenze";
@@ -1112,5 +1112,39 @@ describe("salita di livello guidata", () => {
     expect(incantesimiDaImparare(pg("Warlock", 1, "L'Immondo"), catalogo, 2).incantesimi.map(i => i.nome)).toEqual(["Comando"]);
     expect(incantesimiDaImparare(pg("Ladro", 2), catalogo, 3, "Mistificatore Arcano").incantesimi.map(i => i.nome)).toEqual(["Sonno"]);
     expect(incantesimiDaImparare(pg("Guerriero", 4, "Campione"), catalogo, 5)).toEqual({ trucchetti: [], incantesimi: [] });
+  });
+});
+
+describe("ricerca degli incantesimi", () => {
+  const v = (nome: string, livello: number, scuola: string, classi: string[], scheda?: { concentrazione: boolean; rituale: boolean }) =>
+    ({ nome, livello, scuola, classi, ...(scheda ? { scheda: { gittata: "", componenti: "", durata: "", descrizione: "", ...scheda } } : {}) });
+  const catalogo = [
+    v("Scudo", 1, "Abiurazione", ["Mago"]),
+    v("Identificare", 1, "Divinazione", ["Mago", "Bardo"], { concentrazione: false, rituale: true }),
+    v("Dardo Incantato", 1, "Invocazione", ["Mago"]),
+    v("Dardo di Fuoco", 0, "Invocazione", ["Mago"]),
+    v("Luce", 0, "Invocazione", ["Mago", "Chierico"]),
+    v("Invisibilità", 2, "Illusione", ["Mago"], { concentrazione: true, rituale: false }),
+    v("Raggio Rovente", 2, "Invocazione", ["Mago"]),
+  ];
+
+  it("divide per livello e per scuola, in ordine", () => {
+    const g = raggruppaIncantesimi(catalogo);
+    expect(g.map(x => x.livello)).toEqual([0, 1, 2]);
+    expect(g[1].scuole.map(s => s.scuola)).toEqual(["Abiurazione", "Divinazione", "Invocazione"]);
+    expect(g[0].scuole[0].voci.map(i => i.nome)).toEqual(["Dardo di Fuoco", "Luce"]);
+  });
+
+  it("filtra per testo (senza accenti), livello, scuola, classe e contrassegni", () => {
+    const nomi = (f: Parameters<typeof raggruppaIncantesimi>[1]) =>
+      raggruppaIncantesimi(catalogo, f).flatMap(g => g.scuole.flatMap(s => s.voci.map(i => i.nome)));
+    expect(nomi({ testo: "invisibilita" })).toEqual(["Invisibilità"]);
+    expect(nomi({ testo: "  DARDO " })).toEqual(["Dardo di Fuoco", "Dardo Incantato"]);
+    expect(nomi({ livello: 0 })).toEqual(["Dardo di Fuoco", "Luce"]);
+    expect(nomi({ scuola: "Invocazione", livello: 2 })).toEqual(["Raggio Rovente"]);
+    expect(nomi({ classe: "Chierico" })).toEqual(["Luce"]);
+    expect(nomi({ concentrazione: true })).toEqual(["Invisibilità"]);
+    expect(nomi({ rituale: true })).toEqual(["Identificare"]);
+    expect(nomi({ testo: "zzz" })).toEqual([]);
   });
 });

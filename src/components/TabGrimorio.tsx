@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { CheckCircle2, Circle, AlertCircle, Plus, Trash2, RotateCcw } from "lucide-react";
-import type { CharacterData, SetChar, Spell } from "../tipi";
+import { CheckCircle2, Circle, AlertCircle, Plus, Trash2, RotateCcw, Search } from "lucide-react";
+import type { CharacterData, IncantesimoCatalogo, SetChar, Spell } from "../tipi";
 import type { ChiediD20, ChiediTiro } from "../tiroDadi";
-import { catalogoIncantesimi, type VoceIncantesimo } from "../accesso";
+import { catalogoCreazione } from "../accesso";
+import { classeDellaLista } from "../dati/classi";
 import FinestraIncantesimo from "./FinestraIncantesimo";
+import RicercaIncantesimi from "./RicercaIncantesimi";
 import type { Derivate } from "../regole";
 import { SCUOLE, aggiungiIncantesimi, derivate, incantesimiSottoclasseMancanti, segno } from "../regole";
 
@@ -21,23 +23,27 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
   const [aperto, setAperto] = useState<number | null>(null); // id dell'incantesimo nella finestra
   const spellAperto = char.incantesimi.find(s => s.id === aperto);
   const [nuovo, setNuovo] = useState({ nome: "", livello: 1, scuola: "Invocazione", tempo: "1 Azione" });
-  const [catalogo, setCatalogo] = useState<VoceIncantesimo[]>([]);
+  const [catalogo, setCatalogo] = useState<IncantesimoCatalogo[]>([]);
+  const [inRicerca, setInRicerca] = useState(false);
 
   useEffect(() => {
     let attivo = true;
-    catalogoIncantesimi().then(voci => {
-      if (attivo && voci) setCatalogo(voci);
+    catalogoCreazione().then(c => {
+      if (attivo && c) setCatalogo(c.incantesimi);
     });
     return () => { attivo = false; };
   }, []);
 
   const stessoNome = (a: string, b: string) => a.trim().localeCompare(b.trim(), "it", { sensitivity: "accent" }) === 0;
-  const voceScelta = catalogo.find(v => stessoNome(v.nome, nuovo.nome));
+  const spellDaCatalogo = (v: IncantesimoCatalogo): Spell => ({
+    id: v.id, nome: v.nome, livello: v.livello, scuola: v.scuola, tempo: v.tempo,
+    preparato: v.livello === 0, ...(v.scheda ? { scheda: v.scheda } : {}),
+  });
 
-  // Scegliendo un incantesimo del catalogo, livello, scuola e tempo vengono dal catalogo.
-  const cambiaNome = (nome: string) => {
-    const voce = catalogo.find(v => stessoNome(v.nome, nome));
-    setNuovo(prev => (voce ? { nome, livello: voce.livello, scuola: voce.scuola, tempo: voce.tempo } : { ...prev, nome }));
+  // Gli incantesimi scelti nella ricerca (le voci già nel grimorio si ignorano).
+  const aggiungiDaCatalogo = (scelti: IncantesimoCatalogo[]) => {
+    setChar(prev => aggiungiIncantesimi(prev, scelti.map(spellDaCatalogo)));
+    setInRicerca(false);
   };
 
   const spesi = (i: number) => Math.min(char.slotSpesi[i] ?? 0, d.slotMax[i] ?? 0);
@@ -72,10 +78,11 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
       alert(`"${nome}" è già nel grimorio.`);
       return;
     }
-    // Un nome che non è nel catalogo diventa una nuova voce del catalogo condiviso al prossimo salvataggio.
+    // Con il nome di una voce del catalogo si usa quella; altrimenti diventa una nuova voce del catalogo condiviso al prossimo salvataggio.
+    const voceScelta = catalogo.find(v => stessoNome(v.nome, nome));
     if (!voceScelta && !confirm(`"${nome}" non è nel catalogo: verrà aggiunto al catalogo condiviso, senza scheda dettagliata. Continuare?`)) return;
     const spell: Spell = voceScelta
-      ? { ...voceScelta, preparato: voceScelta.livello === 0 }
+      ? spellDaCatalogo(voceScelta)
       : {
           id: Date.now(),
           nome,
@@ -241,50 +248,66 @@ export default function TabGrimorio({ char, d, setChar, chiediTiro, chiediD20 }:
         </div>
       </div>
 
-      <form onSubmit={aggiungiIncantesimo} className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-wrap gap-2 items-center">
-        <input
-          type="text"
-          placeholder={catalogo.length ? `Cerca tra ${catalogo.length} incantesimi del catalogo...` : "Nuovo incantesimo..."}
-          list="catalogo-incantesimi"
-          value={nuovo.nome}
-          onChange={e => cambiaNome(e.target.value)}
-          className="flex-1 min-w-40 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-400">Cerca nel catalogo per livello, scuola e classe, e aggiungi più incantesimi in una volta.</p>
+          <button
+            onClick={() => setInRicerca(true)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold flex items-center gap-1.5"
+          >
+            <Search className="w-4 h-4" /> Cerca incantesimi
+          </button>
+        </div>
+        <details className="group">
+          <summary className="text-xs text-slate-500 hover:text-slate-300 cursor-pointer select-none">Incantesimo personalizzato (non nel catalogo)</summary>
+          <form onSubmit={aggiungiIncantesimo} className="flex flex-wrap gap-2 items-center mt-3">
+            <input
+              type="text"
+              placeholder="Nome..."
+              value={nuovo.nome}
+              onChange={e => setNuovo(prev => ({ ...prev, nome: e.target.value }))}
+              className="flex-1 min-w-40 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+            />
+            <select
+              value={nuovo.livello}
+              onChange={e => setNuovo(prev => ({ ...prev, livello: Number(e.target.value) }))}
+              className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+            >
+              {Array.from({ length: Math.max(livelloMaxIncantesimi, nuovo.livello) + 1 }, (_, l) => (
+                <option key={l} value={l}>{nomeLivello(l)}</option>
+              ))}
+            </select>
+            <select
+              value={nuovo.scuola}
+              onChange={e => setNuovo(prev => ({ ...prev, scuola: e.target.value }))}
+              className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+            >
+              {SCUOLE.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <input
+              type="text"
+              placeholder="Tempo di lancio"
+              value={nuovo.tempo}
+              onChange={e => setNuovo(prev => ({ ...prev, tempo: e.target.value }))}
+              className="w-36 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+            />
+            <button type="submit" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-semibold flex items-center gap-1">
+              <Plus className="w-4 h-4" /> Aggiungi
+            </button>
+          </form>
+        </details>
+      </div>
+
+      {inRicerca && (
+        <RicercaIncantesimi
+          titolo="Cerca incantesimi"
+          catalogo={catalogo}
+          posseduti={char.incantesimi.map(s => s.nome)}
+          classe={d.incantatore ? classeDellaLista(char.info.classe, char.info.sottoclasse) : undefined}
+          onConferma={aggiungiDaCatalogo}
+          onChiudi={() => setInRicerca(false)}
         />
-        <datalist id="catalogo-incantesimi">
-          {catalogo.filter(v => !char.incantesimi.some(s => stessoNome(s.nome, v.nome))).map(v => (
-            <option key={v.id} value={v.nome}>{nomeLivello(v.livello)} · {v.scuola}</option>
-          ))}
-        </datalist>
-        <select
-          value={nuovo.livello}
-          disabled={!!voceScelta}
-          onChange={e => setNuovo(prev => ({ ...prev, livello: Number(e.target.value) }))}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-60"
-        >
-          {Array.from({ length: Math.max(livelloMaxIncantesimi, voceScelta?.livello ?? 0) + 1 }, (_, l) => (
-            <option key={l} value={l}>{nomeLivello(l)}</option>
-          ))}
-        </select>
-        <select
-          value={nuovo.scuola}
-          disabled={!!voceScelta}
-          onChange={e => setNuovo(prev => ({ ...prev, scuola: e.target.value }))}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-60"
-        >
-          {SCUOLE.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <input
-          type="text"
-          placeholder="Tempo di lancio"
-          value={nuovo.tempo}
-          disabled={!!voceScelta}
-          onChange={e => setNuovo(prev => ({ ...prev, tempo: e.target.value }))}
-          className="w-36 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-60"
-        />
-        <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold flex items-center gap-1">
-          <Plus className="w-4 h-4" /> Aggiungi
-        </button>
-      </form>
+      )}
 
       {spellAperto && (
         <FinestraIncantesimo

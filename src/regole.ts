@@ -632,6 +632,49 @@ export function incantesimiDaImparare(
   };
 }
 
+// Filtri della ricerca di incantesimi nel catalogo; un filtro assente o vuoto non esclude nulla.
+export interface FiltriIncantesimi {
+  testo?: string;
+  livello?: number | null;
+  scuola?: string | null;
+  classe?: string | null;
+  concentrazione?: boolean;
+  rituale?: boolean;
+}
+
+export interface GruppoIncantesimi<T> {
+  livello: number;
+  scuole: { scuola: string; voci: T[] }[];
+}
+
+// Senza maiuscole né accenti ("invocazione" trova "Invocazione", "scudo" trova "Scudo della Fede").
+const senzaAccenti = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
+
+// Filtra gli incantesimi del catalogo e li divide per livello e, dentro ogni livello, per scuola
+// (nell'ordine di SCUOLE, poi eventuali scuole sconosciute), tutto in ordine alfabetico.
+export function raggruppaIncantesimi<T extends { nome: string; livello: number; scuola: string; scheda?: DettagliIncantesimo; classi?: string[] }>(
+  voci: T[], filtri: FiltriIncantesimi = {},
+): GruppoIncantesimi<T>[] {
+  const testo = senzaAccenti(filtri.testo ?? "");
+  const scelte = voci
+    .filter(v => (testo === "" || senzaAccenti(v.nome).includes(testo))
+      && (filtri.livello == null || v.livello === filtri.livello)
+      && (!filtri.scuola || v.scuola === filtri.scuola)
+      && (!filtri.classe || (v.classi ?? []).includes(filtri.classe))
+      && (!filtri.concentrazione || v.scheda?.concentrazione)
+      && (!filtri.rituale || v.scheda?.rituale))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "it"));
+  const ordineScuola = (s: string) => (SCUOLE.includes(s) ? SCUOLE.indexOf(s) : SCUOLE.length);
+  const gruppi: GruppoIncantesimi<T>[] = [];
+  for (const livello of [...new Set(scelte.map(v => v.livello))].sort((a, b) => a - b)) {
+    const delLivello = scelte.filter(v => v.livello === livello);
+    const scuole = [...new Set(delLivello.map(v => v.scuola))]
+      .sort((a, b) => ordineScuola(a) - ordineScuola(b) || a.localeCompare(b, "it"));
+    gruppi.push({ livello, scuole: scuole.map(scuola => ({ scuola, voci: delLivello.filter(v => v.scuola === scuola) })) });
+  }
+  return gruppi;
+}
+
 // Aggiunge PF medi, un Dado Vita e i privilegi del nuovo livello (letti dal catalogo prima di salire),
 // ed eventualmente la sottoclasse scelta a quel livello, gli incantesimi nuovi (di sottoclasse o scelti),
 // l'aumento dei punteggi di caratteristica o un talento (privilegio con fonte "Talento").

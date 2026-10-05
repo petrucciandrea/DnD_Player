@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Plus, Trash2, ArrowUpCircle, LoaderCircle, X } from "lucide-react";
+import { Plus, Trash2, ArrowUpCircle, LoaderCircle, Search, X } from "lucide-react";
 import type { Caratteristica, CharacterData, IncantesimoCatalogo, Privilegio, SetChar, Spell, XPRecord } from "../tipi";
 import type { Derivate } from "../regole";
 import {
@@ -10,6 +10,7 @@ import { incantatoreDi, regoleClasse } from "../dati/classi";
 import { opzioniScelta, type DefinizioneScelta } from "../dati/scelte";
 import { incantesimiDiSottoclasse } from "../dati/incantesimiSottoclasse";
 import { catalogoCreazione, privilegiDiLivello, privilegiFinoAlLivello } from "../accesso";
+import RicercaIncantesimi from "./RicercaIncantesimi";
 import ScegliMolti from "./ScegliMolti";
 
 interface Props {
@@ -39,6 +40,46 @@ const aumentiDa = (car: (Caratteristica | "")[]) =>
 const spellDa = (i: IncantesimoCatalogo, preparato: boolean): Spell => ({
   id: i.id, nome: i.nome, livello: i.livello, scuola: i.scuola, tempo: i.tempo, preparato, ...(i.scheda ? { scheda: i.scheda } : {}),
 });
+
+// Incantesimi da imparare: gli scelti si vedono come chip e si cambiano dalla modale di ricerca.
+function SceltaIncantesimi({ titolo, opzioni, scelte, massimo, onCambia }: {
+  titolo: string; opzioni: IncantesimoCatalogo[]; scelte: string[]; massimo: number; onCambia: (v: string[]) => void;
+}) {
+  const [aperta, setAperta] = useState(false);
+  const scelti = opzioni.filter(i => scelte.includes(i.nome));
+  return (
+    <div className="space-y-2">
+      <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+        {titolo} <span className="normal-case text-slate-500">({scelte.length}/{massimo})</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {scelti.map(i => (
+          <span key={i.id} className="px-2.5 py-1 rounded-lg border text-xs bg-indigo-600 border-indigo-500 text-white">
+            {i.nome}{i.livello > 0 ? ` (${i.livello}°)` : ""}
+          </span>
+        ))}
+        <button
+          type="button"
+          onClick={() => setAperta(true)}
+          className="px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-950 hover:border-slate-500 text-xs text-slate-300 flex items-center gap-1"
+        >
+          <Search className="w-3.5 h-3.5" /> {scelti.length > 0 ? "Cambia" : "Scegli"}
+        </button>
+      </div>
+      {aperta && (
+        <RicercaIncantesimi
+          titolo={titolo}
+          catalogo={opzioni}
+          massimo={massimo}
+          iniziali={scelti.map(i => i.id)}
+          etichettaConferma="Conferma"
+          onConferma={v => { onCambia(v.map(i => i.nome)); setAperta(false); }}
+          onChiudi={() => setAperta(false)}
+        />
+      )}
+    </div>
+  );
+}
 
 // Opzioni di una scelta di privilegio, senza quelle che la scheda ha già.
 function SceltaPrivilegio({ scelta, mancano, catalogo, posseduti, valori, onCambia }: {
@@ -346,22 +387,21 @@ export default function TabProgresso({ char, d, setChar }: Props) {
               </div>
             )}
             {nTrucchetti > 0 && (
-              <ScegliMolti
+              <SceltaIncantesimi
                 titolo="Nuovi trucchetti"
-                opzioni={imparabili.trucchetti.map(i => i.nome)}
+                opzioni={imparabili.trucchetti}
                 scelte={salita.trucchetti}
                 massimo={nTrucchetti}
                 onCambia={v => setSalita(prev => prev && { ...prev, trucchetti: v })}
               />
             )}
             {nIncantesimi > 0 && (
-              <ScegliMolti
+              <SceltaIncantesimi
                 titolo={incDopo?.modo === "libro" ? "Incantesimi da copiare nel libro" : "Nuovi incantesimi conosciuti"}
-                opzioni={imparabili.incantesimi.map(i => i.nome)}
+                opzioni={imparabili.incantesimi}
                 scelte={salita.incantesimi}
                 massimo={nIncantesimi}
                 onCambia={v => setSalita(prev => prev && { ...prev, incantesimi: v })}
-                nome={v => `${v} (${imparabili.incantesimi.find(i => i.nome === v)?.livello}°)`}
               />
             )}
             {opzioni && pendentiSalita.map(({ scelta, mancano }) => (
