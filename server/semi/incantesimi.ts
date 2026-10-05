@@ -1,6 +1,10 @@
 import type { SchedaIncantesimo } from "../../src/tipi.ts";
 import type { NomeClasse } from "../../src/dati/classi.ts";
-import { CLASSI_SOTTOCLASSI, SCHEDE_SOTTOCLASSI } from "./incantesimiSottoclassi.ts";
+import { CLASSI_SOTTOCLASSI, SCHEDE_SOTTOCLASSI, type Voce } from "./incantesimiSottoclassi.ts";
+import { VOCI_M0_1 } from "./incantesimiM0_1.ts";
+import { VOCI_M2_3 } from "./incantesimiM2_3.ts";
+import { VOCI_M4_5 } from "./incantesimiM4_5.ts";
+import { VOCI_M6_9 } from "./incantesimiM6_9.ts";
 
 // Catalogo ufficiale (creato_da NULL): a ogni avvio aggiorna la tabella `incantesimi` dell'archivio.
 // Schede complete (D&D 5e 2014, testi e gittate come nel manuale italiano).
@@ -146,6 +150,11 @@ const CLASSI_BASE: Record<string, NomeClasse[]> = {
   "Taumaturgia": ["Chierico"],
 };
 
+// Il resto del Manuale del Giocatore (trucchetti e livelli dal 1° al 9°): le voci scritte a mano sopra hanno la precedenza.
+const VOCI_MANUALE: Record<string, Voce> = { ...VOCI_M0_1, ...VOCI_M2_3, ...VOCI_M4_5, ...VOCI_M6_9 };
+const SCHEDE_MANUALE = Object.fromEntries(Object.entries(VOCI_MANUALE).map(([nome, v]) => [nome, v.scheda]));
+const CLASSI_MANUALE = Object.fromEntries(Object.entries(VOCI_MANUALE).map(([nome, v]) => [nome, v.classi]));
+
 // Con gli incantesimi di dominio, giuramento, circolo e patrono (incantesimiSottoclassi.ts).
-export const SCHEDE_INCANTESIMI: Record<string, SchedaIncantesimo> = { ...SCHEDE_BASE, ...SCHEDE_SOTTOCLASSI };
-export const CLASSI_INCANTESIMI: Record<string, NomeClasse[]> = { ...CLASSI_BASE, ...CLASSI_SOTTOCLASSI };
+export const SCHEDE_INCANTESIMI: Record<string, SchedaIncantesimo> = { ...SCHEDE_MANUALE, ...SCHEDE_BASE, ...SCHEDE_SOTTOCLASSI };
+export const CLASSI_INCANTESIMI: Record<string, NomeClasse[]> = { ...CLASSI_MANUALE, ...CLASSI_BASE, ...CLASSI_SOTTOCLASSI };

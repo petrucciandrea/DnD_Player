@@ -5,12 +5,12 @@ import type { NomeClasse } from "../../src/dati/classi.ts";
 // nel catalogo, con le classi che li hanno nella propria lista. Descrizioni riassunte, non il testo del manuale.
 // Le classi di ogni voce vanno nella tabella `incantesimo_classi`.
 
-type Voce = { classi: NomeClasse[]; scheda: SchedaIncantesimo };
+export type Voce = { classi: NomeClasse[]; scheda: SchedaIncantesimo };
 
 type Extra = Partial<Pick<SchedaIncantesimo, "rituale" | "livelloSuperiore" | "attacco" | "tiroSalvezza" | "danni">>;
 
 // La concentrazione si ricava dalla durata ("Concentrazione, fino a...").
-const inc = (
+export const inc = (
   classi: NomeClasse[], livello: number, scuola: string, tempo: string, gittata: string, componenti: string, durata: string,
   descrizione: string, extra: Extra = {},
 ): Voce => ({
@@ -21,7 +21,7 @@ const inc = (
   },
 });
 
-const PIU_DADI = (dado: string) => `Con uno slot di livello superiore, +${dado} per ogni livello oltre il base.`;
+export const PIU_DADI = (dado: string) => `Con uno slot di livello superiore, +${dado} per ogni livello oltre il base.`;
 
 export const VOCI_SOTTOCLASSI: Record<string, Voce> = {
   // --- 1° livello ---
