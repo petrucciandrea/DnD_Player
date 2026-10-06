@@ -124,7 +124,7 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
         <div className={`${card} max-w-md space-y-3`}>
-          <p className="text-amber-300 text-sm">Catalogo non raggiungibile: controlla che il server sia avviato e riprova.</p>
+          <p className="text-amber-300 text-sm">Catalogo non raggiungibile: controlla la connessione e riprova.</p>
           <button onClick={onAnnulla} className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-slate-200">Torna all'elenco</button>
         </div>
       </div>

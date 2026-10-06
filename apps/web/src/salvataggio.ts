@@ -48,7 +48,7 @@ export function ricordaUltimoPersonaggio(utenteId: number, personaggio: number |
   }
 }
 
-// --- Archivio SQLite sul server locale (server/api.ts) ---
+// --- Archivio sul server (apps/api) ---
 
 const urlPersonaggio = (personaggio: number) => `/api/personaggi/${personaggio}`;
 

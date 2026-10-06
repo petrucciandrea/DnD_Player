@@ -1,7 +1,7 @@
 import type { RiassuntoPersonaggio, Utente, VoceIncantesimo } from "@dnd/regole/api.ts";
 import type { CatalogoCreazione, CharacterData, PrivilegioClasse } from "@dnd/regole/tipi.ts";
 
-// Chiamate all'API del server locale (server/api.ts) per accesso, personaggi e catalogo.
+// Chiamate all'API (apps/api) per accesso, personaggi e catalogo.
 // La sessione è un cookie HttpOnly: la pagina non vede il token, sa solo chi ha fatto l'accesso.
 
 export type { RiassuntoPersonaggio, Utente, VoceIncantesimo };
@@ -14,16 +14,29 @@ const utenteDa = (v: unknown): Utente | null =>
 const erroreDa = (corpo: unknown, predefinito: string) =>
   isObj(corpo) && typeof corpo.errore === "string" ? corpo.errore : predefinito;
 
-const IRRAGGIUNGIBILE = "Archivio non raggiungibile: controlla che il server sia avviato.";
+const IRRAGGIUNGIBILE = "Archivio non raggiungibile: controlla la connessione e riprova.";
 
-// null se non c'è una sessione valida, "offline" se il server non risponde.
+// Il server gratuito si spegne dopo un periodo di inattività e si riaccende alla prima richiesta
+// (circa 30-60 s). Nel frattempo il proxy può rispondere con un errore temporaneo: si riprova.
+const RISVEGLIO_MASSIMO = 90_000; // ms
+const PAUSA_TRA_TENTATIVI = 2_000; // ms
+const IN_AVVIO = new Set([502, 503, 504]);
+
+// null se non c'è una sessione valida, "offline" se il server non risponde neanche dopo il risveglio.
 export async function sessioneAttuale(): Promise<Utente | null | "offline"> {
-  try {
-    const res = await fetch("/api/sessione", { cache: "no-store" });
-    if (res.status === 401) return null;
-    return res.ok ? utenteDa(await res.json()) ?? "offline" : "offline";
-  } catch {
-    return "offline";
+  const scadenza = Date.now() + RISVEGLIO_MASSIMO;
+  while (true) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
+    try {
+      const res = await fetch("/api/sessione", { cache: "no-store", signal: AbortSignal.timeout(Math.max(1, scadenza - Date.now())) });
+      if (res.status === 401) return null;
+      if (res.ok) return utenteDa(await res.json()) ?? "offline";
+      if (!IN_AVVIO.has(res.status)) return "offline";
+    } catch {
+      // Rete assente, timeout o connessione rifiutata: si riprova fino alla scadenza.
+    }
+    if (Date.now() + PAUSA_TRA_TENTATIVI >= scadenza) return "offline";
+    await new Promise(r => setTimeout(r, PAUSA_TRA_TENTATIVI));
   }
 }
 

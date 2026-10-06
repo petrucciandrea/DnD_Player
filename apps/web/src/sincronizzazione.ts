@@ -15,7 +15,7 @@ const MESSAGGIO_CONFLITTO =
   "OK: carica quella versione (le modifiche fatte qui vanno perse).\n" +
   "Annulla: sovrascrivila con la scheda di questo dispositivo.";
 
-// Tiene la scheda allineata con l'archivio SQLite del server locale (server/api.ts).
+// Tiene la scheda allineata con l'archivio sul server (apps/api).
 // Ogni modifica finisce subito nel localStorage, che fa da copia offline, e poco dopo sul server.
 // Gli aggiornamenti fatti da altri dispositivi si caricano all'avvio, al ritorno sulla pagina
 // e ogni INTERVALLO_CONTROLLO. Le scritture usano la revisione del server per accorgersi dei conflitti.

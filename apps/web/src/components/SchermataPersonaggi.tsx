@@ -84,7 +84,7 @@ export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, 
         )}
         {elenco === "offline" && (
           <p className="text-sm text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded-lg px-3 py-2">
-            Archivio non raggiungibile: controlla che il server sia avviato e ricarica la pagina.
+            Archivio non raggiungibile: controlla la connessione e ricarica la pagina.
           </p>
         )}
 

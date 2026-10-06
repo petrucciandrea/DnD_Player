@@ -49,6 +49,7 @@ export default function App() {
   const [avviso, setAvviso] = useState<string | null>(null);
   const [accountAperto, setAccountAperto] = useState(false);
   const [inCreazione, setInCreazione] = useState(false);
+  const [risveglio, setRisveglio] = useState(false); // la verifica della sessione sta durando: il server si sta avviando
 
   const entra = useCallback((u: Utente) => {
     setSessione(u);
@@ -57,18 +58,23 @@ export default function App() {
 
   useEffect(() => {
     let attivo = true;
+    const timer = setTimeout(() => setRisveglio(true), 3000);
     sessioneAttuale().then(s => {
+      clearTimeout(timer);
       if (!attivo) return;
       if (s === "offline") {
         setSessione(null);
-        setAvviso("Archivio non raggiungibile: controlla che il server sia avviato.");
+        setAvviso("Archivio non raggiungibile: controlla la connessione e riprova.");
       } else if (s) {
         entra(s);
       } else {
         setSessione(null);
       }
     });
-    return () => { attivo = false; };
+    return () => {
+      attivo = false;
+      clearTimeout(timer);
+    };
   }, [entra]);
 
   const sessioneScaduta = useCallback(() => {
@@ -118,8 +124,13 @@ export default function App() {
 
   if (sessione === "verifica") {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-3 px-4 text-center">
         <LoaderCircle className="w-6 h-6 text-indigo-400 animate-spin" />
+        {risveglio && (
+          <p className="text-sm text-slate-400 max-w-xs">
+            Avvio del server in corso… Dopo un periodo di inattività può servire fino a un minuto.
+          </p>
+        )}
       </div>
     );
   }
