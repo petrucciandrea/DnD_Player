@@ -25,3 +25,6 @@ dist-ssr
 
 # Archivio SQLite delle schede
 archivio
+
+# Variabili d'ambiente locali
+.env

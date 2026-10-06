@@ -1,7 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { CLASSI, NOMI_CLASSI } from "@dnd/regole/dati/classi.ts";
 import { ABILITA, SCUOLE, parseDado } from "@dnd/regole/regole.ts";
-import { apriArchivio } from "../src/archivio.ts";
 import { catalogoCreazione, privilegiDiClasse } from "../src/catalogo.ts";
 import { ARMATURE, SCUDO } from "@dnd/regole/semi/armature.ts";
 import { ARMI } from "@dnd/regole/semi/armi.ts";
@@ -9,6 +8,8 @@ import { BACKGROUND } from "@dnd/regole/semi/background.ts";
 import { PRIVILEGI_CLASSE } from "@dnd/regole/semi/classi.ts";
 import { CLASSI_INCANTESIMI, SCHEDE_INCANTESIMI } from "@dnd/regole/semi/incantesimi.ts";
 import { RAZZE } from "@dnd/regole/semi/razze.ts";
+import type { Esecutore } from "../src/db.ts";
+import { archivioDiProva } from "./database.ts";
 
 const idAbilita = new Set(ABILITA.map(a => a.id));
 const nomiArmi = new Set(ARMI.map(a => a.nome));
@@ -85,8 +86,12 @@ describe("catalogo degli incantesimi", () => {
 });
 
 describe("catalogo per la creazione", () => {
-  const db = apriArchivio(":memory:");
-  const catalogo = catalogoCreazione(db);
+  let db: Esecutore;
+  let catalogo: Awaited<ReturnType<typeof catalogoCreazione>>;
+  beforeAll(async () => {
+    db = await archivioDiProva();
+    catalogo = await catalogoCreazione(db);
+  });
 
   it("le sottorazze indicano la razza madre e portano i loro privilegi e competenze", () => {
     const rocce = catalogo.razze.find(r => r.nome === "Gnomo delle Rocce")!;
@@ -114,18 +119,18 @@ describe("catalogo per la creazione", () => {
     expect(catalogo.incantesimi.find(i => i.nome === "Scudo")?.classi.sort()).toEqual(["Mago", "Stregone"]);
   });
 
-  it("i privilegi di classe si filtrano per livello e sottoclasse", () => {
-    const mago2 = privilegiDiClasse(db, { classe: "Mago", livello: 2, sottoclasse: "Scuola di Divinazione" });
+  it("i privilegi di classe si filtrano per livello e sottoclasse", async () => {
+    const mago2 = await privilegiDiClasse(db, { classe: "Mago", livello: 2, sottoclasse: "Scuola di Divinazione" });
     expect(mago2.map(p => p.privilegio.nome)).toEqual(["Tradizione Arcana", "Esperto di Divinazione", "Presagio"]);
-    const invocazione = privilegiDiClasse(db, { classe: "Mago", livello: 2, sottoclasse: "Scuola di Invocazione" });
+    const invocazione = await privilegiDiClasse(db, { classe: "Mago", livello: 2, sottoclasse: "Scuola di Invocazione" });
     expect(invocazione.map(p => p.privilegio.nome)).toEqual(["Tradizione Arcana", "Esperto di Invocazione", "Scolpire Incantesimi"]);
-    const chierico = privilegiDiClasse(db, { classe: "Chierico", livello: 1, sottoclasse: "Dominio della Vita" });
+    const chierico = await privilegiDiClasse(db, { classe: "Chierico", livello: 1, sottoclasse: "Dominio della Vita" });
     expect(chierico.map(p => p.privilegio.nome)).toContain("Discepolo della Vita");
     expect(chierico.map(p => p.privilegio.nome)).not.toContain("Sacerdote Guerriero");
   });
 
-  it("i privilegi si possono chiedere fino a un livello", () => {
-    const fino3 = privilegiDiClasse(db, { classe: "Guerriero", fino: 3, sottoclasse: "Campione" }).map(p => p.privilegio.nome);
+  it("i privilegi si possono chiedere fino a un livello", async () => {
+    const fino3 = (await privilegiDiClasse(db, { classe: "Guerriero", fino: 3, sottoclasse: "Campione" })).map(p => p.privilegio.nome);
     expect(fino3).toContain("Recuperare Energie");
     expect(fino3).toContain("Azione Impetuosa");
     expect(fino3).toContain("Critico Migliorato");

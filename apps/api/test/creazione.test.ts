@@ -6,12 +6,12 @@ import {
 import { CLASSI } from "@dnd/regole/dati/classi.ts";
 import { derivate } from "@dnd/regole/regole.ts";
 import { daJSON } from "@dnd/regole/scheda.ts";
-import { apriArchivio } from "../src/archivio.ts";
 import { catalogoCreazione } from "../src/catalogo.ts";
 import { creaUtente } from "../src/accesso.ts";
 import { componi, creaPersonaggio } from "../src/personaggi.ts";
+import { archivioDiProva } from "./database.ts";
 
-const catalogo = catalogoCreazione(apriArchivio(":memory:"));
+const catalogo = await catalogoCreazione(await archivioDiProva());
 
 // Tiri che danno 15, 14, 13, 12, 10, 8 (il dado più basso viene scartato).
 const TIRI = [[5, 5, 5, 1], [5, 5, 4, 2], [5, 4, 4, 1], [4, 4, 4, 3], [4, 3, 3, 2], [3, 3, 2, 1]];
@@ -150,7 +150,7 @@ describe("creazione: personaggi completi", () => {
     expect(derivate(c).maxPreparabili).toBe(4); // 1 + INT 3
   });
 
-  it("la scheda creata supera la validazione e fa andata e ritorno nell'archivio", () => {
+  it("la scheda creata supera la validazione e fa andata e ritorno nell'archivio", async () => {
     const c = personaggioIniziale(scelte({
       razza: "Tiefling", classe: "Warlock", sottoclasse: "L'Immondo", abilitaClasse: ["arcano", "inganno"],
       assegnazione: { CAR: 0, COS: 1, DES: 2, SAG: 3, INT: 4, FOR: 5 },
@@ -158,9 +158,9 @@ describe("creazione: personaggi completi", () => {
       equipaggiamento: [{ opzione: 1, armi: ["Pugnale"] }, { opzione: 1, armi: [] }, { opzione: 0, armi: [] }, { opzione: 0, armi: ["Lancia"] }],
     }), catalogo);
     expect(daJSON(JSON.parse(JSON.stringify(c)))).toEqual(c);
-    const db = apriArchivio(":memory:");
-    const utente = creaUtente(db, "prova", "segretissima")!;
-    const composta = componi(db, creaPersonaggio(db, utente.id, c))!;
+    const db = await archivioDiProva();
+    const utente = (await creaUtente(db, "prova", "segretissima"))!;
+    const composta = (await componi(db, await creaPersonaggio(db, utente.id, c)))!;
     expect(composta.info).toEqual(c.info);
     expect(composta.competenzeAltre).toEqual(c.competenzeAltre);
     expect(composta.armatura?.nome).toBe("Armatura di Cuoio");

@@ -1,0 +1,20 @@
+# PostgreSQL per lo sviluppo e i test: docker compose up -d
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: dnd
+      POSTGRES_PASSWORD: dnd
+      POSTGRES_DB: dnd
+    ports:
+      - "5440:5432" # 5440: le porte 5432-5434 sono spesso occupate da altri progetti
+    volumes:
+      - dati:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dnd"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  dati:
