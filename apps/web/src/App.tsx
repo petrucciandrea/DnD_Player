@@ -501,7 +501,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
         {activeTab === "statistiche" && <TabStatistiche char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
         {activeTab === "grimorio" && d.haIncantesimi && <TabGrimorio char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
         {activeTab === "zaino" && <TabZaino char={char} d={d} setChar={setChar} />}
-        {activeTab === "xp" && <TabProgresso char={char} d={d} setChar={setChar} />}
+        {activeTab === "xp" && <TabProgresso char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} />}
         {activeTab === "note" && <TabNote char={char} setChar={setChar} />}
         {activeTab === "lore" && <TabLore char={char} setChar={setChar} />}
 
