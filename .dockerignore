@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+archivio
+.env
+.git
+.github
+.vscode
+*.log
