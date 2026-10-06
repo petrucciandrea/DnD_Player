@@ -1,0 +1,10 @@
+{
+  "name": "@dnd/regole",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Regole di D&D 5e, tipi della scheda e cataloghi ufficiali: codice puro condiviso da web e api",
+  "exports": {
+    "./*": "./src/*"
+  }
+}

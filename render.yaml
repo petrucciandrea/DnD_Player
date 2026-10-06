@@ -1,0 +1,17 @@
+# Blueprint di Render: l'API (apps/api) costruita dal Dockerfile. Il deploy non parte da solo a ogni push:
+# lo avvia il workflow Deploy (.github/workflows/deploy.yml) dopo aver applicato le migrazioni.
+services:
+  - type: web
+    name: dnd-api
+    runtime: docker
+    plan: free
+    region: frankfurt # vicino a Neon aws-eu-central-1
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/salute
+    autoDeployTrigger: "off"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL # stringa di connessione di Neon, da impostare nella dashboard
+        sync: false

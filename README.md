@@ -86,59 +86,98 @@ Il personaggio nasce al 1° livello con i PF massimi del Dado Vita più COS, le 
 
 ## Salvataggio
 
-I dati stanno in un database SQLite sul computer che avvia l'app: è il file `archivio/dnd_player.sqlite`, creato al primo avvio ed escluso da git. Non serve installare nulla, perché il database è quello integrato in Node.js.
+I dati stanno in un database **PostgreSQL**: in produzione su [Neon](https://neon.tech), in sviluppo in un container Docker. Ogni parte del personaggio ha la sua tabella (caratteristiche, slot, inventario, esperienza…). Incantesimi, armi, armature, privilegi, razze e background stanno in **cataloghi condivisi**, a cui i personaggi sono collegati: la descrizione di *Dardo Incantato* è scritta una volta sola e vale per tutti. I cataloghi ufficiali sono in [`packages/regole/src/semi/`](packages/regole/src/semi/): tutte le razze, i background, le armi, le armature e gli incantesimi del Manuale del Giocatore e i privilegi delle 12 classi con le sottoclassi, con descrizioni riassunte.
 
-Ogni parte del personaggio ha la sua tabella (caratteristiche, slot, inventario, esperienza…). Incantesimi, armi, armature, privilegi, razze e background stanno in **cataloghi condivisi**, a cui i personaggi sono collegati: la descrizione di *Dardo Incantato* è scritta una volta sola e vale per tutti. I cataloghi ufficiali si trovano in [`server/semi/`](server/semi/). Contengono tutte le razze, i background, le armi e le armature del manuale e i privilegi di 1° livello delle classi, con descrizioni riassunte. Gli incantesimi per ora sono solo quelli di Alston e tre trucchetti di razza.
+**Da più dispositivi.** Ogni dispositivo carica gli aggiornamenti degli altri quando torni sulla pagina, e comunque ogni 15 secondi. Se due dispositivi modificano la scheda nello stesso momento, l'app chiede quale versione tenere.
 
-**Aggiornamento dalla versione precedente.** Al primo avvio un archivio della versione precedente, con una scheda JSON per personaggio, viene convertito da solo. Prima viene salvata una copia in `archivio/dnd_player.sqlite.bak-v1`. Utenti e password restano gli stessi, ma bisogna rifare l'accesso una volta.
+**Offline.** Ogni modifica finisce anche nel `localStorage` del browser. Se il server non è raggiungibile, l'indicatore nell'intestazione passa a *Offline* e le modifiche vengono inviate appena torna disponibile.
 
-**Da più dispositivi.** Con `npm run dev` (o `npm run preview`) l'app è raggiungibile da tutta la rete di casa: all'avvio Vite stampa l'indirizzo `Network`, per esempio `http://192.168.1.20:5173`. Ogni dispositivo carica gli aggiornamenti degli altri quando torni sulla pagina, e comunque ogni 15 secondi. Se due dispositivi modificano la scheda nello stesso momento, l'app chiede quale versione tenere.
+**Risveglio.** Sul piano gratuito il server si spegne dopo 15 minuti senza richieste: la prima apertura successiva può richiedere fino a un minuto, e l'app mostra *Avvio del server in corso…*. Mentre una scheda è aperta l'app contatta il server ogni 15 secondi, quindi durante una sessione di gioco resta acceso.
 
-**Offline.** Ogni modifica finisce anche nel `localStorage` del browser. Se il computer con il database non è raggiungibile, l'indicatore nell'intestazione passa a *Offline* e le modifiche vengono inviate appena torna disponibile.
-
-**Backup.** Copia il file `archivio/dnd_player.sqlite`, oppure usa **Esporta JSON**. Dentro una scheda, **Importa JSON** la sostituisce (su tutti i dispositivi); dall'elenco dei personaggi ne crea una nuova. L'import accetta anche il formato delle versioni precedenti dell'app.
-
-Il collegamento non è cifrato (http, non https): il login tiene fuori chi non ha la password, ma per ora l'app è pensata per la rete di casa. Non esporla su internet.
+**Backup.** Dentro una scheda **Esporta JSON** scarica la scheda e **Importa JSON** la sostituisce (su tutti i dispositivi); dall'elenco dei personaggi l'import ne crea una nuova. L'import accetta anche il formato delle versioni precedenti dell'app. Neon conserva la storia del database per il ripristino a un momento passato (sul piano gratuito per un periodo breve).
 
 ## Cosa non gestisce (ancora)
 
-- Le risorse di classe (Ira, Ispirazione Bardica, Ki, Incanalare Divinità…) sono descritte tra i privilegi ma non si contano ancora nella scheda. Niente multiclasse.
-- Il catalogo ha i privilegi di classe solo per il 1° livello (più quelli della Divinazione) e pochi incantesimi: salendo di livello, i privilegi mancanti vanno aggiunti a mano.
+- Multiclasse, catalogo dei talenti e loro effetti, scambio di un incantesimo conosciuto alla salita di livello.
+- Suppliche Occulte e Manovre sono solo descritte; le risorse di classe contano gli usi ma non applicano l'effetto.
 - Non si possono eliminare account e personaggi e non c'è il recupero della password dimenticata.
-- *Armatura Magica*, *Scudo* e gli altri effetti attivi non vengono applicati alla CA.
-- Nessuna gestione di condizioni e indebolimento.
-- Tratti, privilegi e armi non si modificano dall'interfaccia: arrivano dalla scheda importata e dai cataloghi.
+- Chiunque può aggiungere voci ai cataloghi condivisi (incantesimi, armi, privilegi), visibili a tutti gli utenti.
 
-## Avvio
+## Sviluppo
 
-Serve Node.js 22.13 o successivo (per il modulo `node:sqlite`).
+Servono **Node.js 24** e **Docker** (per PostgreSQL).
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
+cp .env.example .env          # DATABASE_URL del Postgres di docker compose, PORT dell'API
+docker compose up -d          # PostgreSQL 17 sulla porta 5440
+npm run db:prepara            # migrazioni e cataloghi ufficiali
+npm run dev                   # API (porta 3100) e app (http://localhost:5173), con ricaricamento automatico
 ```
+
+L'app di Vite inoltra `/api` all'API Fastify, come fa Vercel in produzione. È raggiungibile anche dagli altri dispositivi della rete di casa: all'avvio Vite stampa l'indirizzo `Network`. Se la porta 5173 è occupata, Vite usa la successiva.
 
 | Comando | Cosa fa |
 |---|---|
-| `npm run dev` | Server di sviluppo con ricaricamento automatico e database, accessibile dalla rete di casa |
-| `npm test` | Test delle regole, del database e della migrazione (Vitest) |
+| `npm run dev` | API e app con ricaricamento automatico |
+| `npm test` | Test delle regole e dell'API su PostgreSQL (Vitest; serve `docker compose up -d`) |
 | `npm run lint` | ESLint |
-| `npm run build` | Controllo dei tipi e build di produzione in `dist/` |
-| `npm run preview` | Serve la build di produzione, con il database |
+| `npm run build` | Controllo dei tipi, build dell'app (`apps/web/dist`) e bundle dell'API (`apps/api/dist`) |
+| `npm run db:prepara` | Migrazioni e cataloghi ufficiali sul database di `DATABASE_URL` |
+| `npm run migra -w @dnd/api` | Solo le migrazioni |
+| `npm run semina -w @dnd/api` | Solo i cataloghi ufficiali (dopo aver modificato `packages/regole/src/semi/`) |
 
-Per correggere o ampliare i cataloghi ufficiali modifica i file in [`server/semi/`](server/semi/): vengono applicati al riavvio del server. [`src/dati/alston.ts`](src/dati/alston.ts) contiene la scheda di Alston usata come esempio e nei test.
+I test usano solo `DATABASE_URL_TEST` (predefinito: il Postgres di docker compose) e creano un database per ogni test a partire da un modello, poi lo eliminano. Non puntarlo mai al database di produzione.
+
+**Cambiare lo schema.** Aggiungi un file in [`apps/api/migrazioni/`](apps/api/migrazioni/) con il numero successivo (`002_…sql`). Una migrazione si applica una volta sola e non si modifica più dopo il merge. Il deploy applica le migrazioni *prima* di aggiornare il server, quindi devono funzionare anche con la versione precedente del codice: aggiungi colonne (con un valore predefinito) e tabelle, e togli quelle che non servono più solo in un deploy successivo.
+
+## Pubblicazione
+
+```
+Browser → Vercel (app statica) → Render (API, Docker) → Neon (PostgreSQL)
+              ↑                      ↑                        ↑
+       deploy automatico      deploy dal workflow       migrazioni dal workflow,
+       al push su main        Deploy (deploy hook)      prima del codice
+```
+
+Tutto su piani gratuiti: Neon (circa 0,5 GB, si sospende da inattivo), Render (si spegne dopo 15 minuti, il risveglio richiede circa 30-60 s), Vercel Hobby (solo uso non commerciale). Il frontend inoltra `/api` a Render con le rewrite di [`apps/web/vercel.json`](apps/web/vercel.json): stessa origine per il browser, quindi niente CORS e il cookie di sessione resta `SameSite=Strict` e `Secure`. Le scelte sono motivate in [ADR-0002](docs/adr/0002-pubblicazione-su-piani-gratuiti.md).
+
+**Prima configurazione**, una volta sola:
+
+1. **Neon.** Crea il progetto nella regione *AWS Europe Central 1 (Frankfurt)*. Copia la stringa di connessione **diretta**, cioè senza `-pooler` nell'host.
+2. **Database.** Da questo computer, con quella stringa al posto di quella locale:
+   ```bash
+   DATABASE_URL='postgresql://…' NODE_ENV=production npm run db:prepara
+   ```
+   Per portare utenti e personaggi dall'archivio SQLite della versione precedente, vedi *Import dall'archivio SQLite* qui sotto.
+3. **Render.** *New → Blueprint* sul repository: legge [`render.yaml`](render.yaml). Imposta `DATABASE_URL` (la stringa di Neon) nella dashboard del servizio `dnd-api`. Poi copia da *Settings → Deploy Hook* il **Deploy Hook del servizio**: non il Sync Hook del Blueprint, che serve ad altro. Annota l'indirizzo del servizio (`https://dnd-api….onrender.com`).
+4. **Vercel.** Se l'indirizzo di Render cambia (oggi è `https://dnd-api-6pmu.onrender.com`), correggilo in [`apps/web/vercel.json`](apps/web/vercel.json): le rewrite di `vercel.json` non leggono variabili d'ambiente, l'indirizzo va scritto per intero (non è un segreto). Poi *Add New → Project*, importa il repository e imposta la **Root Directory** `apps/web`. Il resto Vercel lo riconosce da solo (Vite, workspace npm).
+5. **Secret di GitHub**, nell'environment `production` (lo crea il primo comando). Incolla i valori **al prompt**, non nella riga di comando: in zsh un URL con `?` dà `no matches found`, e così i valori non finiscono nella cronologia.
+   ```bash
+   gh secret set PRODUCTION_DATABASE_URL --env production
+   gh secret set RENDER_DEPLOY_HOOK_URL --env production
+   ```
+6. **Protezione di `main`.** *Settings → Rules → Rulesets*: un ruleset su `main` con *Require a pull request* e *Require status checks* (`lint`, `typecheck`, `test`, `build`, `docker`). Lascia vuota la lista dei bypass: il ruleset vale anche per te.
+
+**A ogni merge su `main`** la CI gira di nuovo. Se è verde, il workflow `Deploy` applica migrazioni e cataloghi su Neon e chiama il deploy hook di Render con il commit esatto. Vercel pubblica il frontend da solo.
+
+**Import dall'archivio SQLite.** L'esportazione si fa con il codice della versione SQLite (commit `7226584`), poi si importa in un database vuoto, già migrato e seminato:
+
+```bash
+git worktree add ../dnd-esporta 7226584
+(cd ../dnd-esporta && npm ci && node scripts/esportaSqlite.ts "$PWD/../DnD_Player/archivio/dnd_player.sqlite" "$PWD/../DnD_Player/archivio/esportazione.json")
+git worktree remove ../dnd-esporta
+DATABASE_URL='postgresql://…' NODE_ENV=production npm run importa -w @dnd/api -- "$PWD/archivio/esportazione.json"
+```
+
+Utenti, password, personaggi e revisioni restano gli stessi. Il file di esportazione contiene gli hash delle password: tienilo in `archivio/`, che è escluso da git, e cancellalo dopo l'import.
 
 ## Com'è fatto
 
-React 19, TypeScript, Vite e Tailwind CSS v4, con icone di [lucide-react](https://lucide.dev).
+Workspace npm con tre pacchetti, tutto in TypeScript. Le motivazioni sono in [ADR-0001](docs/adr/0001-postgres-fastify-workspace.md).
 
-- [`src/regole.ts`](src/regole.ts): tutte le regole come funzioni pure (modificatori, slot, riposi, danni, lancio, PF, TS contro morte). I test sono in [`src/regole.test.ts`](src/regole.test.ts).
-- [`src/dati/classi.ts`](src/dati/classi.ts): le regole delle 12 classi (Dado Vita, TS, competenze, incantesimi, sottoclassi, equipaggiamento iniziale).
-- [`src/creazione.ts`](src/creazione.ts) e [`src/components/SchermataCreazione.tsx`](src/components/SchermataCreazione.tsx): la creazione di un personaggio.
-- [`src/scheda.ts`](src/scheda.ts): validazione della scheda e conversione dei formati vecchi, usata sia dall'app sia dal server.
-- [`src/salvataggio.ts`](src/salvataggio.ts) e [`src/sincronizzazione.ts`](src/sincronizzazione.ts): copia locale e sincronizzazione con il database.
-- [`src/accesso.ts`](src/accesso.ts): chiamate all'API (accesso, registrazione, personaggi, catalogo).
-- [`server/`](server/): lo schema del database e la sua migrazione, la conversione tra scheda e tabelle, i cataloghi con i loro seed, utenti e sessioni, e l'API `/api` montata nel server di Vite.
-- [`src/components/`](src/components/): una tab per sezione, più la finestra dei tiri, la scheda degli incantesimi e il pannello del riposo breve.
+- [`packages/regole/`](packages/regole/) (`@dnd/regole`): codice puro condiviso da app e API. Contiene le regole come funzioni ([`regole.ts`](packages/regole/src/regole.ts), con i test in [`regole.test.ts`](packages/regole/src/regole.test.ts)), le 12 classi ([`dati/classi.ts`](packages/regole/src/dati/classi.ts)), la creazione del personaggio ([`creazione.ts`](packages/regole/src/creazione.ts)), la validazione della scheda ([`scheda.ts`](packages/regole/src/scheda.ts)), i tipi dell'API ([`api.ts`](packages/regole/src/api.ts)) e i cataloghi ufficiali ([`semi/`](packages/regole/src/semi/)).
+- [`apps/web/`](apps/web/) (`@dnd/web`): l'app, con React 19, Vite e Tailwind CSS v4 e icone di [lucide-react](https://lucide.dev). Una tab per sezione in [`components/`](apps/web/src/components/), più la copia locale e la sincronizzazione ([`salvataggio.ts`](apps/web/src/salvataggio.ts), [`sincronizzazione.ts`](apps/web/src/sincronizzazione.ts)) e le chiamate all'API ([`accesso.ts`](apps/web/src/accesso.ts)).
+- [`apps/api/`](apps/api/) (`@dnd/api`): l'API Fastify. Contiene le rotte ([`src/rotte/`](apps/api/src/rotte/)), la conversione tra scheda e tabelle ([`personaggi.ts`](apps/api/src/personaggi.ts)), i cataloghi ([`catalogo.ts`](apps/api/src/catalogo.ts)), utenti e sessioni ([`accesso.ts`](apps/api/src/accesso.ts)), le migrazioni ([`migrazioni/`](apps/api/migrazioni/)) e i test su PostgreSQL ([`test/`](apps/api/test/)).
 
 La scheda contiene solo i dati di base del personaggio. Tutto ciò che si può calcolare, come modificatori, TS, CA e slot massimi, viene ricalcolato a ogni modifica, così i valori restano sempre coerenti. Le convenzioni per chi sviluppa sono in [`CLAUDE.md`](CLAUDE.md).

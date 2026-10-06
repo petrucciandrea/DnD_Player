@@ -1,0 +1,10 @@
+{
+  // Il codice condiviso gira nel browser e in Node: niente tipi del DOM né di Node.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.src.tsbuildinfo",
+    "types": []
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

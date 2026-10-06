@@ -1,0 +1,28 @@
+{
+  "name": "@dnd/api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@dnd/regole": "*",
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/rate-limit": "^11.2.0",
+    "fastify": "^5.12.5",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15"
+  },
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/principale.ts",
+    "build": "node build.mjs",
+    "start": "node --enable-source-maps dist/principale.mjs",
+    "migra": "tsx scripts/migra.ts",
+    "semina": "tsx scripts/semina.ts",
+    "db:prepara": "tsx scripts/migra.ts && tsx scripts/semina.ts",
+    "importa": "tsx scripts/importa.ts"
+  }
+}

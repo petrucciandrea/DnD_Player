@@ -1,0 +1,80 @@
+# Controlli a ogni PR e a ogni push su main e sviluppo. I nomi dei job sono unici fra i workflow:
+# il ruleset di main li richiede per nome.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, sviluppo]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc -b
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: dnd
+          POSTGRES_PASSWORD: dnd
+          POSTGRES_DB: dnd
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U dnd"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL_TEST: postgres://dnd:dnd@localhost:5432/dnd
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build -w @dnd/web
+      - run: npm run build -w @dnd/api
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
