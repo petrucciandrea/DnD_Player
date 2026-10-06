@@ -4,6 +4,8 @@ Scheda personaggio interattiva per giocare a **Dungeons & Dragons 5e** (regole d
 
 L'obiettivo è una piattaforma che possa usare chiunque: ci si registra, si tengono più personaggi e i dati stanno in un database. Le regole coprono le **12 classi** del Manuale del Giocatore, con razze, sottorazze e background, e una procedura guidata crea nuovi personaggi. Il personaggio di riferimento è **Alston il Breve**, Gnomo delle Rocce, Mago della Scuola di Divinazione.
 
+**Online: https://dnd-player-two.vercel.app**
+
 ## Dadi fisici o dadi dell'app
 
 Ogni tiro apre la stessa finestra, e ogni volta scegli tu:
@@ -92,7 +94,7 @@ I dati stanno in un database **PostgreSQL**: in produzione su [Neon](https://neo
 
 **Offline.** Ogni modifica finisce anche nel `localStorage` del browser. Se il server non è raggiungibile, l'indicatore nell'intestazione passa a *Offline* e le modifiche vengono inviate appena torna disponibile.
 
-**Risveglio.** Sul piano gratuito il server si spegne dopo 15 minuti senza richieste: la prima apertura successiva può richiedere fino a un minuto, e l'app mostra *Avvio del server in corso…*. Mentre una scheda è aperta l'app contatta il server ogni 15 secondi, quindi durante una sessione di gioco resta acceso.
+**Risveglio.** Sul piano gratuito l'API si spegne dopo 15 minuti senza richieste: la prima apertura successiva può richiedere fino a un minuto, e l'app mostra *Avvio del server in corso…*. Mentre una scheda è aperta l'app contatta il server ogni 15 secondi, quindi durante una sessione di gioco resta acceso.
 
 **Backup.** Dentro una scheda **Esporta JSON** scarica la scheda e **Importa JSON** la sostituisce (su tutti i dispositivi); dall'elenco dei personaggi l'import ne crea una nuova. L'import accetta anche il formato delle versioni precedenti dell'app. Neon conserva la storia del database per il ripristino a un momento passato (sul piano gratuito per un periodo breve).
 
@@ -133,6 +135,8 @@ I test usano solo `DATABASE_URL_TEST` (predefinito: il Postgres di docker compos
 
 ## Pubblicazione
 
+L'app è online su **https://dnd-player-two.vercel.app**.
+
 ```
 Browser → Vercel (app statica) → Render (API, Docker) → Neon (PostgreSQL)
               ↑                      ↑                        ↑
@@ -140,34 +144,54 @@ Browser → Vercel (app statica) → Render (API, Docker) → Neon (PostgreSQL)
        al push su main        Deploy (deploy hook)      prima del codice
 ```
 
+| Servizio | Cosa ci fa | Dove |
+|---|---|---|
+| **GitHub** | Codice, CI a ogni PR, workflow `Deploy`, secret nell'environment `production`, ruleset "Protezione di main" | `petrucciandrea/DnD_Player` |
+| **Vercel** | App statica (Root Directory `apps/web`), rewrite di `/api` verso Render | progetto `dnd-player`, https://dnd-player-two.vercel.app |
+| **Render** | API Fastify dal `Dockerfile`, descritta in [`render.yaml`](render.yaml), branch `main`, deploy automatico spento | servizio `dnd-api`, https://dnd-api-6pmu.onrender.com |
+| **Neon** | PostgreSQL 17 | progetto `dnd-player`, AWS Europe Central 1 (Frankfurt) |
+
 Tutto su piani gratuiti: Neon (circa 0,5 GB, si sospende da inattivo), Render (si spegne dopo 15 minuti, il risveglio richiede circa 30-60 s), Vercel Hobby (solo uso non commerciale). Il frontend inoltra `/api` a Render con le rewrite di [`apps/web/vercel.json`](apps/web/vercel.json): stessa origine per il browser, quindi niente CORS e il cookie di sessione resta `SameSite=Strict` e `Secure`. Le scelte sono motivate in [ADR-0002](docs/adr/0002-pubblicazione-su-piani-gratuiti.md).
 
-**Prima configurazione**, una volta sola:
+### Come si pubblica
 
-1. **Neon.** Crea il progetto nella regione *AWS Europe Central 1 (Frankfurt)*. Copia la stringa di connessione **diretta**, cioè senza `-pooler` nell'host.
-2. **Database.** Da questo computer, con quella stringa al posto di quella locale:
-   ```bash
-   DATABASE_URL='postgresql://…' NODE_ENV=production npm run db:prepara
+1. Si sviluppa su `sviluppo` e si apre una PR verso `main`.
+2. Il ruleset di `main` chiede la PR e i controlli della CI verdi (`lint`, `typecheck`, `test`, `build`, `docker`), senza eccezioni: non si può fare push diretto su `main`.
+3. Al merge la CI gira di nuovo su `main`. Se è verde, il workflow `Deploy` applica le migrazioni e i cataloghi ufficiali su Neon e poi chiama il deploy hook di Render con il commit esatto: **prima lo schema, poi il codice**. Vercel pubblica l'app da solo.
+
+Gli indirizzi dei singoli deploy di Vercel (`dnd-player-<codice>-petrucci-dev.vercel.app`) sono protetti dal login di Vercel; quello pubblico è solo `dnd-player-two.vercel.app`.
+
+### Rifare la configurazione da zero
+
+Servono solo se si ricrea un servizio. Nell'ordine:
+
+1. **Neon.** Nuovo progetto in *AWS Europe Central 1 (Frankfurt)*, solo il servizio *Postgres database* (niente Object storage, Functions, Neon Auth). Copia la stringa di connessione **diretta**, senza `-pooler` nell'host. Non incollarla mai in chat o in un file versionato.
+2. **Database.** Da un terminale, incollando la stringa al prompt (non nella riga di comando):
+   ```zsh
+   read -rs "DATABASE_URL?Stringa di Neon: "; echo
+   export DATABASE_URL NODE_ENV=production
+   npm run db:prepara
+   unset DATABASE_URL NODE_ENV
    ```
-   Per portare utenti e personaggi dall'archivio SQLite della versione precedente, vedi *Import dall'archivio SQLite* qui sotto.
-3. **Render.** *New → Blueprint* sul repository: legge [`render.yaml`](render.yaml). Imposta `DATABASE_URL` (la stringa di Neon) nella dashboard del servizio `dnd-api`. Poi copia da *Settings → Deploy Hook* il **Deploy Hook del servizio**: non il Sync Hook del Blueprint, che serve ad altro. Annota l'indirizzo del servizio (`https://dnd-api….onrender.com`).
-4. **Vercel.** Se l'indirizzo di Render cambia (oggi è `https://dnd-api-6pmu.onrender.com`), correggilo in [`apps/web/vercel.json`](apps/web/vercel.json): le rewrite di `vercel.json` non leggono variabili d'ambiente, l'indirizzo va scritto per intero (non è un segreto). Poi *Add New → Project*, importa il repository e imposta la **Root Directory** `apps/web`. Il resto Vercel lo riconosce da solo (Vite, workspace npm).
-5. **Secret di GitHub**, nell'environment `production` (lo crea il primo comando). Incolla i valori **al prompt**, non nella riga di comando: in zsh un URL con `?` dà `no matches found`, e così i valori non finiscono nella cronologia.
-   ```bash
+3. **Render.** *New → Blueprint* sul repository, branch `main`: legge [`render.yaml`](render.yaml) e chiede `DATABASE_URL` (la stringa di Neon). Da *Settings → Deploy Hook* del **servizio** copia il deploy hook: non il Sync Hook del Blueprint. Se l'indirizzo del servizio cambia, correggilo in [`apps/web/vercel.json`](apps/web/vercel.json): le rewrite non leggono variabili d'ambiente.
+4. **Secret di GitHub.** L'environment `production` deve esistere prima (*Settings → Environments*, oppure `gh api -X PUT repos/petrucciandrea/DnD_Player/environments/production`), altrimenti `gh secret set` risponde 404. Poi, incollando i valori al prompt:
+   ```zsh
    gh secret set PRODUCTION_DATABASE_URL --env production
    gh secret set RENDER_DEPLOY_HOOK_URL --env production
    ```
-6. **Protezione di `main`.** *Settings → Rules → Rulesets*: un ruleset su `main` con *Require a pull request* e *Require status checks* (`lint`, `typecheck`, `test`, `build`, `docker`). Lascia vuota la lista dei bypass: il ruleset vale anche per te.
+5. **Vercel.** *Add New → Project*, importa il repository e imposta la **Root Directory** `apps/web` (il selettore mostra le cartelle di `main`). Preset Vite, nessuna variabile d'ambiente. Il nome `dnd-player.vercel.app` era già preso da un altro progetto: il dominio pubblico è quello in *Settings → Domains*.
+6. **Ruleset su `main`**: PR obbligatoria (0 approvazioni), i cinque controlli della CI obbligatori, niente cancellazione né force push, nessun bypass.
 
-**A ogni merge su `main`** la CI gira di nuovo. Se è verde, il workflow `Deploy` applica migrazioni e cataloghi su Neon e chiama il deploy hook di Render con il commit esatto. Vercel pubblica il frontend da solo.
+### Import dall'archivio SQLite
 
-**Import dall'archivio SQLite.** L'esportazione si fa con il codice della versione SQLite (commit `7226584`), poi si importa in un database vuoto, già migrato e seminato:
+I dati della versione SQLite sono già stati importati su Neon (ottobre 2026). Per riferimento: l'esportazione si fa con il codice di quella versione (commit `7226584`), poi si importa in un database vuoto, già migrato e seminato.
 
-```bash
+```zsh
 git worktree add ../dnd-esporta 7226584
 (cd ../dnd-esporta && npm ci && node scripts/esportaSqlite.ts "$PWD/../DnD_Player/archivio/dnd_player.sqlite" "$PWD/../DnD_Player/archivio/esportazione.json")
 git worktree remove ../dnd-esporta
-DATABASE_URL='postgresql://…' NODE_ENV=production npm run importa -w @dnd/api -- "$PWD/archivio/esportazione.json"
+read -rs "DATABASE_URL?Stringa di Neon: "; echo
+DATABASE_URL="$DATABASE_URL" NODE_ENV=production npm run importa -w @dnd/api -- "$PWD/archivio/esportazione.json"
 ```
 
 Utenti, password, personaggi e revisioni restano gli stessi. Il file di esportazione contiene gli hash delle password: tienilo in `archivio/`, che è escluso da git, e cancellalo dopo l'import.
