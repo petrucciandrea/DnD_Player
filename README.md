@@ -151,7 +151,7 @@ Tutto su piani gratuiti: Neon (circa 0,5 GB, si sospende da inattivo), Render (s
    ```
    Per portare utenti e personaggi dall'archivio SQLite della versione precedente, vedi *Import dall'archivio SQLite* qui sotto.
 3. **Render.** *New → Blueprint* sul repository: legge [`render.yaml`](render.yaml). Imposta `DATABASE_URL` (la stringa di Neon) nella dashboard del servizio `dnd-api`. Poi copia da *Settings → Deploy Hook* il **Deploy Hook del servizio**: non il Sync Hook del Blueprint, che serve ad altro. Annota l'indirizzo del servizio (`https://dnd-api….onrender.com`).
-4. **Vercel.** Se l'indirizzo di Render non è `https://dnd-api.onrender.com`, correggilo in [`apps/web/vercel.json`](apps/web/vercel.json): le rewrite di `vercel.json` non leggono variabili d'ambiente, l'indirizzo va scritto per intero (non è un segreto). Poi *Add New → Project*, importa il repository e imposta la **Root Directory** `apps/web`. Il resto Vercel lo riconosce da solo (Vite, workspace npm).
+4. **Vercel.** Se l'indirizzo di Render cambia (oggi è `https://dnd-api-6pmu.onrender.com`), correggilo in [`apps/web/vercel.json`](apps/web/vercel.json): le rewrite di `vercel.json` non leggono variabili d'ambiente, l'indirizzo va scritto per intero (non è un segreto). Poi *Add New → Project*, importa il repository e imposta la **Root Directory** `apps/web`. Il resto Vercel lo riconosce da solo (Vite, workspace npm).
 5. **Secret di GitHub**, nell'environment `production` (lo crea il primo comando). Incolla i valori **al prompt**, non nella riga di comando: in zsh un URL con `?` dà `no matches found`, e così i valori non finiscono nella cronologia.
    ```bash
    gh secret set PRODUCTION_DATABASE_URL --env production
