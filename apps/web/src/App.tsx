@@ -321,7 +321,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
     ] : []),
   ];
 
-  const tabs: { id: Tab; label: string; icon: typeof Sparkles }[] = [
+  const tabs: { id: Tab; label: string; icon: typeof Sparkles; badge?: string }[] = [
     { id: "statistiche", label: d.haPresagio ? "Statistiche & Presagio" : "Statistiche", icon: Sparkles },
     ...(d.haIncantesimi ? [{
       id: "grimorio" as const,
@@ -329,7 +329,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
       icon: BookOpen,
     }] : []),
     { id: "zaino", label: `Zaino (${d.pesoTotale.toFixed(1)}/${d.capacitaCarico} lb)`, icon: Backpack },
-    { id: "xp", label: `Progresso XP (${char.xp.totale})`, icon: Award },
+    { id: "xp", label: `Progresso XP (${char.xp.totale})`, icon: Award, ...(d.puoSalire ? { badge: "Sali di livello!" } : {}) },
     { id: "note", label: char.note.length > 0 ? `Note (${char.note.length})` : "Note", icon: NotebookPen },
     { id: "lore", label: "Tratti & Background", icon: Scroll },
   ];
@@ -493,6 +493,11 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
               >
                 <Icon className="w-4 h-4" />
                 {t.label}
+                {t.badge && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wide animate-pulse">
+                    {t.badge}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -501,7 +506,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
         {activeTab === "statistiche" && <TabStatistiche char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
         {activeTab === "grimorio" && d.haIncantesimi && <TabGrimorio char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
         {activeTab === "zaino" && <TabZaino char={char} d={d} setChar={setChar} />}
-        {activeTab === "xp" && <TabProgresso char={char} d={d} setChar={setChar} />}
+        {activeTab === "xp" && <TabProgresso char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} />}
         {activeTab === "note" && <TabNote char={char} setChar={setChar} />}
         {activeTab === "lore" && <TabLore char={char} setChar={setChar} />}
 

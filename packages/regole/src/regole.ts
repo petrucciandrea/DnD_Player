@@ -356,11 +356,12 @@ export function esitoTsMorte(c: CharacterData, d20: number): CharacterData {
 // Il danno non scende mai sotto 0.
 export const totaleDanni = (tiri: number[], mod: number) => Math.max(0, tiri.reduce((a, b) => a + b, 0) + mod);
 
-// PF a ogni livello dal 2° in poi: media del Dado Vita (arrotondata per eccesso) + COS, almeno 1.
-// Robustezza Nanica e Resilienza Draconica aggiungono 1 PF per livello.
-export function pfPerLivello(c: CharacterData, dadoVita: number): number {
+// PF a ogni livello dal 2° in poi: il tiro del Dado Vita oppure la sua media (arrotondata per eccesso), + COS, almeno 1.
+// Un tiro fuori da 1–dadoVita vale come la media. Robustezza Nanica e Resilienza Draconica aggiungono 1 PF per livello.
+export function pfPerLivello(c: CharacterData, dadoVita: number, tiro?: number): number {
   const extra = (haPrivilegio(c, "Robustezza Nanica") ? 1 : 0) + (haPrivilegio(c, "Resilienza Draconica") ? 1 : 0);
-  return Math.max(1, dadoVita / 2 + 1 + modificatore(c.caratteristiche.COS.valore)) + extra;
+  const dado = tiro !== undefined && Number.isInteger(tiro) && tiro >= 1 && tiro <= dadoVita ? tiro : dadoVita / 2 + 1;
+  return Math.max(1, dado + modificatore(c.caratteristiche.COS.valore)) + extra;
 }
 
 // PF al 1° livello: Dado Vita al massimo + COS (+ i bonus per livello di razza e origine).
@@ -675,17 +676,17 @@ export function raggruppaIncantesimi<T extends { nome: string; livello: number; 
   return gruppi;
 }
 
-// Aggiunge PF medi, un Dado Vita e i privilegi del nuovo livello (letti dal catalogo prima di salire),
+// Aggiunge i PF (dal tiro del Dado Vita, o la media senza tiro), un Dado Vita e i privilegi del nuovo livello (letti dal catalogo prima di salire),
 // ed eventualmente la sottoclasse scelta a quel livello, gli incantesimi nuovi (di sottoclasse o scelti),
 // l'aumento dei punteggi di caratteristica o un talento (privilegio con fonte "Talento").
 export function saliDiLivello(
   c: CharacterData,
   extra: {
     privilegi?: CharacterData["privilegi"]; sottoclasse?: string; incantesimi?: Spell[];
-    aumenti?: Partial<Record<Caratteristica, number>>; talento?: Privilegio;
+    aumenti?: Partial<Record<Caratteristica, number>>; talento?: Privilegio; tiroPf?: number;
   } = {},
 ): CharacterData {
-  const pf = pfPerLivello(c, regoleClasse(c.info.classe)?.dadoVita ?? 8);
+  const pf = pfPerLivello(c, regoleClasse(c.info.classe)?.dadoVita ?? 8, extra.tiroPf);
   const nuovi: CharacterData["privilegi"] = [];
   for (const p of [...(extra.privilegi ?? []), ...(extra.talento ? [extra.talento] : [])]) {
     if (![...c.privilegi, ...nuovi].some(x => x.nome === p.nome && x.fonte === p.fonte)) nuovi.push(p);

@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Plus, Trash2, ArrowUpCircle, LoaderCircle, Search, X } from "lucide-react";
+import { Plus, Trash2, ArrowUpCircle, LoaderCircle, Search, X, Dices } from "lucide-react";
 import type { Caratteristica, CharacterData, IncantesimoCatalogo, Privilegio, Spell, XPRecord } from "@dnd/regole/tipi.ts";
 import type { SetChar } from "../stato.ts";
+import type { ChiediTiro } from "../tiroDadi.ts";
 import type { Derivate } from "@dnd/regole/regole.ts";
 import {
   CARATTERISTICHE, aggiungiIncantesimi, applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, incantesimiSottoclasseMancanti,
@@ -18,6 +19,7 @@ interface Props {
   char: CharacterData;
   d: Derivate;
   setChar: SetChar;
+  chiediTiro: ChiediTiro;
 }
 
 // Stato del pannello di salita di livello: privilegi null = in caricamento, "offline" = non disponibili.
@@ -29,6 +31,8 @@ interface Salita {
   aumento: { tipo: "aumento" | "talento"; car: (Caratteristica | "")[]; talento: { nome: string; descrizione: string } };
   trucchetti: string[];
   incantesimi: string[];
+  // PF del nuovo livello: tiro del Dado Vita (dadi fisici o dell'app) oppure la media.
+  pf: { modo: "tiro" | "media"; tiro: number | null };
 }
 
 const campo = "bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-sm text-slate-200 outline-none focus:border-indigo-500";
@@ -104,7 +108,7 @@ function SceltaPrivilegio({ scelta, mancano, catalogo, posseduti, valori, onCamb
 const privilegiScelti = (scelte: Record<string, string[]>, pendenti: { scelta: DefinizioneScelta }[], catalogo: Privilegio[]) =>
   pendenti.flatMap(({ scelta }) => opzioniScelta(scelta, catalogo).filter(o => (scelte[scelta.id] ?? []).includes(o.nome)));
 
-export default function TabProgresso({ char, d, setChar }: Props) {
+export default function TabProgresso({ char, d, setChar, chiediTiro }: Props) {
   const [newXpInput, setNewXpInput] = useState({ valore: "", motivo: "" });
   const [salita, setSalita] = useState<Salita | null>(null);
   const [verifica, setVerifica] = useState<"attesa" | "offline" | Privilegio[] | null>(null);
@@ -159,6 +163,7 @@ export default function TabProgresso({ char, d, setChar }: Props) {
     setSalita(prev => ({
       sottoclasse, privilegi: null, scelte: {}, trucchetti: [], incantesimi: [],
       aumento: prev?.aumento ?? { tipo: "aumento", car: ["", ""], talento: { nome: "", descrizione: "" } },
+      pf: prev?.pf ?? { modo: "tiro", tiro: null },
     }));
     const r = await privilegiDiLivello(char.info.classe, nuovo, sottoclasse);
     setSalita(prev => (prev?.sottoclasse === sottoclasse ? { ...prev, privilegi: r ? r.map(x => x.privilegio) : "offline" } : prev));
@@ -184,8 +189,21 @@ export default function TabProgresso({ char, d, setChar }: Props) {
   const incDopo = incantatoreDi(char.info.classe, sottoclasseDopo);
   const imparabili = incantesimiDaImparare(char, incantesimiCatalogo, nuovo, sottoclasseDopo);
 
+  // Il tiro del Dado Vita passa dal dialogo dei tiri: dadi fisici o tiro dell'app.
+  const tiraPf = async () => {
+    const tiri = await chiediTiro({
+      titolo: `Dado Vita (livello ${nuovo})`,
+      descrizione: `PF del nuovo livello: 1d${d.dadoVita} ${d.mod("COS") >= 0 ? "+" : "−"} ${Math.abs(d.mod("COS"))} (COS), almeno 1.`,
+      dadi: [{ etichetta: "Dado Vita", facce: d.dadoVita }],
+      bonus: d.mod("COS"),
+    });
+    if (tiri) setSalita(prev => prev && { ...prev, pf: { modo: "tiro", tiro: tiri[0] } });
+  };
+  const tiroPf = salita?.pf.modo === "tiro" ? salita.pf.tiro : undefined;
+  const pfPronti = !salita || tiroPf !== null;
+
   const confermaSalita = () => {
-    if (!salita || (serveSottoclasse && !salita.sottoclasse) || !scelteComplete || !aumentoValido) return;
+    if (!salita || (serveSottoclasse && !salita.sottoclasse) || !scelteComplete || !aumentoValido || !pfPronti) return;
     const privilegi = [
       ...(Array.isArray(salita.privilegi) ? salita.privilegi : []),
       ...(opzioni ? privilegiScelti(salita.scelte, pendentiSalita, opzioni) : []),
@@ -203,6 +221,7 @@ export default function TabProgresso({ char, d, setChar }: Props) {
     setChar(prev => {
       const salito = saliDiLivello(prev, {
         privilegi, sottoclasse: serveSottoclasse ? salita.sottoclasse : undefined, incantesimi: scelti, aumenti, talento,
+        tiroPf: tiroPf ?? undefined,
       });
       const mancanti = incantesimiSottoclasseMancanti(salito);
       return aggiungiIncantesimi(salito, incantesimiCatalogo
@@ -255,7 +274,7 @@ export default function TabProgresso({ char, d, setChar }: Props) {
   const nuoviSempre = sottoDopo.sempre.filter(n => !sottoPrima.sempre.includes(n));
   const nuoviAmpliati = sottoDopo.ampliata.filter(n => !sottoPrima.ampliata.includes(n));
   const note = [
-    `+${pfPerLivello(char, d.dadoVita)} PF massimi e +1 Dado Vita (d${d.dadoVita}).`,
+    `+1 Dado Vita (d${d.dadoVita}).`,
     nuoviSlot.length > 0 && `Nuovi slot incantesimo: ${nuoviSlot.join(", ")}.`,
     conosciutiInPiu > 0 && `Puoi imparare ${conosciutiInPiu} ${conosciutiInPiu === 1 ? "nuovo incantesimo" : "nuovi incantesimi"}.`,
     trucchettiInPiu > 0 && `Puoi imparare ${trucchettiInPiu === 1 ? "un nuovo trucchetto" : `${trucchettiInPiu} nuovi trucchetti`}.`,
@@ -339,6 +358,41 @@ export default function TabProgresso({ char, d, setChar }: Props) {
                 </ul>
               )}
             </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={etichetta}>Punti ferita</span>
+                {(["tiro", "media"] as const).map(m => (
+                  <label key={m} className="flex items-center gap-1.5 text-xs text-slate-300">
+                    <input
+                      type="radio"
+                      checked={salita.pf.modo === m}
+                      onChange={() => setSalita(prev => prev && { ...prev, pf: { ...prev.pf, modo: m } })}
+                      className="accent-indigo-500"
+                    />
+                    {m === "tiro" ? `Tira 1d${d.dadoVita}` : `Media (${d.dadoVita / 2 + 1})`}
+                  </label>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                {salita.pf.modo === "tiro" && (
+                  <button
+                    type="button"
+                    onClick={tiraPf}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white"
+                  >
+                    <Dices className="w-3.5 h-3.5" /> {salita.pf.tiro === null ? "Tira il Dado Vita" : "Tira di nuovo"}
+                  </button>
+                )}
+                {tiroPf === null ? (
+                  <span className="text-xs text-slate-500">Tira il dado per conoscere i PF del nuovo livello.</span>
+                ) : (
+                  <span className="text-slate-300">
+                    {salita.pf.modo === "tiro" && <>Risultato <strong className="text-slate-100">{tiroPf}</strong> → </>}
+                    <strong className="text-emerald-300">+{pfPerLivello(char, d.dadoVita, tiroPf)} PF massimi</strong>
+                  </span>
+                )}
+              </div>
+            </div>
             {serveAumento && (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-3">
@@ -418,7 +472,7 @@ export default function TabProgresso({ char, d, setChar }: Props) {
             ))}
             <button
               onClick={confermaSalita}
-              disabled={salita.privilegi === null || (serveSottoclasse && !salita.sottoclasse) || !scelteComplete || !aumentoValido}
+              disabled={salita.privilegi === null || (serveSottoclasse && !salita.sottoclasse) || !scelteComplete || !aumentoValido || !pfPronti}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold"
             >
               <ArrowUpCircle className="w-4 h-4" /> Conferma livello {nuovo}

@@ -375,6 +375,18 @@ describe("regole per classe", () => {
     expect(derivate(pg("Barbaro", 1)).dadoVita).toBe(12);
   });
 
+  it("PF per livello dal tiro del Dado Vita", () => {
+    const barbaro = pg("Barbaro", 1, { COS: 14 });
+    expect(pfPerLivello(barbaro, 12, 12)).toBe(14); // 12 + 2
+    expect(pfPerLivello(barbaro, 12, 3)).toBe(5);
+    expect(pfPerLivello(pg("Mago", 1, { COS: 6 }), 6, 1)).toBe(1); // 1 - 2, almeno 1
+    expect(pfPerLivello(barbaro, 12, 13)).toBe(9); // fuori dal dado: media
+    expect(pfPerLivello(barbaro, 12, 0)).toBe(9);
+    const nano = pg("Guerriero", 1, { COS: 14 });
+    nano.privilegi = [{ nome: "Robustezza Nanica", fonte: "Nano delle Colline", descrizione: "" }];
+    expect(pfPerLivello(nano, 10, 1)).toBe(4); // 1 + 2 + 1
+  });
+
   it("il riposo breve recupera gli slot del patto", () => {
     const warlock = { ...pg("Warlock", 3), slotSpesi: [0, 2, 0, 0, 0, 0, 0, 0, 0] };
     const dopo = riposoBreve(warlock, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
@@ -1092,6 +1104,15 @@ describe("salita di livello guidata", () => {
     expect(conCos.combattimento.pfMassimi).toBe(semplice.combattimento.pfMassimi + 4); // 13 → 14: +1 per 4 livelli
     const talento = { nome: "Allerta", fonte: "Talento", descrizione: "" };
     expect(saliDiLivello(c, { talento }).privilegi).toContainEqual(talento);
+  });
+
+  it("salire con il tiro del Dado Vita", () => {
+    const c = pg("Mago", 3); // d6
+    const media = saliDiLivello(c);
+    const tirato = saliDiLivello(c, { tiroPf: 6 });
+    expect(tirato.combattimento.pfMassimi).toBe(media.combattimento.pfMassimi + 2); // 6 invece di 4
+    expect(tirato.combattimento.pfAttuali).toBe(media.combattimento.pfAttuali + 2);
+    expect(tirato.combattimento.dadiVitaRimanenti).toBe(media.combattimento.dadiVitaRimanenti);
   });
 
   it("livello di slot più alto e incantesimi da imparare", () => {
