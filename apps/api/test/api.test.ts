@@ -148,6 +148,19 @@ describe("api: personaggi", () => {
     expect(letto.dati.note.map((n: { titolo: string }) => n.titolo)).toEqual(["Promemoria"]);
   });
 
+  it("una scheda con i pesi in libbre (versione 2) viene rifiutata: la pagina va ricaricata", async () => {
+    const { app: a, cookie } = await conUtente();
+    const vecchia = { ...alston(), versione: 2 };
+    const creazione = await a.inject({ method: "POST", url: "/api/personaggi", headers: { cookie }, payload: { dati: vecchia } });
+    expect(creazione.statusCode).toBe(400);
+    const { id } = (await a.inject({ method: "POST", url: "/api/personaggi", headers: { cookie }, payload: { dati: alston() } })).json();
+    const modifica = await a.inject({ method: "PUT", url: `/api/personaggi/${id}`, headers: { cookie }, payload: { dati: vecchia, revisione: 1 } });
+    expect(modifica.statusCode).toBe(400);
+    expect(modifica.json().errore).toMatch(/ricarica/);
+    const letto = (await a.inject({ method: "GET", url: `/api/personaggi/${id}`, headers: { cookie } })).json();
+    expect(letto.revisione).toBe(1);
+  });
+
   it("il personaggio di un altro utente risponde 404, come se non esistesse", async () => {
     const { app: a, cookie } = await conUtente();
     const { id } = (await a.inject({ method: "POST", url: "/api/personaggi", headers: { cookie }, payload: { dati: alston() } })).json();

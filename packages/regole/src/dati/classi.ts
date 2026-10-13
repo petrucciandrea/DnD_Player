@@ -1,4 +1,4 @@
-import type { Caratteristica } from "../tipi.ts";
+import type { Caratteristica, InventoryItem } from "../tipi.ts";
 
 // Regole delle 12 classi del Manuale del Giocatore (D&D 5e 2014). I testi dei privilegi di classe
 // stanno nel catalogo `privilegi` dell'archivio; qui c'è solo ciò che serve ai calcoli e alla creazione.
@@ -31,6 +31,7 @@ export type VoceEquipaggiamento =
   | { tipo: "arma"; nome: string; qta?: number }
   | { tipo: "armatura"; nome: string } // compreso lo scudo
   | { tipo: "oggetto"; nome: string; qta?: number; peso: number }
+  | { tipo: "pacchetto"; nome: string; oggetti: Omit<InventoryItem, "id">[] } // dotazione scomposta nei suoi oggetti
   | { tipo: "armaAScelta"; categoria: "semplice" | "guerra"; soloMischia?: boolean; qta?: number };
 
 export interface OpzioneEquipaggiamento {
@@ -65,14 +66,32 @@ const perLivello = (soglie: [number, number][]) =>
 const TRUCCHETTI_2_3_4 = perLivello([[1, 2], [4, 3], [10, 4]]);
 const TRUCCHETTI_3_4_5 = perLivello([[1, 3], [4, 4], [10, 5]]);
 
+// Dotazione da esploratore (29,5 kg) scomposta: razioni e acqua sono provviste, le torce si consumano.
+const OGGETTI_ESPLORATORE: Omit<InventoryItem, "id">[] = [
+  { nome: "Zaino", qta: 1, peso: 2.5 },
+  { nome: "Giaciglio", qta: 1, peso: 3.5 },
+  { nome: "Gavetta", qta: 1, peso: 0.5 },
+  { nome: "Acciarino", qta: 1, peso: 0.5 },
+  { nome: "Corda di canapa (15 m)", qta: 1, peso: 5 },
+  { nome: "Torcia", qta: 10, peso: 0.5, consumabile: true, consumoGiornaliero: 0 },
+  { nome: "Razioni", qta: 10, peso: 1, consumabile: true, consumoGiornaliero: 3 },
+  { nome: "Otre d'acqua", qta: 1, peso: 2.5, consumabile: true, consumoGiornaliero: 3 },
+];
+const ESPLORATORE: VoceEquipaggiamento = { tipo: "pacchetto", nome: "Dotazione da esploratore", oggetti: OGGETTI_ESPLORATORE };
+
+// Dotazioni che l'inventario sa scomporre, riconosciute dall'inizio del nome (senza distinguere le maiuscole).
+export const DOTAZIONI_SCOMPONIBILI: { nome: string; oggetti: Omit<InventoryItem, "id">[] }[] = [
+  { nome: "Dotazione da esploratore", oggetti: OGGETTI_ESPLORATORE },
+];
+
 const PACCHETTO = {
-  avventuriero: { tipo: "oggetto", nome: "Dotazione da avventuriero", peso: 61.5 },
-  diplomatico: { tipo: "oggetto", nome: "Dotazione da diplomatico", peso: 36 },
-  esploratore: { tipo: "oggetto", nome: "Dotazione da esploratore", peso: 59 },
-  intrattenitore: { tipo: "oggetto", nome: "Dotazione da intrattenitore", peso: 38 },
-  sacerdote: { tipo: "oggetto", nome: "Dotazione da sacerdote", peso: 24 },
-  scassinatore: { tipo: "oggetto", nome: "Dotazione da scassinatore", peso: 44.5 },
-  studioso: { tipo: "oggetto", nome: "Dotazione da studioso", peso: 10 },
+  avventuriero: { tipo: "oggetto", nome: "Dotazione da avventuriero", peso: 30.75 },
+  diplomatico: { tipo: "oggetto", nome: "Dotazione da diplomatico", peso: 18 },
+  esploratore: ESPLORATORE,
+  intrattenitore: { tipo: "oggetto", nome: "Dotazione da intrattenitore", peso: 19 },
+  sacerdote: { tipo: "oggetto", nome: "Dotazione da sacerdote", peso: 12 },
+  scassinatore: { tipo: "oggetto", nome: "Dotazione da scassinatore", peso: 22.25 },
+  studioso: { tipo: "oggetto", nome: "Dotazione da studioso", peso: 5 },
 } as const satisfies Record<string, VoceEquipaggiamento>;
 
 const pacchetti = (...nomi: (keyof typeof PACCHETTO)[]): GruppoEquipaggiamento =>
@@ -80,11 +99,11 @@ const pacchetti = (...nomi: (keyof typeof PACCHETTO)[]): GruppoEquipaggiamento =
 
 const fisso = (...voci: VoceEquipaggiamento[]): GruppoEquipaggiamento => [{ etichetta: "Sempre", voci }];
 
-const FRECCE: VoceEquipaggiamento = { tipo: "oggetto", nome: "Faretra con 20 frecce", peso: 2 };
-const QUADRELLI: VoceEquipaggiamento = { tipo: "oggetto", nome: "Custodia con 20 quadrelli", peso: 2.5 };
-const BORSA_COMPONENTI: VoceEquipaggiamento = { tipo: "oggetto", nome: "Borsa per componenti", peso: 2 };
-const FOCUS_ARCANO: VoceEquipaggiamento = { tipo: "oggetto", nome: "Focus arcano", peso: 1 };
-const SIMBOLO_SACRO: VoceEquipaggiamento = { tipo: "oggetto", nome: "Simbolo sacro", peso: 1 };
+const FRECCE: VoceEquipaggiamento = { tipo: "oggetto", nome: "Faretra con 20 frecce", peso: 1 };
+const QUADRELLI: VoceEquipaggiamento = { tipo: "oggetto", nome: "Custodia con 20 quadrelli", peso: 1.25 };
+const BORSA_COMPONENTI: VoceEquipaggiamento = { tipo: "oggetto", nome: "Borsa per componenti", peso: 1 };
+const FOCUS_ARCANO: VoceEquipaggiamento = { tipo: "oggetto", nome: "Focus arcano", peso: 0.5 };
+const SIMBOLO_SACRO: VoceEquipaggiamento = { tipo: "oggetto", nome: "Simbolo sacro", peso: 0.5 };
 
 // Competenze nelle armi di Mago e Stregone.
 const ARMI_DA_INCANTATORE = ["Balestre leggere", "Bastoni ferrati", "Dardi", "Fionde", "Pugnali"];
@@ -135,8 +154,8 @@ export const CLASSI: Record<NomeClasse, RegoleClasse> = {
       ],
       pacchetti("diplomatico", "intrattenitore"),
       [
-        { etichetta: "Liuto", voci: [{ tipo: "oggetto", nome: "Liuto", peso: 2 }] },
-        { etichetta: "Un altro strumento musicale", voci: [{ tipo: "oggetto", nome: "Strumento musicale", peso: 3 }] },
+        { etichetta: "Liuto", voci: [{ tipo: "oggetto", nome: "Liuto", peso: 1 }] },
+        { etichetta: "Un altro strumento musicale", voci: [{ tipo: "oggetto", nome: "Strumento musicale", peso: 1.5 }] },
       ],
       fisso({ tipo: "armatura", nome: "Armatura di Cuoio" }, { tipo: "arma", nome: "Pugnale" }),
     ],
@@ -194,7 +213,7 @@ export const CLASSI: Record<NomeClasse, RegoleClasse> = {
         { etichetta: "Scimitarra", voci: [{ tipo: "arma", nome: "Scimitarra" }] },
         { etichetta: "Un'arma semplice da mischia", voci: [{ tipo: "armaAScelta", categoria: "semplice", soloMischia: true }] },
       ],
-      fisso({ tipo: "armatura", nome: "Armatura di Cuoio" }, PACCHETTO.esploratore, { tipo: "oggetto", nome: "Focus druidico", peso: 1 }),
+      fisso({ tipo: "armatura", nome: "Armatura di Cuoio" }, PACCHETTO.esploratore, { tipo: "oggetto", nome: "Focus druidico", peso: 0.5 }),
     ],
   },
   Guerriero: {
@@ -273,7 +292,7 @@ export const CLASSI: Record<NomeClasse, RegoleClasse> = {
       pacchetti("scassinatore", "avventuriero", "esploratore"),
       fisso(
         { tipo: "armatura", nome: "Armatura di Cuoio" }, { tipo: "arma", nome: "Pugnale", qta: 2 },
-        { tipo: "oggetto", nome: "Arnesi da scasso", peso: 1 },
+        { tipo: "oggetto", nome: "Arnesi da scasso", peso: 0.5 },
       ),
     ],
   },
@@ -300,7 +319,7 @@ export const CLASSI: Record<NomeClasse, RegoleClasse> = {
         { etichetta: "Focus arcano", voci: [FOCUS_ARCANO] },
       ],
       pacchetti("studioso", "esploratore"),
-      fisso({ tipo: "oggetto", nome: "Libro degli Incantesimi", peso: 3 }),
+      fisso({ tipo: "oggetto", nome: "Libro degli Incantesimi", peso: 1.5 }),
     ],
   },
   Monaco: {

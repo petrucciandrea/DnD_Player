@@ -87,6 +87,21 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
     expect(composta.concentrazione).toBe("Tocco Gelido");
   });
 
+  it("le provviste (anche a quantità 0) fanno andata e ritorno", async () => {
+    const { db, utente } = await archivio();
+    const id = await creaPersonaggio(db, utente.id, alston());
+    const c = alston();
+    c.inventario.push(
+      { id: 90, nome: "Razioni", qta: 0, peso: 2, consumabile: true, consumoGiornaliero: 1 },
+      { id: 91, nome: "Otre d'acqua", qta: 3, peso: 5, consumabile: true, consumoGiornaliero: 0.5 },
+    );
+    await scomponi(db, id, c, utente.id);
+    const composta = (await componi(db, id))!;
+    expect(composta.inventario).toEqual(c.inventario);
+    expect(composta.inventario.at(-2)).toMatchObject({ nome: "Razioni", qta: 0, consumabile: true, consumoGiornaliero: 1 });
+    expect(composta.inventario[0].consumabile).toBeUndefined();
+  });
+
   it("taglia, competenze, armatura e scudo fanno andata e ritorno", async () => {
     const { db, utente } = await archivio();
     const c = alston();

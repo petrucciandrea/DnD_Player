@@ -1,8 +1,8 @@
 // Regole D&D 5e (edizione 2014). Le regole delle singole classi stanno in dati/classi.ts.
 import type {
-  Arma, ArmaPersonaggio, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, IncantesimoCatalogo, Privilegio, PrivilegioClasse, Spell,
+  Arma, ArmaPersonaggio, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, IncantesimoCatalogo, InventoryItem, Privilegio, PrivilegioClasse, Spell,
 } from "./tipi.ts";
-import { CARATTERISTICA_MAGICA_RAZZIALE, classeDellaLista, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi.ts";
+import { CARATTERISTICA_MAGICA_RAZZIALE, DOTAZIONI_SCOMPONIBILI, classeDellaLista, incantatoreDi, regoleClasse, type Incantatore } from "./dati/classi.ts";
 import { bonusIra, risorseDelPersonaggio } from "./dati/risorse.ts";
 import { EFFETTI, condizione, effetto, type DefinizioneEffetto } from "./dati/condizioni.ts";
 import { competenteArma, competenteArmatura } from "./dati/competenze.ts";
@@ -98,7 +98,91 @@ export function livelloMassimoIncantesimi(inc: Incantatore | null, livello: numb
   return slot.reduce((max, n, i) => (n > 0 ? i + 1 : max), 0);
 }
 
-export const PESO_SCUDO = 6; // lb
+export const PESO_SCUDO = 3; // kg
+
+// --- Provviste: oggetti consumabili dell'inventario (razioni, acqua, olio, torce…) ---
+// Consumo giornaliero di casa: 3 razioni e 3 otri d'acqua al giorno.
+export const PROVVISTE_COMUNI: Omit<InventoryItem, "id">[] = [
+  { nome: "Razioni", qta: 15, peso: 1, consumabile: true, consumoGiornaliero: 3 },
+  { nome: "Otre d'acqua", qta: 6, peso: 2.5, consumabile: true, consumoGiornaliero: 3 },
+  { nome: "Olio (fiasca)", qta: 2, peso: 0.5, consumabile: true, consumoGiornaliero: 0 },
+  { nome: "Torcia", qta: 5, peso: 0.5, consumabile: true, consumoGiornaliero: 0 },
+  { nome: "Candela", qta: 5, peso: 0, consumabile: true, consumoGiornaliero: 0 },
+  { nome: "Pozione di guarigione", qta: 1, peso: 0.25, consumabile: true, consumoGiornaliero: 0 },
+];
+
+// Giorni che bastano con la quantità attuale (null se la provvista non ha un consumo giornaliero).
+export const giorniRimasti = (it: InventoryItem): number | null =>
+  it.consumabile && (it.consumoGiornaliero ?? 0) > 0 ? Math.floor(it.qta / (it.consumoGiornaliero as number)) : null;
+
+// Una provvista può arrivare a 0; un oggetto normale resta ad almeno 1 (per toglierlo si rimuove).
+export function cambiaQuantita(c: CharacterData, id: number, delta: number): CharacterData {
+  return {
+    ...c,
+    inventario: c.inventario.map(it =>
+      it.id === id ? { ...it, qta: Math.max(it.consumabile ? 0 : 1, it.qta + delta) } : it),
+  };
+}
+
+export function impostaConsumabile(c: CharacterData, id: number, consumabile: boolean): CharacterData {
+  return {
+    ...c,
+    inventario: c.inventario.map(it => {
+      if (it.id !== id) return it;
+      const base: InventoryItem = { id: it.id, nome: it.nome, qta: it.qta, peso: it.peso };
+      return consumabile ? { ...base, consumabile: true, consumoGiornaliero: 0 } : { ...base, qta: Math.max(1, it.qta) };
+    }),
+  };
+}
+
+export function impostaConsumoGiornaliero(c: CharacterData, id: number, consumo: number): CharacterData {
+  return {
+    ...c,
+    inventario: c.inventario.map(it =>
+      it.id === id && it.consumabile ? { ...it, consumoGiornaliero: Math.max(0, Number.isFinite(consumo) ? consumo : 0) } : it),
+  };
+}
+
+const dotazioneDi = (it: InventoryItem) =>
+  it.consumabile ? undefined : DOTAZIONI_SCOMPONIBILI.find(d => it.nome.trim().toLowerCase().startsWith(d.nome.toLowerCase()));
+
+export const dotazioneScomponibile = (it: InventoryItem): boolean => dotazioneDi(it) !== undefined;
+
+// Sostituisce una dotazione (es. "Dotazione da esploratore") con i suoi oggetti, nella stessa posizione,
+// moltiplicati per la quantità. Una provvista già presente con lo stesso nome ne aumenta la quantità.
+// Il peso diventa quello del contenuto, che può differire da quello scritto sulla dotazione.
+export function scomponiDotazione(c: CharacterData, id: number): CharacterData {
+  const dotazione = c.inventario.find(i => i.id === id);
+  const contenuto = dotazione && dotazioneDi(dotazione);
+  if (!dotazione || !contenuto) return c;
+  const resto = c.inventario.filter(i => i.id !== id);
+  const aggiunte = new Map<number, number>(); // id della provvista già presente → quantità da aggiungere
+  let prossimoId = Math.max(0, ...c.inventario.map(i => i.id)) + 1;
+  const nuovi: InventoryItem[] = [];
+  for (const o of contenuto.oggetti) {
+    const qta = o.qta * dotazione.qta;
+    const esistente = o.consumabile ? resto.find(i => i.consumabile && i.nome.toLowerCase() === o.nome.toLowerCase()) : undefined;
+    if (esistente) aggiunte.set(esistente.id, (aggiunte.get(esistente.id) ?? 0) + qta);
+    else nuovi.push({ ...o, qta, id: prossimoId++ });
+  }
+  const posizione = c.inventario.findIndex(i => i.id === id);
+  const inventario = resto.map(i => (aggiunte.has(i.id) ? { ...i, qta: i.qta + (aggiunte.get(i.id) as number) } : i));
+  inventario.splice(posizione, 0, ...nuovi);
+  return { ...c, inventario };
+}
+
+// Consuma il fabbisogno di `giorni` giorni. `esaurite` elenca le provviste che non bastavano
+// (la quantità si ferma a 0): fame e sete sono una questione per il Master.
+export function passaGiorni(c: CharacterData, giorni = 1): { personaggio: CharacterData; esaurite: string[] } {
+  const esaurite: string[] = [];
+  const inventario = c.inventario.map(it => {
+    const fabbisogno = it.consumabile ? (it.consumoGiornaliero ?? 0) * giorni : 0;
+    if (fabbisogno <= 0) return it;
+    if (it.qta < fabbisogno) esaurite.push(it.nome);
+    return { ...it, qta: Math.max(0, it.qta - fabbisogno) };
+  });
+  return { personaggio: { ...c, inventario }, esaurite };
+}
 
 // Privilegi che cambiano i calcoli, riconosciuti per nome.
 const haPrivilegio = (c: CharacterData, nome: string) => c.privilegi.some(p => p.nome === nome);
@@ -518,7 +602,7 @@ export function derivate(c: CharacterData) {
     armaturaCompetente,
     // Motivo per cui ora non si possono lanciare incantesimi (null = si può).
     incantesimiBloccati: armaturaCompetente ? null : "Indossi un'armatura o uno scudo senza averne la competenza.",
-    capacitaCarico: c.caratteristiche.FOR.valore * 15,
+    capacitaCarico: c.caratteristiche.FOR.valore * 7.5, // kg
     prossimaSoglia,
     puoSalire: prossimaSoglia !== null && c.xp.totale >= prossimaSoglia,
     haPresagio,

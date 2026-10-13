@@ -8,6 +8,15 @@ import { richiediUtente, utenteDi } from "../sessione.ts";
 
 const MASSIMO_INTERO = 2_147_483_647; // integer di PostgreSQL
 
+// Una scheda di una versione precedente (pesi in libbre) arriva solo da una pagina aperta prima
+// dell'aggiornamento e va ricaricata: non si può sapere se i suoi pesi sono ancora in libbre.
+// Il client converte da solo le schede vecchie (daJSON) prima di inviarle.
+function controllaVersione(dati: unknown) {
+  if (typeof dati === "object" && dati !== null && "versione" in dati && dati.versione !== 3) {
+    throw new ErroreRichiesta(400, "Versione dell'app obsoleta: ricarica la pagina");
+  }
+}
+
 // La scheda arriva dal client: la si valida e normalizza come per un import.
 function schedaDa(dati: unknown): CharacterData {
   try {
@@ -30,7 +39,9 @@ export async function rottePersonaggi(app: FastifyInstance) {
   app.get("/personaggi", async richiesta => elencoPersonaggi(app.db, utenteDi(richiesta).id));
 
   app.post("/personaggi", async (richiesta, risposta) => {
-    const scheda = schedaDa(corpoOggetto(richiesta.body).dati);
+    const dati = corpoOggetto(richiesta.body).dati;
+    controllaVersione(dati);
+    const scheda = schedaDa(dati);
     return risposta.status(201).send({ id: await creaPersonaggio(app.db, utenteDi(richiesta).id, scheda) });
   });
 
@@ -48,6 +59,7 @@ export async function rottePersonaggi(app: FastifyInstance) {
     if (typeof revisione !== "number" || !Number.isInteger(revisione) || revisione < 0 || revisione > MASSIMO_INTERO) {
       throw new ErroreRichiesta(400, "Servono dati e revisione");
     }
+    controllaVersione(corpo.dati);
     // I campi che il client non invia (versione vecchia dell'app) restano quelli salvati.
     const esistente = (await leggi(app.db, id, utente.id))?.dati ?? null;
     if (!esistente) throw new ErroreRichiesta(404, "Personaggio inesistente");

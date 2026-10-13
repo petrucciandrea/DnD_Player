@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { SCHEDE_INCANTESIMI } from "@dnd/regole/semi/incantesimi.ts";
+import { INITIAL_CHARACTER } from "@dnd/regole/dati/alston.ts";
+import { creaUtente } from "../src/accesso.ts";
 import { aggiornaCataloghi } from "../src/catalogo.ts";
 import { opzioniConnessione, riga } from "../src/db.ts";
+import { creaPersonaggio } from "../src/personaggi.ts";
 import { applicaMigrazioni, elencoMigrazioni, versioneSchema } from "../src/migra.ts";
 import { archivioDiProva } from "./database.ts";
 
@@ -33,6 +37,23 @@ describe("migrazioni e semina", () => {
     await aggiornaCataloghi(db);
     expect((await riga(db, "SELECT scuola FROM incantesimi WHERE nome = 'Scudo'"))?.scuola).toBe("Abiurazione");
     expect((await riga(db, "SELECT dado FROM armi WHERE nome = 'lancia del gnomo'"))?.dado).toBe("1d8");
+  });
+});
+
+describe("migrazione dei pesi in kg", () => {
+  it("dimezza i pesi già salvati (1 lb = 0,5 kg) negli oggetti, nelle armature e nei background", async () => {
+    const db = await archivioDiProva();
+    const utente = (await creaUtente(db, "prova", "segretissima"))!;
+    const id = await creaPersonaggio(db, utente.id, structuredClone(INITIAL_CHARACTER));
+    await db.query("INSERT INTO armature (nome, categoria, ca, peso) VALUES ('Prova', 'leggera', 11, 8)");
+    const peso = async (sql: string) => Number((await riga(db, sql))?.peso);
+    const oggetto = `SELECT peso FROM personaggio_oggetti WHERE personaggio_id = ${id} AND nome = 'Libro degli Incantesimi'`;
+    const background = "SELECT peso FROM background_oggetti WHERE peso > 0 ORDER BY background_id, ordine LIMIT 1";
+    const [oggettoPrima, backgroundPrima] = [await peso(oggetto), await peso(background)];
+    await db.query(readFileSync(new URL("../migrazioni/003_pesi_in_kg.sql", import.meta.url), "utf8"));
+    expect(await peso(oggetto)).toBe(oggettoPrima / 2);
+    expect(await peso("SELECT peso FROM armature WHERE nome = 'Prova'")).toBe(4);
+    expect(await peso(background)).toBe(backgroundPrima / 2);
   });
 });
 

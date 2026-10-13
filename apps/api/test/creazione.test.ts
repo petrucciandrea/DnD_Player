@@ -168,6 +168,16 @@ describe("creazione: personaggi completi", () => {
     expect(derivate(composta).slotMax).toEqual([1]);
   });
 
+  it("la dotazione da esploratore si scompone in oggetti e provviste, per 29,5 kg in tutto", () => {
+    const eq = equipaggiamentoIniziale(CLASSI.Barbaro, CLASSI.Barbaro.equipaggiamento.map(() => ({ opzione: 0, armi: [] })), null, catalogo);
+    const nomi = eq.oggetti.map(o => o.nome);
+    expect(nomi).toEqual(expect.arrayContaining(["Zaino", "Giaciglio", "Razioni", "Otre d'acqua", "Torcia"]));
+    expect(nomi).not.toContain("Dotazione da esploratore");
+    expect(eq.oggetti.find(o => o.nome === "Razioni")).toMatchObject({ qta: 10, consumabile: true, consumoGiornaliero: 3 });
+    expect(eq.oggetti.find(o => o.nome === "Corda di canapa (15 m)")?.consumabile).toBeUndefined();
+    expect(eq.oggetti.reduce((peso, o) => peso + o.peso * o.qta, 0)).toBe(29.5);
+  });
+
   it("l'equipaggiamento di ogni classe si costruisce con le opzioni predefinite", () => {
     for (const [nome, regole] of Object.entries(CLASSI)) {
       const armaQualsiasi = catalogo.armi.find(a => a.categoria === "semplice" && !a.distanza)!.nome;

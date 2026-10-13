@@ -328,7 +328,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
       label: d.maxPreparabili !== null ? `Grimorio (${d.preparatiAttuali}/${d.maxPreparabili})` : "Incantesimi",
       icon: BookOpen,
     }] : []),
-    { id: "zaino", label: `Zaino (${d.pesoTotale.toFixed(1)}/${d.capacitaCarico} lb)`, icon: Backpack },
+    { id: "zaino", label: `Zaino (${d.pesoTotale.toFixed(1)}/${d.capacitaCarico} kg)`, icon: Backpack },
     { id: "xp", label: `Progresso XP (${char.xp.totale})`, icon: Award, ...(d.puoSalire ? { badge: "Sali di livello!" } : {}) },
     { id: "note", label: char.note.length > 0 ? `Note (${char.note.length})` : "Note", icon: NotebookPen },
     { id: "lore", label: "Tratti & Background", icon: Scroll },
