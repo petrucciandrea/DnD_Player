@@ -97,7 +97,7 @@ function armaturaDa(v: unknown): Armatura | null {
 
 // Modello generico: un personaggio di 1° livello senza dati. Completa le sezioni che mancano.
 export const personaggioVuoto = (): CharacterData => ({
-  versione: 2,
+  versione: 3,
   info: {
     nome: "", classe: "", sottoclasse: "", livello: 1, razza: "", background: "", allineamento: "",
     giocatore: "", eta: 0, altezza: "", peso: "", occhi: "", capelli: "", carnagione: "", velocita: "",
@@ -147,12 +147,26 @@ export function completaConEsistente(dati: unknown, esistente: CharacterData | n
   return unito;
 }
 
-// Accetta sia il formato attuale (versione 2) sia quello vecchio senza versione.
+// Fino alla versione 2 i pesi (oggetti e armatura) erano in libbre; dalla 3 sono in kg, con 1 lb = 0,5 kg
+// come nel Manuale in italiano. La conversione si fa una sola volta, qui.
+export const KG_PER_LIBBRA = 0.5;
+const inKg = (p: unknown) => (typeof p === "number" && Number.isFinite(p) ? p * KG_PER_LIBBRA : p);
+
+function daLibbreAKg(d: Obj): Obj {
+  return {
+    ...d,
+    versione: 3,
+    inventario: Array.isArray(d.inventario) ? d.inventario.map(o => (isObj(o) ? { ...o, peso: inKg(o.peso) } : o)) : d.inventario,
+    armatura: isObj(d.armatura) ? { ...d.armatura, peso: inKg(d.armatura.peso) } : d.armatura,
+  };
+}
+
+// Accetta il formato attuale (versione 3), quello con i pesi in libbre (versione 2) e quello vecchio senza versione.
 export function daJSON(dati: unknown): CharacterData {
   if (!isObj(dati) || !isObj(dati.info) || !isObj(dati.caratteristiche)) {
     throw new Error("Il file non contiene una scheda personaggio valida.");
   }
-  return normalizza(dati.versione === 2 ? dati : migraV1(dati));
+  return normalizza(dati.versione === 3 ? dati : daLibbreAKg(dati.versione === 2 ? dati : migraV1(dati)));
 }
 
 // Completa le sezioni mancanti con il modello vuoto. Delle liste tiene solo gli elementi oggetto.
@@ -181,7 +195,7 @@ function normalizza(d: Obj): CharacterData {
 
   return {
     ...base,
-    versione: 2,
+    versione: 3,
     info: { ...info, avatar: avatarDa(info.avatar) },
     caratteristiche,
     competenzeAbilita: stringhe(d.competenzeAbilita),

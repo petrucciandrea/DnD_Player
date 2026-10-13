@@ -52,7 +52,9 @@ export interface InventoryItem {
   id: number;
   nome: string;
   qta: number;
-  peso: number; // lb per unità
+  peso: number; // kg per unità
+  consumabile?: boolean; // provvista (razioni, olio, torce…): la quantità può arrivare a 0
+  consumoGiornaliero?: number; // unità consumate da "Passa un giorno" (0 o assente = nessuno)
 }
 
 export interface XPRecord {
@@ -97,7 +99,7 @@ export interface Armatura {
   maxDes: number | null; // bonus massimo di DES (null = nessun limite, 0 = niente DES)
   forzaMin: number; // 0 = nessun requisito
   svantaggioFurtivita: boolean;
-  peso: number; // lb
+  peso: number; // kg
 }
 
 // Competenze che non sono abilità né tiri salvezza.
@@ -136,7 +138,7 @@ export interface NotaSessione {
 // Solo i dati "grezzi": tutto ciò che si può calcolare (modificatori, TS, CA,
 // bonus competenza, slot massimi...) sta in regole.ts.
 export interface CharacterData {
-  versione: 2;
+  versione: 3;
   info: {
     nome: string;
     classe: string;

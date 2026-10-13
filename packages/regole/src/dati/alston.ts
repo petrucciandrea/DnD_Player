@@ -2,7 +2,7 @@ import type { CharacterData } from "../tipi";
 
 // DATI INIZIALI UFFICIALI DI ALSTON IL BREVE
 export const INITIAL_CHARACTER: CharacterData = {
-  versione: 2,
+  versione: 3,
   info: {
     nome: "Alston il Breve",
     classe: "Mago",
@@ -97,22 +97,24 @@ export const INITIAL_CHARACTER: CharacterData = {
     { id: 15, nome: "Raggio Rovente", livello: 2, scuola: "Invocazione", tempo: "1 Azione", preparato: true }
   ],
   inventario: [
-    { id: 1, nome: "Libro degli Incantesimi", qta: 1, peso: 3 },
-    { id: 2, nome: "Focus Arcano", qta: 1, peso: 1 },
-    { id: 3, nome: "Liuto (35 mo)", qta: 1, peso: 2 },
-    { id: 4, nome: "Bussola (25 mo)", qta: 1, peso: 0.5 },
-    { id: 5, nome: "Strumenti da Cartografo & Mappe", qta: 1, peso: 6 },
-    { id: 6, nome: "Strumenti da Inventore", qta: 1, peso: 10 },
-    { id: 7, nome: "Calamaio d'inchiostro nero, pennino, pergamene", qta: 1, peso: 1 },
-    { id: 8, nome: "Lettere di colleghi e appunti accademici", qta: 1, peso: 0.5 },
-    { id: 9, nome: "Pietra Turchese (10 mo)", qta: 1, peso: 0.1 },
-    { id: 10, nome: "Gemme Occhio di Tigre (10 mo cad.)", qta: 2, peso: 0.2 },
-    { id: 11, nome: "Diaspro Sanguigno", qta: 1, peso: 0.1 },
-    { id: 12, nome: "Diaspri Blu", qta: 5, peso: 0.5 },
-    { id: 13, nome: "Cristalli di Quarzo Celeste (10 mo cad.)", qta: 5, peso: 0.5 },
-    { id: 14, nome: "Orecchino (25 mo) e Bracciale (25 mo)", qta: 1, peso: 0.2 },
-    { id: 15, nome: "Chiave dell'Osservatorio & Chiave del Tunnel", qta: 2, peso: 0.2 },
-    { id: 16, nome: "Dotazione da Esploratore (Zaino, Giaciglio, Torce, Razioni, Otre, Corda 15m)", qta: 1, peso: 45 }
+    { id: 1, nome: "Libro degli Incantesimi", qta: 1, peso: 1.5 },
+    { id: 2, nome: "Focus Arcano", qta: 1, peso: 0.5 },
+    { id: 3, nome: "Liuto (35 mo)", qta: 1, peso: 1 },
+    { id: 4, nome: "Bussola (25 mo)", qta: 1, peso: 0.25 },
+    { id: 5, nome: "Strumenti da Cartografo & Mappe", qta: 1, peso: 3 },
+    { id: 6, nome: "Strumenti da Inventore", qta: 1, peso: 5 },
+    { id: 7, nome: "Calamaio d'inchiostro nero, pennino, pergamene", qta: 1, peso: 0.5 },
+    { id: 8, nome: "Lettere di colleghi e appunti accademici", qta: 1, peso: 0.25 },
+    { id: 9, nome: "Pietra Turchese (10 mo)", qta: 1, peso: 0.05 },
+    { id: 10, nome: "Gemme Occhio di Tigre (10 mo cad.)", qta: 2, peso: 0.1 },
+    { id: 11, nome: "Diaspro Sanguigno", qta: 1, peso: 0.05 },
+    { id: 12, nome: "Diaspri Blu", qta: 5, peso: 0.25 },
+    { id: 13, nome: "Cristalli di Quarzo Celeste (10 mo cad.)", qta: 5, peso: 0.25 },
+    { id: 14, nome: "Orecchino (25 mo) e Bracciale (25 mo)", qta: 1, peso: 0.1 },
+    { id: 15, nome: "Chiave dell'Osservatorio & Chiave del Tunnel", qta: 2, peso: 0.1 },
+    { id: 16, nome: "Dotazione da Esploratore (Zaino, Giaciglio, Torce, Corda 15m)", qta: 1, peso: 10 },
+    { id: 17, nome: "Razioni", qta: 10, peso: 1, consumabile: true, consumoGiornaliero: 3 },
+    { id: 18, nome: "Otre d'acqua", qta: 1, peso: 2.5, consumabile: true, consumoGiornaliero: 3 }
   ],
   privilegi: [
     { nome: "Scurovisione", fonte: "Gnomo", descrizione: "Vede fino a 18 m in luce fioca come se fosse luce intensa, e nell'oscurità come se fosse luce fioca (solo in tonalità di grigio)." },

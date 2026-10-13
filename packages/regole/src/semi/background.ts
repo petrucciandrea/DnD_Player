@@ -17,59 +17,59 @@ export interface SemeBackground {
 }
 
 const o = (nome: string, peso: number, qta = 1): OggettoIniziale => ({ nome, qta, peso });
-const ABITI_COMUNI = o("Abiti comuni", 3);
-const ABITI_VIAGGIO = o("Abiti da viaggiatore", 4);
-const ABITI_PREGIATI = o("Abiti pregiati", 6);
+const ABITI_COMUNI = o("Abiti comuni", 1.5);
+const ABITI_VIAGGIO = o("Abiti da viaggiatore", 2);
+const ABITI_PREGIATI = o("Abiti pregiati", 3);
 
 export const BACKGROUND: SemeBackground[] = [
   {
     nome: "Accolito", abilita: ["intuizione", "religione"], strumenti: [], lingueAScelta: 2, mo: 15,
-    equipaggiamento: [o("Simbolo sacro", 1), o("Libro di preghiere", 5), o("Bastoncini d'incenso", 0, 5), o("Paramenti", 4), ABITI_COMUNI],
+    equipaggiamento: [o("Simbolo sacro", 0.5), o("Libro di preghiere", 2.5), o("Bastoncini d'incenso", 0, 5), o("Paramenti", 2), ABITI_COMUNI],
     privilegio: { nome: "Riparo del Fedele", fonte: "Accolito", descrizione: "Lui e i compagni ricevono cure e ospitalità gratuite nei templi della sua fede, che lo sostengono anche con aiuti modesti." },
   },
   {
     nome: "Artigiano di Gilda", abilita: ["intuizione", "persuasione"], strumenti: [], strumentiAScelta: "artigiano", lingueAScelta: 1, mo: 15,
-    equipaggiamento: [o("Strumenti da artigiano", 8), o("Lettera di presentazione della gilda", 0), ABITI_VIAGGIO],
+    equipaggiamento: [o("Strumenti da artigiano", 4), o("Lettera di presentazione della gilda", 0), ABITI_VIAGGIO],
     privilegio: { nome: "Membro di una Gilda", fonte: "Artigiano di Gilda", descrizione: "La gilda gli offre vitto e alloggio se serve, assistenza legale e contatti con persone influenti, in cambio di una quota mensile." },
   },
   {
     nome: "Ciarlatano", abilita: ["inganno", "rapiditaDiMano"], strumenti: ["Trucchi per il camuffamento", "Strumenti da falsario"], lingueAScelta: 0, mo: 15,
-    equipaggiamento: [ABITI_PREGIATI, o("Trucchi per il camuffamento", 3), o("Attrezzi da truffatore", 1)],
+    equipaggiamento: [ABITI_PREGIATI, o("Trucchi per il camuffamento", 1.5), o("Attrezzi da truffatore", 0.5)],
     privilegio: { nome: "Falsa Identità", fonte: "Ciarlatano", descrizione: "Possiede una seconda identità con documenti, conoscenze e travestimenti, e sa falsificare documenti se ne ha visto un esempio." },
   },
   {
     nome: "Criminale", abilita: ["furtivita", "inganno"], strumenti: ["Arnesi da scasso"], strumentiAScelta: "gioco", lingueAScelta: 0, mo: 15,
-    equipaggiamento: [o("Piede di porco", 5), o("Abiti comuni scuri con cappuccio", 3)],
+    equipaggiamento: [o("Piede di porco", 2.5), o("Abiti comuni scuri con cappuccio", 1.5)],
     privilegio: { nome: "Contatto Criminale", fonte: "Criminale", descrizione: "Ha un contatto affidabile nel mondo criminale e sa come fargli arrivare messaggi anche a grande distanza." },
   },
   {
     nome: "Eremita", abilita: ["medicina", "religione"], strumenti: ["Borsa da erborista"], lingueAScelta: 1, mo: 5,
-    equipaggiamento: [o("Custodia per pergamene con appunti", 1), o("Coperta invernale", 3), ABITI_COMUNI, o("Borsa da erborista", 3)],
+    equipaggiamento: [o("Custodia per pergamene con appunti", 0.5), o("Coperta invernale", 1.5), ABITI_COMUNI, o("Borsa da erborista", 1.5)],
     privilegio: { nome: "Scoperta", fonte: "Eremita", descrizione: "Nell'isolamento ha scoperto una verità unica e potente: un segreto cosmico, un luogo nascosto o un fatto che altri vorrebbero celare." },
   },
   {
     nome: "Eroe Popolare", abilita: ["addestrareAnimali", "sopravvivenza"], strumenti: ["Veicoli (terrestri)"], strumentiAScelta: "artigiano", lingueAScelta: 0, mo: 10,
-    equipaggiamento: [o("Strumenti da artigiano", 8), o("Pala", 5), o("Pentola di ferro", 10), ABITI_COMUNI],
+    equipaggiamento: [o("Strumenti da artigiano", 4), o("Pala", 2.5), o("Pentola di ferro", 5), ABITI_COMUNI],
     privilegio: { nome: "Ospitalità Rustica", fonte: "Eroe Popolare", descrizione: "La gente comune lo accoglie e lo nasconde, purché non metta in pericolo nessuno." },
   },
   {
     nome: "Forestiero", abilita: ["atletica", "sopravvivenza"], strumenti: [], strumentiAScelta: "musicale", lingueAScelta: 1, mo: 10,
-    equipaggiamento: [o("Bastone da viaggio", 4), o("Trappola da caccia", 25), o("Trofeo di un animale", 1), ABITI_VIAGGIO],
+    equipaggiamento: [o("Bastone da viaggio", 2), o("Trappola da caccia", 12.5), o("Trofeo di un animale", 0.5), ABITI_VIAGGIO],
     privilegio: { nome: "Viandante", fonte: "Forestiero", descrizione: "Ricorda la geografia dei luoghi che attraversa e, se il terreno lo permette, trova cibo e acqua per sé e per altre cinque persone ogni giorno." },
   },
   {
     nome: "Intrattenitore", abilita: ["acrobazia", "intrattenere"], strumenti: ["Trucchi per il camuffamento"], strumentiAScelta: "musicale", lingueAScelta: 0, mo: 15,
-    equipaggiamento: [o("Strumento musicale", 3), o("Pegno di un ammiratore", 0), o("Costume", 4)],
+    equipaggiamento: [o("Strumento musicale", 1.5), o("Pegno di un ammiratore", 0), o("Costume", 2)],
     privilegio: { nome: "A Grande Richiesta", fonte: "Intrattenitore", descrizione: "Trova sempre un posto dove esibirsi in cambio di vitto e alloggio modesti, e la sua fama gli apre qualche porta." },
   },
   {
     nome: "Marinaio", abilita: ["atletica", "percezione"], strumenti: ["Strumenti da navigatore", "Veicoli (acquatici)"], lingueAScelta: 0, mo: 10,
-    equipaggiamento: [o("Caviglia di legno", 2), o("Corda di seta (15 m)", 5), o("Portafortuna", 0), ABITI_COMUNI],
+    equipaggiamento: [o("Caviglia di legno", 1), o("Corda di seta (15 m)", 2.5), o("Portafortuna", 0), ABITI_COMUNI],
     privilegio: { nome: "Passaggio su una Nave", fonte: "Marinaio", descrizione: "Ottiene un passaggio gratuito su una nave mercantile per sé e per i compagni, in cambio di aiuto a bordo." },
   },
   {
     nome: "Monello", abilita: ["furtivita", "rapiditaDiMano"], strumenti: ["Trucchi per il camuffamento", "Arnesi da scasso"], lingueAScelta: 0, mo: 10,
-    equipaggiamento: [o("Coltellino", 0.5), o("Mappa della città natale", 0), o("Topolino domestico", 0), o("Ricordo dei genitori", 0), ABITI_COMUNI],
+    equipaggiamento: [o("Coltellino", 0.25), o("Mappa della città natale", 0), o("Topolino domestico", 0), o("Ricordo dei genitori", 0), ABITI_COMUNI],
     privilegio: { nome: "Segreti della Città", fonte: "Monello", descrizione: "Conosce i passaggi segreti delle città: fuori dal combattimento lui e i compagni vi si spostano al doppio della velocità." },
   },
   {
@@ -79,7 +79,7 @@ export const BACKGROUND: SemeBackground[] = [
   },
   {
     nome: "Sapiente", abilita: ["arcano", "storia"], strumenti: [], lingueAScelta: 2, mo: 10,
-    equipaggiamento: [o("Boccetta d'inchiostro nero", 0), o("Pennino", 0), o("Coltellino", 0.5), o("Lettera di un collega", 0), ABITI_COMUNI],
+    equipaggiamento: [o("Boccetta d'inchiostro nero", 0), o("Pennino", 0), o("Coltellino", 0.25), o("Lettera di un collega", 0), ABITI_COMUNI],
     privilegio: { nome: "Ricercatore", fonte: "Sapiente", descrizione: "Quando non conosce un'informazione, spesso sa dove o da chi ottenerla." },
   },
   {

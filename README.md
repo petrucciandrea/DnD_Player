@@ -52,7 +52,7 @@ Sui d20 scegli **normale, vantaggio o svantaggio**. Con vantaggio o svantaggio s
 
 ### Zaino
 
-**Armatura indossata** e scudo, che determinano la CA (con gli avvisi per svantaggio in Furtività e Forza insufficiente). Monete (mr, ma, me, mo, mp), oggetti con quantità e peso, e barra del carico rispetto alla capacità di trasporto (FOR × 15 lb), armatura compresa.
+**Armatura indossata** e scudo, che determinano la CA (con gli avvisi per svantaggio in Furtività e Forza insufficiente). Monete (mr, ma, me, mo, mp), oggetti con quantità e peso, e barra del carico rispetto alla capacità di trasporto (FOR × 7,5 kg), armatura compresa.
 
 ### Progresso XP
 

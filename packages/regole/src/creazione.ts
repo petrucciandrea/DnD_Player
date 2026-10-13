@@ -182,7 +182,8 @@ export function equipaggiamentoIniziale(
       else if (v.tipo === "armatura") {
         if (v.nome === "Scudo") esito.scudo = true;
         else esito.armatura = catalogo.armature.find(a => a.nome === v.nome) ?? esito.armatura;
-      } else esito.oggetti.push({ nome: v.nome, qta: v.qta ?? 1, peso: v.peso });
+      } else if (v.tipo === "pacchetto") esito.oggetti.push(...v.oggetti.map(o => ({ ...o })));
+      else esito.oggetti.push({ nome: v.nome, qta: v.qta ?? 1, peso: v.peso });
     }
   });
   esito.oggetti.push(...(bg?.equipaggiamento ?? []));

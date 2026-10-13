@@ -10,6 +10,7 @@ import {
   danneggiaArma, dannoCritico, attacchiPerAzione, sogliaCritico, dadiCriticoBrutale, danniExtraArma,
   dadiAttaccoFurtivo, dannoPunizione, spendiSlot, armaDaMonaco, dadoArtiMarziali, COLPO_SENZA_ARMI,
   sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot, incantesimiSottoclasseMancanti, aggiungiIncantesimi,
+  PROVVISTE_COMUNI, cambiaQuantita, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, dotazioneScomponibile, scomponiDotazione,
   applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
@@ -134,7 +135,7 @@ describe("salvataggio", () => {
       slot: { livello1: { max: 4, spesi: 3 }, livello2: { max: 2, spesi: 1 } },
       incantesimi: [{ id: 1, nome: "Dardo di Fuoco", livello: 0, scuola: "Evocazione", tempo: "1 Azione", preparato: true, nelGrimorio: true }],
     });
-    expect(c.versione).toBe(2);
+    expect(c.versione).toBe(3);
     expect(c.info.ispirazione).toBe(true);
     expect("bonusCompetenza" in c.info).toBe(false);
     expect(c.caratteristiche.INT).toEqual({ valore: 17, compTS: true });
@@ -1167,5 +1168,117 @@ describe("ricerca degli incantesimi", () => {
     expect(nomi({ concentrazione: true })).toEqual(["Invisibilità"]);
     expect(nomi({ rituale: true })).toEqual(["Identificare"]);
     expect(nomi({ testo: "zzz" })).toEqual([]);
+  });
+});
+
+describe("provviste", () => {
+  const conRazioni = () => {
+    const c = alston();
+    c.inventario = [
+      { id: 1, nome: "Corda", qta: 1, peso: 10 },
+      { id: 2, nome: "Razioni", qta: 3, peso: 2, consumabile: true, consumoGiornaliero: 1 },
+      { id: 3, nome: "Olio", qta: 2, peso: 1, consumabile: true, consumoGiornaliero: 0 },
+    ];
+    return c;
+  };
+
+  it("una provvista arriva a 0, un oggetto normale resta a 1", () => {
+    let c = conRazioni();
+    c = cambiaQuantita(cambiaQuantita(c, 2, -5), 1, -1);
+    expect(c.inventario.map(i => i.qta)).toEqual([1, 0, 2]);
+    expect(cambiaQuantita(c, 2, 2).inventario[1].qta).toBe(2);
+  });
+
+  it("passare un giorno consuma solo le provviste con un consumo giornaliero", () => {
+    const { personaggio, esaurite } = passaGiorni(conRazioni());
+    expect(personaggio.inventario.map(i => i.qta)).toEqual([1, 2, 2]);
+    expect(esaurite).toEqual([]);
+    expect(giorniRimasti(personaggio.inventario[1])).toBe(2);
+    expect(giorniRimasti(personaggio.inventario[2])).toBeNull();
+    expect(giorniRimasti(personaggio.inventario[0])).toBeNull();
+  });
+
+  it("segnala le provviste che non bastano e si ferma a 0", () => {
+    const { personaggio, esaurite } = passaGiorni(conRazioni(), 5);
+    expect(personaggio.inventario[1].qta).toBe(0);
+    expect(esaurite).toEqual(["Razioni"]);
+    expect(passaGiorni(personaggio, 1).esaurite).toEqual(["Razioni"]);
+  });
+
+  it("i giorni rimasti arrotondano per difetto", () => {
+    expect(giorniRimasti({ id: 1, nome: "Acqua", qta: 5, peso: 5, consumabile: true, consumoGiornaliero: 2 })).toBe(2);
+  });
+
+  it("segnare un oggetto come provvista e il consumo giornaliero", () => {
+    let c = impostaConsumabile(conRazioni(), 1, true);
+    expect(c.inventario[0]).toMatchObject({ consumabile: true, consumoGiornaliero: 0 });
+    c = impostaConsumoGiornaliero(c, 1, 2);
+    expect(c.inventario[0].consumoGiornaliero).toBe(2);
+    expect(impostaConsumoGiornaliero(c, 1, -3).inventario[0].consumoGiornaliero).toBe(0);
+    c = impostaConsumabile(cambiaQuantita(c, 1, -1), 1, false);
+    expect(c.inventario[0]).toEqual({ id: 1, nome: "Corda", qta: 1, peso: 10 });
+    // un oggetto normale non prende un consumo giornaliero
+    expect(impostaConsumoGiornaliero(c, 1, 4).inventario[0].consumoGiornaliero).toBeUndefined();
+  });
+
+  it("razioni e otri comuni si consumano in 3 al giorno", () => {
+    const comuni = (nome: string) => PROVVISTE_COMUNI.find(p => p.nome === nome)!;
+    expect(comuni("Razioni").consumoGiornaliero).toBe(3);
+    expect(comuni("Otre d'acqua").consumoGiornaliero).toBe(3);
+  });
+
+  it("le provviste pesano come gli altri oggetti e quelle comuni sono tutte consumabili", () => {
+    expect(derivate(conRazioni()).pesoTotale).toBe(10 + 6 + 2);
+    expect(PROVVISTE_COMUNI.every(p => p.consumabile)).toBe(true);
+  });
+
+  it("la dotazione da esploratore si scompone al suo posto, unendo le provviste già presenti", () => {
+    const c = alston();
+    c.inventario = [
+      { id: 1, nome: "Corda", qta: 1, peso: 10 },
+      { id: 2, nome: "Dotazione da Esploratore (Zaino, Giaciglio, Torce, Razioni, Otre, Corda 15m)", qta: 1, peso: 45 },
+      { id: 3, nome: "Razioni", qta: 4, peso: 1, consumabile: true, consumoGiornaliero: 3 },
+    ];
+    expect(dotazioneScomponibile(c.inventario[1])).toBe(true);
+    expect(dotazioneScomponibile(c.inventario[0])).toBe(false);
+    const dopo = scomponiDotazione(c, 2);
+    expect(dopo.inventario.map(i => i.nome)).toEqual([
+      "Corda", "Zaino", "Giaciglio", "Gavetta", "Acciarino", "Corda di canapa (15 m)", "Torcia", "Otre d'acqua", "Razioni",
+    ]);
+    expect(dopo.inventario.find(i => i.nome === "Razioni")).toMatchObject({ id: 3, qta: 14, consumoGiornaliero: 3 });
+    expect(new Set(dopo.inventario.map(i => i.id)).size).toBe(dopo.inventario.length);
+    expect(derivate(dopo).pesoTotale).toBe(10 + 29.5 + 4);
+    expect(scomponiDotazione(dopo, 1)).toBe(dopo); // oggetto non scomponibile: nessun cambiamento
+  });
+
+  it("scomporre più dotazioni ne moltiplica il contenuto", () => {
+    const c = alston();
+    c.inventario = [{ id: 1, nome: "Dotazione da esploratore", qta: 2, peso: 29.5 }];
+    const dopo = scomponiDotazione(c, 1);
+    expect(dopo.inventario.find(i => i.nome === "Razioni")?.qta).toBe(20);
+    expect(dopo.inventario.find(i => i.nome === "Zaino")?.qta).toBe(2);
+  });
+});
+
+describe("pesi in kg", () => {
+  it("le schede con i pesi in libbre (versione 2 o senza versione) si convertono in kg, una volta sola", () => {
+    const vecchia = JSON.parse(JSON.stringify({
+      ...alston(), versione: 2,
+      inventario: [{ id: 1, nome: "Corda", qta: 2, peso: 10 }, { id: 2, nome: "Gemma", qta: 1, peso: 0.1 }],
+      armatura: { nome: "Cotta di Maglia", categoria: "pesante", ca: 16, maxDes: 0, forzaMin: 13, svantaggioFurtivita: true, peso: 55 },
+    }));
+    const c = daJSON(vecchia);
+    expect(c.versione).toBe(3);
+    expect(c.inventario.map(i => i.peso)).toEqual([5, 0.05]);
+    expect(c.armatura?.peso).toBe(27.5);
+    expect(daJSON(c).inventario.map(i => i.peso)).toEqual([5, 0.05]); // già in kg: non si converte di nuovo
+    expect(daJSON(JSON.parse(JSON.stringify(c))).armatura?.peso).toBe(27.5);
+  });
+
+  it("la capacità di carico è FOR × 7,5 kg e lo scudo pesa 3 kg", () => {
+    const c = alston();
+    expect(derivate(c).capacitaCarico).toBe(c.caratteristiche.FOR.valore * 7.5);
+    const senza = { ...c, inventario: [], armatura: null };
+    expect(derivate({ ...senza, scudo: true }).pesoTotale).toBe(3);
   });
 });
