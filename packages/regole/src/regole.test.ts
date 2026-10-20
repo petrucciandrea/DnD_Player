@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { INITIAL_CHARACTER } from "./dati/alston";
 import {
   bonusCompetenza, critico, dannoArma, derivate, formulaDanno, modificaCaratteristica, modificatore, parseDado, testoDanni, totaleDanni,
-  riposoBreve, riposoLungo, risultatoD20, saliDiLivello,
+  pfDaOreDiRiposo, riposoBreve, riposoLungo, risultatoD20, saliDiLivello,
   dannoIncantesimo, lanciaIncantesimo, numeroAttacchi, slotUtilizzabili,
   applicaCura, applicaDanno, cdConcentrazione, esitoTsMorte, statoVita, pfPerLivello, slotPatto,
   aggiungiCondizione, attivaEffetto, cambiaConteggioEffetto, impostaIndebolimento, privilegiMancanti, rimuoviEffetto, usaRisorsa,
@@ -93,15 +93,28 @@ describe("riposi", () => {
     const c = alston();
     c.combattimento.pfAttuali = 20;
     c.slotSpesi = [2, 1, 0, 0, 0, 0, 0, 0, 0];
-    const r = riposoBreve(c, { dadiVitaSpesi: 2, pfRecuperati: 15, slotRecuperati: [0, 1] });
-    expect(r.combattimento.pfAttuali).toBe(23);
+    const r = riposoBreve(c, { ore: 1, dadiVitaSpesi: 2, pfRecuperati: 2, slotRecuperati: [0, 1] });
+    expect(r.combattimento.pfAttuali).toBe(23); // 20 + 2 dai Dadi Vita + 1 per l'ora
     expect(r.combattimento.dadiVitaRimanenti).toBe(1);
     expect(r.slotSpesi.slice(0, 2)).toEqual([2, 0]);
     expect(r.recuperoArcanoUsato).toBe(true);
   });
 
+  it("ogni ora di riposo breve recupera 1 PF, non a 0 PF", () => {
+    const c = alston();
+    c.combattimento.pfAttuali = 10;
+    expect(pfDaOreDiRiposo(c, 3)).toBe(3);
+    expect(riposoBreve(c, { ore: 3, dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] }).combattimento.pfAttuali).toBe(13);
+    c.combattimento.pfAttuali = 21;
+    expect(riposoBreve(c, { ore: 5, dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] }).combattimento.pfAttuali).toBe(23); // massimo
+    c.combattimento.pfAttuali = 0;
+    c.combattimento.stabile = true;
+    expect(pfDaOreDiRiposo(c, 4)).toBe(0);
+    expect(riposoBreve(c, { ore: 4, dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] }).combattimento.pfAttuali).toBe(0);
+  });
+
   it("riposo breve senza Recupero Arcano non lo consuma", () => {
-    const r = riposoBreve(alston(), { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
+    const r = riposoBreve(alston(), { ore: 1, dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
     expect(r.recuperoArcanoUsato).toBe(false);
   });
 });
@@ -114,6 +127,9 @@ describe("livelli e caratteristiche", () => {
     expect(c.combattimento.pfMassimi).toBe(30);
     expect(c.combattimento.dadiVitaRimanenti).toBe(4);
     expect(d.slotMax).toEqual([4, 3]);
+    const stanco = alston();
+    stanco.combattimento.dadiVitaRimanenti = 0;
+    expect(saliDiLivello(stanco).combattimento.dadiVitaRimanenti).toBe(4); // si recuperano tutti i Dadi Vita
     expect(d.maxPreparabili).toBe(7);
     expect(d.maxTrucchetti).toBe(4);
   });
@@ -286,7 +302,7 @@ describe("danni, cure e tiri salvezza contro morte", () => {
     const c = lanciaIncantesimo(alston(), 2, { concentrazione: "Blocca Persone" });
     expect(c.concentrazione).toBe("Blocca Persone");
     expect(lanciaIncantesimo(c, null, { concentrazione: "Individuazione del Magico" }).concentrazione).toBe("Individuazione del Magico");
-    expect(riposoBreve(c, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] }).concentrazione).toBeNull();
+    expect(riposoBreve(c, { ore: 1, dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] }).concentrazione).toBeNull();
   });
 });
 
@@ -390,10 +406,10 @@ describe("regole per classe", () => {
 
   it("il riposo breve recupera gli slot del patto", () => {
     const warlock = { ...pg("Warlock", 3), slotSpesi: [0, 2, 0, 0, 0, 0, 0, 0, 0] };
-    const dopo = riposoBreve(warlock, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
+    const dopo = riposoBreve(warlock, { ore: 1, dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
     expect(dopo.slotSpesi[1]).toBe(0);
     const mago = { ...pg("Mago", 3), slotSpesi: [0, 1, 0, 0, 0, 0, 0, 0, 0] };
-    expect(riposoBreve(mago, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] }).slotSpesi[1]).toBe(1);
+    expect(riposoBreve(mago, { ore: 1, dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] }).slotSpesi[1]).toBe(1);
   });
 
   it("Presagio e Recupero Arcano solo per chi li ha", () => {
@@ -463,7 +479,7 @@ describe("risorse di classe", () => {
   it("i riposi ricaricano le risorse giuste", () => {
     let c = pg("Guerriero", 9, {}, "Maestro di Battaglia");
     c = usaRisorsa(usaRisorsa(usaRisorsa(c, "recuperare-energie"), "indomito"), "dadi-superiorita", 2);
-    const breve = riposoBreve(c, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
+    const breve = riposoBreve(c, { ore: 1, dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
     expect(breve.risorseUsate).toEqual({ indomito: 1 }); // Indomito torna solo con il riposo lungo
     expect(riposoLungo(c).risorseUsate).toEqual({});
   });
@@ -511,7 +527,7 @@ describe("effetti attivi", () => {
 
   it("il riposo breve fa finire l'ira, quello lungo anche gli effetti di un'intera giornata", () => {
     let c = attivaEffetto(attivaEffetto(mago(), "armatura-magica"), "scudo", lancio);
-    const breve = riposoBreve(c, { dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
+    const breve = riposoBreve(c, { ore: 1, dadiVitaSpesi: 0, pfRecuperati: 0, slotRecuperati: [] });
     expect(breve.effetti.map(e => e.id)).toEqual(["armatura-magica"]);
     expect(riposoLungo(c).effetti).toEqual([]);
     c = rimuoviEffetto(c, "scudo");
