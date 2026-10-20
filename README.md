@@ -25,7 +25,7 @@ Sui d20 scegli **normale, vantaggio o svantaggio**. Con vantaggio o svantaggio s
 - **Concentrazione**: mostra l'incantesimo che stai mantenendo. Quando subisci danni l'app chiede il TS su COS (CD 10 o metà del danno, il valore più alto). Se fallisce, la concentrazione si interrompe.
 - **A 0 PF** la card dei PF mostra i **tiri salvezza contro morte**: 10+ è un successo, un 1 conta come due fallimenti, un 20 ti riporta a 1 PF. Subire danni a 0 PF conta come un fallimento. Se il danno oltre lo 0 raggiunge i PF massimi, la morte è istantanea. Successi e fallimenti si possono correggere a mano.
 - **Riposo lungo**: riporta PF e slot al massimo e recupera metà dei Dadi Vita; per il mago divinatore ritira il Presagio, per il mago rende di nuovo disponibile il Recupero Arcano. Serve almeno 1 PF.
-- **Riposo breve**: un pannello in cui imposti la durata e spendi i Dadi Vita uno alla volta. Puoi aggiungere il Canto di Riposo di un bardo del gruppo, scegliere gli slot da recuperare con il Recupero Arcano e, se sei stabilizzato a 0 PF, tirare il d4 per il recupero di 1 PF. Il pannello mostra l'anteprima dei PF, e nulla viene applicato finché non premi *Completa riposo*.
+- **Riposo breve**: un pannello in cui imposti la durata (ogni ora recupera 1 PF, se non sei a 0 PF) e spendi i Dadi Vita uno alla volta. Puoi aggiungere il Canto di Riposo di un bardo del gruppo, scegliere gli slot da recuperare con il Recupero Arcano e, se sei stabilizzato a 0 PF, tirare il d4 per il recupero di 1 PF. Il pannello mostra l'anteprima dei PF, e nulla viene applicato finché non premi *Completa riposo*.
 - **Esporta / Importa JSON**, **Personaggi** (torna all'elenco), il tuo **nome utente** (apre le impostazioni dell'account) ed **Esci**.
 - **Stato del salvataggio**: *Salvata*, *Salvataggio…* oppure *Offline* se il database non è raggiungibile.
 
@@ -56,7 +56,7 @@ Sui d20 scegli **normale, vantaggio o svantaggio**. Con vantaggio o svantaggio s
 
 ### Progresso XP
 
-Registro degli XP guadagnati, ognuno con un motivo e una data, e barra verso la soglia del livello successivo. Quando raggiungi la soglia compare **Sali di livello**: aggiunge i PF medi del Dado Vita della classe più COS e un Dado Vita, i privilegi del nuovo livello presenti nel catalogo e, al livello giusto, ti fa scegliere la sottoclasse. Ti ricorda anche cos'altro cambia: nuovi slot, incantesimi, trucchetti, aumenti di caratteristica.
+Registro degli XP guadagnati, ognuno con un motivo e una data, e barra verso la soglia del livello successivo. Quando raggiungi la soglia compare **Sali di livello**: aggiunge i PF medi del Dado Vita della classe più COS e un Dado Vita (e recuperi tutti quelli spesi), i privilegi del nuovo livello presenti nel catalogo e, al livello giusto, ti fa scegliere la sottoclasse. Ti ricorda anche cos'altro cambia: nuovi slot, incantesimi, trucchetti, aumenti di caratteristica.
 
 ### Tratti & Background
 

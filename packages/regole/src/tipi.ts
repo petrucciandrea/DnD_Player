@@ -267,7 +267,8 @@ export interface CatalogoCreazione {
 }
 
 export interface EsitoRiposoBreve {
+  ore: number; // durata: ogni ora recupera 1 PF (pfDaOreDiRiposo)
   dadiVitaSpesi: number;
-  pfRecuperati: number;
+  pfRecuperati: number; // Dadi Vita, Canto di Riposo, recupero da stabilizzato
   slotRecuperati: number[]; // indice 0 = slot di 1° livello (Recupero Arcano)
 }

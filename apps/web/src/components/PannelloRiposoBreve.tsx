@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Coffee, Clock, Heart, Music, RotateCcw, Minus, Plus, X, Dices, Zap } from "lucide-react";
 import type { CharacterData, EsitoRiposoBreve } from "@dnd/regole/tipi.ts";
 import type { Derivate } from "@dnd/regole/regole.ts";
-import { segno } from "@dnd/regole/regole.ts";
+import { pfDaOreDiRiposo, segno } from "@dnd/regole/regole.ts";
 import type { ChiediTiro } from "../tiroDadi";
 
 interface Props {
@@ -47,7 +47,8 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
   const pfCanto = tiriDadiVita.length > 0 && facceCanto > 0 && tiroCanto !== null ? tiroCanto : 0;
   const { stabile } = char.combattimento;
   const pfStabile = pfAttuali === 0 && stabile && tiroStabile !== null && tiroStabile <= ore ? 1 : 0;
-  const pfTotali = pfDaDadi + pfCanto + pfStabile;
+  const pfOre = pfDaOreDiRiposo(char, ore);
+  const pfTotali = pfDaDadi + pfCanto + pfStabile + pfOre;
   const pfFinali = Math.min(pfMassimi, pfAttuali + pfTotali);
 
   const spesi = (i: number) => Math.min(char.slotSpesi[i] ?? 0, d.slotMax[i] ?? 0);
@@ -101,6 +102,7 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
     const parti = [`Riposo breve di ${ore} ${ore === 1 ? "ora" : "ore"}`];
     if (tiriDadiVita.length > 0) parti.push(`${tiriDadiVita.length} Dadi Vita (${tiriDadiVita.join(", ")})`);
     if (pfCanto > 0) parti.push(`Canto di Riposo +${pfCanto}`);
+    if (pfOre > 0) parti.push(`riposo +${pfOre}`);
     if (pfStabile > 0) parti.push("stabilizzato +1");
     if (pfTotali > 0) parti.push(`+${pfFinali - pfAttuali} PF`);
     if (ricaricabili.length > 0) parti.push(`Risorse ricaricate: ${ricaricabili.map(r => r.nome).join(", ")}`);
@@ -108,7 +110,7 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
       const slot = slotRecuperati.flatMap((n, i) => (n > 0 ? [`${n}× ${i + 1}°`] : [])).join(", ");
       parti.push(`Recupero Arcano: ${slot}`);
     }
-    onConferma({ dadiVitaSpesi: tiriDadiVita.length, pfRecuperati: pfTotali, slotRecuperati }, parti.join(" · ") + ".");
+    onConferma({ ore, dadiVitaSpesi: tiriDadiVita.length, pfRecuperati: pfDaDadi + pfCanto + pfStabile, slotRecuperati }, parti.join(" · ") + ".");
   };
 
   return (
@@ -136,6 +138,9 @@ export default function PannelloRiposoBreve({ char, d, chiediTiro, onConferma, o
               <button onClick={() => setOre(o => Math.min(23, o + 1))} className={piccolo}><Plus className="w-3 h-3" /></button>
             </div>
           </div>
+          <p className="text-xs text-slate-400">
+            {pfOre > 0 ? <>Ogni ora recupera 1 PF: <strong className="text-emerald-400">+{pfOre}</strong>.</> : "A 0 PF le ore di riposo non fanno recuperare PF."}
+          </p>
           {ore >= 8 && (
             <p className="text-xs text-amber-300">Con 8 ore di riposo puoi fare un riposo lungo, che ripristina anche PF e slot.</p>
           )}

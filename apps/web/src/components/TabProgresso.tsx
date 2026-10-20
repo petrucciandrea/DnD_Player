@@ -274,7 +274,7 @@ export default function TabProgresso({ char, d, setChar, chiediTiro }: Props) {
   const nuoviSempre = sottoDopo.sempre.filter(n => !sottoPrima.sempre.includes(n));
   const nuoviAmpliati = sottoDopo.ampliata.filter(n => !sottoPrima.ampliata.includes(n));
   const note = [
-    `+1 Dado Vita (d${d.dadoVita}).`,
+    `+1 Dado Vita (d${d.dadoVita}) e recupero di tutti i Dadi Vita spesi.`,
     nuoviSlot.length > 0 && `Nuovi slot incantesimo: ${nuoviSlot.join(", ")}.`,
     conosciutiInPiu > 0 && `Puoi imparare ${conosciutiInPiu} ${conosciutiInPiu === 1 ? "nuovo incantesimo" : "nuovi incantesimi"}.`,
     trucchettiInPiu > 0 && `Puoi imparare ${trucchettiInPiu === 1 ? "un nuovo trucchetto" : `${trucchettiInPiu} nuovi trucchetti`}.`,

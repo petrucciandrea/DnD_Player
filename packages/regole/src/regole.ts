@@ -645,11 +645,17 @@ export function riposoLungo(c: CharacterData, presagio?: number[]): CharacterDat
   };
 }
 
+// Regola della casa: ogni ora di riposo breve recupera 1 PF, ma solo a chi è in piedi
+// (a 0 PF vale il recupero da stabilizzato dopo 1d4 ore).
+export function pfDaOreDiRiposo(c: CharacterData, ore: number): number {
+  return c.combattimento.pfAttuali > 0 ? Math.max(0, Math.floor(ore)) : 0;
+}
+
 // Il riposo breve recupera tutti gli slot della magia del patto (Warlock).
 export function riposoBreve(c: CharacterData, esito: EsitoRiposoBreve): CharacterData {
   const usaRecupero = esito.slotRecuperati.some(n => n > 0);
   const patto = incantatoreDi(c.info.classe, c.info.sottoclasse)?.tipo === "patto";
-  const curato = applicaCura(c, esito.pfRecuperati);
+  const curato = applicaCura(c, esito.pfRecuperati + pfDaOreDiRiposo(c, esito.ore));
   // Si ricaricano le risorse "breve" e scadono gli effetti di breve durata.
   const risorseUsate = { ...c.risorseUsate };
   for (const r of derivate(c).risorse) if (r.ricarica === "breve") delete risorseUsate[r.id];
@@ -783,7 +789,7 @@ export function saliDiLivello(
       ...c.combattimento,
       pfMassimi: c.combattimento.pfMassimi + pf,
       pfAttuali: c.combattimento.pfAttuali + pf,
-      dadiVitaRimanenti: c.combattimento.dadiVitaRimanenti + 1,
+      dadiVitaRimanenti: c.info.livello + 1, // regola della casa: si recuperano tutti i Dadi Vita
     },
   }, extra.incantesimi ?? []);
   // I PF del nuovo livello usano la COS di prima: l'aumento della COS poi li corregge per tutti i livelli.
