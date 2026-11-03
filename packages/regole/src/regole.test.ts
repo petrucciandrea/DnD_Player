@@ -14,6 +14,7 @@ import {
   applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
+import { calcolaDanno, difeseDelPersonaggio, haSchivataProdigiosa, tipoDanno, type Difesa } from "./dati/danni";
 import { competenteArmatura, competenzaCopreArma } from "./dati/competenze";
 import { classeDellaLista, incantatoreDi, regoleClasse } from "./dati/classi";
 import { completaConEsistente, daJSON } from "./scheda";
@@ -696,6 +697,44 @@ describe("effetti attivabili dal pannello", () => {
     return { privilegi: privilegi.map(e => e.id), daAlleato: daAlleato.map(e => e.id) };
   };
 
+  it("Schivare: chiunque lo attiva dal pannello, vantaggio ai TS di DES", () => {
+    const c = alston();
+    expect(effettiAttivabili(c).azioni.map(e => e.id)).toEqual(["schivare"]);
+    const schiva = attivaEffetto(c, "schivare");
+    expect(schiva.effetti).toEqual([{ id: "schivare" }]);
+    expect(effettiAttivabili(schiva).azioni).toEqual([]);
+    expect(suggerimentoTiro(schiva, { tipo: "ts", car: "DES" }).modalita).toBe("vantaggio");
+    expect(suggerimentoTiro(schiva, { tipo: "ts", car: "FOR" }).modalita).toBe("normale");
+    // Non è un incantesimo di un alleato né un privilegio.
+    expect(ids(c).daAlleato).not.toContain("schivare");
+    expect(ids(c).privilegi).not.toContain("schivare");
+  });
+
+  it("Schivare termina da incapacitati e a velocità 0", () => {
+    const schiva = attivaEffetto(alston(), "schivare");
+    expect(aggiungiCondizione(schiva, "stordito").effetti).toEqual([]);
+    expect(aggiungiCondizione(schiva, "afferrato").effetti).toEqual([]);
+    expect(aggiungiCondizione(schiva, "trattenuto").effetti).toEqual([]);
+    expect(aggiungiCondizione(schiva, "prono").effetti).toEqual([{ id: "schivare" }]);
+    expect(impostaIndebolimento(schiva, 4).effetti).toEqual([{ id: "schivare" }]);
+    expect(impostaIndebolimento(schiva, 5).effetti).toEqual([]);
+    // Gli altri effetti restano.
+    const conScudo = attivaEffetto(schiva, "scudo-della-fede");
+    expect(aggiungiCondizione(conScudo, "afferrato").effetti).toEqual([{ id: "scudo-della-fede" }]);
+  });
+
+  it("Difesa Paziente: Monaco dal 2°, spende 1 punto ki", () => {
+    const monaco = (livello: number) => ({ ...alston(), info: { ...alston().info, classe: "Monaco", sottoclasse: "", livello } });
+    expect(ids(monaco(1)).privilegi).not.toContain("difesa-paziente");
+    expect(ids(monaco(2)).privilegi).toContain("difesa-paziente");
+    const dopo = attivaEffetto(monaco(2), "difesa-paziente");
+    expect(dopo.effetti).toEqual([{ id: "difesa-paziente" }]);
+    expect(dopo.risorseUsate["punti-ki"]).toBe(1);
+    expect(suggerimentoTiro(dopo, { tipo: "ts", car: "DES" }).modalita).toBe("vantaggio");
+    // Senza punti ki non si attiva.
+    expect(attivaEffetto(usaRisorsa(monaco(2), "punti-ki", 2), "difesa-paziente").effetti).toEqual([]);
+  });
+
   it("gli incantesimi solo personali partono solo dal lancio", () => {
     const c = alston();
     expect(attivaEffetto(c, "scudo")).toBe(c);
@@ -707,7 +746,7 @@ describe("effetti attivabili dal pannello", () => {
 
   it("quelli che può lanciare un alleato si segnano dal pannello", () => {
     const c = alston();
-    expect(ids(c).daAlleato).toEqual(["armatura-magica", "scudo-della-fede", "pelle-coriacea", "velocita", "benedizione"]);
+    expect(ids(c).daAlleato).toEqual(["armatura-magica", "scudo-della-fede", "pelle-coriacea", "pelle-di-pietra", "velocita", "benedizione"]);
     expect(attivaEffetto(c, "benedizione").effetti).toEqual([{ id: "benedizione" }]);
     // Già attivo: non si offre più.
     expect(ids(attivaEffetto(c, "benedizione")).daAlleato).not.toContain("benedizione");
@@ -1296,5 +1335,110 @@ describe("pesi in kg", () => {
     expect(derivate(c).capacitaCarico).toBe(c.caratteristiche.FOR.valore * 7.5);
     const senza = { ...c, inventario: [], armatura: null };
     expect(derivate({ ...senza, scudo: true }).pesoTotale).toBe(3);
+  });
+});
+
+describe("danni subiti: resistenze, immunità e vulnerabilità", () => {
+  const conPrivilegio = (nome: string, fonte: string) => ({ ...alston(), privilegi: [{ nome, fonte, descrizione: "" }] });
+  const tipi = (c: CharacterData) => difeseDelPersonaggio(c).map(d => [d.tipo, d.danni, d.fonte]);
+
+  it("riconosce il tipo di danno scritto in vari modi", () => {
+    expect(["da fuoco", "Contundenti", "necrotici", "Tagliente", "psichici", "nulla"].map(tipoDanno))
+      .toEqual(["fuoco", "contundente", "necrotico", "tagliente", "psichico", null]);
+  });
+
+  it("privilegi di razza: Tiefling, Nano, Halfling Tozzo e Dragonide", () => {
+    expect(tipi(conPrivilegio("Resistenza Infernale", "Tiefling"))).toEqual([["resistenza", ["fuoco"], "Resistenza Infernale"]]);
+    expect(tipi(conPrivilegio("Resilienza Nanica", "Nano"))).toEqual([["resistenza", ["veleno"], "Resilienza Nanica"]]);
+    expect(tipi(conPrivilegio("Resilienza dei Tozzi", "Halfling Tozzo"))).toEqual([["resistenza", ["veleno"], "Resilienza dei Tozzi"]]);
+    expect(tipi(conPrivilegio("Antenato Draconico", "Dragonide (Rosso)"))).toEqual([["resistenza", ["fuoco"], "Antenato Draconico"]]);
+    expect(tipi(conPrivilegio("Antenato Draconico", "Dragonide (Blu)"))).toEqual([["resistenza", ["fulmine"], "Antenato Draconico"]]);
+    expect(tipi(alston())).toEqual([]);
+  });
+
+  it("classe e sottoclasse dal loro livello", () => {
+    const monaco = (livello: number) => ({ ...alston(), privilegi: [], info: { ...alston().info, classe: "Monaco", sottoclasse: "", livello } });
+    expect(tipi(monaco(9))).toEqual([]);
+    expect(tipi(monaco(10))).toEqual([["immunita", ["veleno"], "Purezza del Corpo"]]);
+    const necromante = { ...alston(), privilegi: [], info: { ...alston().info, sottoclasse: "Scuola di Necromanzia", livello: 10 } };
+    expect(tipi(necromante)).toEqual([["resistenza", ["necrotico"], "Assuefatto alla Non Morte"]]);
+  });
+
+  it("Ira solo se attiva, Pietrificato resiste a tutto, Pelle di Pietra ai fisici non magici", () => {
+    const barbaro = { ...alston(), privilegi: [], info: { ...alston().info, classe: "Barbaro", sottoclasse: "", livello: 3 } };
+    expect(tipi(barbaro)).toEqual([]);
+    expect(tipi({ ...barbaro, effetti: [{ id: "ira" }] })).toEqual([["resistenza", ["contundente", "perforante", "tagliente"], "Ira"]]);
+    expect(tipi({ ...barbaro, condizioni: ["pietrificato"] })).toEqual([["resistenza", "tutti", "Pietrificato"]]);
+    expect(difeseDelPersonaggio({ ...barbaro, effetti: [{ id: "pelle-di-pietra" }] })[0]).toMatchObject({ soloNonMagiche: true });
+    expect(effettoDaIncantesimo("Pelle di Pietra")?.id).toBe("pelle-di-pietra");
+  });
+
+  it("le difese personali hanno la nota come fonte", () => {
+    const c = { ...alston(), difese: [{ tipo: "resistenza" as const, danno: "freddo" as const, nota: "Anello" }, { tipo: "vulnerabilita" as const, danno: "fuoco" as const, nota: "" }] };
+    expect(tipi(c)).toEqual([["resistenza", ["freddo"], "Anello"], ["vulnerabilita", ["fuoco"], "Personale"]]);
+  });
+
+  const res = (danni: Difesa["danni"], fonte: string, altro: Partial<Difesa> = {}): Difesa => ({ tipo: "resistenza", danni, fonte, ...altro });
+
+  it("resistenza dimezza per difetto, immunità azzera, vulnerabilità raddoppia", () => {
+    expect(calcolaDanno([res(["fuoco"], "Tiefling")], [{ quantita: 11, tipo: "fuoco" }]).totale).toBe(5);
+    expect(calcolaDanno([res(["fuoco"], "Tiefling")], [{ quantita: 11, tipo: "freddo" }]).totale).toBe(11);
+    expect(calcolaDanno([{ tipo: "immunita", danni: ["veleno"], fonte: "Monaco" }], [{ quantita: 9, tipo: "veleno" }]).totale).toBe(0);
+    expect(calcolaDanno([{ tipo: "vulnerabilita", danni: ["fuoco"], fonte: "x" }], [{ quantita: 7, tipo: "fuoco" }]).totale).toBe(14);
+    // Resistenza e vulnerabilità insieme: prima metà, poi doppio.
+    expect(calcolaDanno([res(["fuoco"], "a"), { tipo: "vulnerabilita", danni: ["fuoco"], fonte: "b" }], [{ quantita: 7, tipo: "fuoco" }]).totale).toBe(6);
+  });
+
+  it("più resistenze allo stesso danno contano una volta e le note dicono da dove vengono", () => {
+    const esito = calcolaDanno([res(["fuoco"], "Tiefling"), res("tutti", "Pietrificato")], [{ quantita: 12, tipo: "fuoco" }]);
+    expect(esito.totale).toBe(6);
+    expect(esito.parti[0].note).toEqual(["Resistenza (Tiefling, Pietrificato): 12 → 6"]);
+  });
+
+  it("le resistenze limitate guardano armi magiche e incantesimi", () => {
+    const pietra = res(["contundente", "perforante", "tagliente"], "Pelle di Pietra", { soloNonMagiche: true });
+    expect(calcolaDanno([pietra], [{ quantita: 10, tipo: "tagliente" }]).totale).toBe(5);
+    expect(calcolaDanno([pietra], [{ quantita: 10, tipo: "tagliente", magico: true }]).totale).toBe(10);
+    expect(calcolaDanno([pietra], [{ quantita: 10, tipo: "perforante", incantesimo: true }]).totale).toBe(10);
+    const aura = res("tutti", "Aura di Guardia", { soloIncantesimi: true });
+    expect(calcolaDanno([aura], [{ quantita: 9, tipo: "fuoco" }]).totale).toBe(9);
+    expect(calcolaDanno([aura], [{ quantita: 9, tipo: "fuoco", incantesimo: true }]).totale).toBe(4);
+  });
+
+  it("più parti e Schivata Prodigiosa prima della resistenza", () => {
+    const ira = res(["contundente", "perforante", "tagliente"], "Ira");
+    expect(calcolaDanno([ira], [{ quantita: 9, tipo: "tagliente" }, { quantita: 4, tipo: "fuoco" }]).totale).toBe(8);
+    const esito = calcolaDanno([ira], [{ quantita: 20, tipo: "tagliente" }], { dimezza: true });
+    expect(esito.totale).toBe(5);
+    expect(esito.parti[0].note).toEqual(["Schivata Prodigiosa: 20 → 10", "Resistenza (Ira): 10 → 5"]);
+    expect(calcolaDanno([], [{ quantita: -3, tipo: "fuoco" }]).totale).toBe(0);
+  });
+
+  it("Schivata Prodigiosa per il Ladro dal 5° livello e nelle derivate", () => {
+    const ladro = (livello: number) => ({ ...alston(), info: { ...alston().info, classe: "Ladro", livello } });
+    expect(haSchivataProdigiosa(ladro(4))).toBe(false);
+    expect(derivate(ladro(5)).schivataProdigiosa).toBe(true);
+    expect(derivate(conPrivilegio("Resistenza Infernale", "Tiefling")).difese).toHaveLength(1);
+  });
+
+  it("daJSON tiene solo le difese personali valide, senza doppioni", () => {
+    const vecchia: Partial<CharacterData> = alston(); // scheda salvata prima delle difese
+    delete vecchia.difese;
+    expect(daJSON(vecchia).difese).toEqual([]);
+    const c = daJSON({
+      ...alston(),
+      difese: [
+        { tipo: "resistenza", danno: "Fuoco", nota: "Anello" },
+        { tipo: "resistenza", danno: "fuoco", nota: "doppione" },
+        { tipo: "immunita", danno: "veleno" },
+        { tipo: "armatura", danno: "fuoco" },
+        { tipo: "resistenza", danno: "luce" },
+        "nulla",
+      ],
+    });
+    expect(c.difese).toEqual([
+      { tipo: "resistenza", danno: "fuoco", nota: "Anello" },
+      { tipo: "immunita", danno: "veleno", nota: "" },
+    ]);
   });
 });

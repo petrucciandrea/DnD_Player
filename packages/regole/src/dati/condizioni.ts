@@ -1,6 +1,7 @@
 import type { Caratteristica, CharacterData } from "../tipi.ts";
 import type { Modalita } from "../regole.ts";
 import { competenteArmatura } from "./competenze.ts";
+import type { Difesa } from "./danni.ts";
 
 // Condizioni (appendice A del Manuale del Giocatore, 5e 2014), indebolimento ed effetti attivi
 // (incantesimi e privilegi con una durata). Nella scheda si salvano solo gli id: qui c'è tutto il resto.
@@ -17,6 +18,8 @@ export interface DefinizioneCondizione {
   prove?: "svantaggio"; // sulle proprie prove di caratteristica
   ts?: Partial<Record<Caratteristica, "svantaggio" | "fallimento">>;
   finisceConcentrazione?: boolean; // l'incapacità interrompe la concentrazione
+  velocitaZero?: boolean; // la velocità scende a 0 (termina Schivare)
+  difese?: Omit<Difesa, "fonte">[]; // resistenze e immunità (dati/danni.ts)
 }
 
 const FALLISCE_FOR_DES = { FOR: "fallimento", DES: "fallimento" } as const;
@@ -26,7 +29,7 @@ export const CONDIZIONI: DefinizioneCondizione[] = [
     descrizione: "Non vede: fallisce le prove che richiedono la vista. Svantaggio ai suoi attacchi; gli attacchi contro di lui hanno vantaggio." },
   { id: "affascinato", nome: "Affascinato",
     descrizione: "Non può attaccare chi lo ha affascinato né bersagliarlo con effetti dannosi. Chi lo ha affascinato ha vantaggio alle prove sociali contro di lui." },
-  { id: "afferrato", nome: "Afferrato",
+  { id: "afferrato", nome: "Afferrato", velocitaZero: true,
     descrizione: "La sua velocità è 0. Termina se chi lo afferra è incapacitato o se viene allontanato dalla sua portata." },
   { id: "assordato", nome: "Assordato",
     descrizione: "Non sente: fallisce le prove che richiedono l'udito." },
@@ -39,6 +42,7 @@ export const CONDIZIONI: DefinizioneCondizione[] = [
   { id: "paralizzato", nome: "Paralizzato", ts: FALLISCE_FOR_DES, finisceConcentrazione: true,
     descrizione: "Incapacitato, non si muove né parla. Fallisce i TS di Forza e Destrezza. Gli attacchi contro di lui hanno vantaggio e, da vicino, sono critici." },
   { id: "pietrificato", nome: "Pietrificato", ts: FALLISCE_FOR_DES, finisceConcentrazione: true,
+    difese: [{ tipo: "resistenza", danni: "tutti" }],
     descrizione: "Trasformato in sostanza solida: incapacitato, inconsapevole, resistente a ogni danno, immune a veleni e malattie. Fallisce i TS di Forza e Destrezza; attacchi contro di lui con vantaggio." },
   { id: "prono", nome: "Prono", attacchi: "svantaggio",
     descrizione: "Può solo strisciare, o rialzarsi spendendo metà del movimento. Svantaggio ai suoi attacchi; gli attacchi contro di lui hanno vantaggio da vicino e svantaggio da lontano." },
@@ -48,7 +52,7 @@ export const CONDIZIONI: DefinizioneCondizione[] = [
     descrizione: "Svantaggio a prove e attacchi finché la fonte della paura è in vista; non può avvicinarsi volontariamente ad essa." },
   { id: "stordito", nome: "Stordito", ts: FALLISCE_FOR_DES, finisceConcentrazione: true,
     descrizione: "Incapacitato, non si muove e parla a fatica. Fallisce i TS di Forza e Destrezza. Gli attacchi contro di lui hanno vantaggio." },
-  { id: "trattenuto", nome: "Trattenuto", attacchi: "svantaggio", ts: { DES: "svantaggio" },
+  { id: "trattenuto", nome: "Trattenuto", attacchi: "svantaggio", ts: { DES: "svantaggio" }, velocitaZero: true,
     descrizione: "La sua velocità è 0. Svantaggio ai suoi attacchi e ai TS di Destrezza; gli attacchi contro di lui hanno vantaggio." },
 ];
 
@@ -78,6 +82,9 @@ export interface DefinizioneEffetto {
   incantesimo?: string; // il lancio di questo incantesimo lo attiva
   classe?: string; // privilegio di questa classe: solo lei può attivarlo
   livelloMinimo?: number; // livello di classe da cui si ha il privilegio
+  azione?: boolean; // azione di combattimento che chiunque può fare (Schivare): si attiva dal pannello
+  // Termina se si diventa incapacitati o la velocità scende a 0 (condizioni o indebolimento 5).
+  finisceSeImmobile?: boolean;
   // "se": solo su se stessi, quindi parte solo dal proprio incantesimo o privilegio.
   // "altri": può lanciarlo anche un alleato, quindi si può segnare dal pannello.
   bersaglio: "se" | "altri";
@@ -88,17 +95,27 @@ export interface DefinizioneEffetto {
   consuma?: string; // id della risorsa che si spende attivandolo (Ira)
   finisceConcentrazione?: boolean;
   vantaggio?: { prove?: Caratteristica[]; ts?: Caratteristica[]; attacchiMischiaFOR?: boolean };
+  difese?: Omit<Difesa, "fonte">[]; // resistenze e immunità (dati/danni.ts)
   notaTiro?: Partial<Record<TipoTiro, string>>;
 }
 
 export const EFFETTI: DefinizioneEffetto[] = [
   { id: "ira", nome: "Ira", durata: "1 minuto", finisce: "breve", classe: "Barbaro", bersaglio: "se", consuma: "ira", finisceConcentrazione: true,
     descrizione: "Vantaggio alle prove e ai TS di Forza, bonus ai danni in mischia con la Forza, resistenza ai danni contundenti, perforanti e taglienti. Non si possono lanciare incantesimi. Finisce se non si attacca né si subiscono danni.",
-    vantaggio: { prove: ["FOR"], ts: ["FOR"] } },
+    vantaggio: { prove: ["FOR"], ts: ["FOR"] },
+    difese: [{ tipo: "resistenza", danni: ["contundente", "perforante", "tagliente"] }] },
   { id: "attacco-sconsiderato", nome: "Attacco Sconsiderato", durata: "1 turno", finisce: "breve", classe: "Barbaro", livelloMinimo: 2,
     bersaglio: "se",
     descrizione: "Vantaggio ai tiri per colpire in mischia con la Forza fino al prossimo turno; gli attacchi contro di te hanno vantaggio.",
     vantaggio: { attacchiMischiaFOR: true } },
+  { id: "schivare", nome: "Schivare", durata: "fino all'inizio del prossimo turno", finisce: "breve", bersaglio: "se", azione: true,
+    finisceSeImmobile: true,
+    descrizione: "Azione Schivare: gli attacchi contro di te hanno svantaggio se vedi chi attacca, e hai vantaggio ai TS di Destrezza. Termina se sei incapacitato o la tua velocità scende a 0.",
+    vantaggio: { ts: ["DES"] } },
+  { id: "difesa-paziente", nome: "Difesa Paziente", durata: "fino all'inizio del prossimo turno", finisce: "breve", classe: "Monaco",
+    livelloMinimo: 2, bersaglio: "se", consuma: "punti-ki", finisceSeImmobile: true,
+    descrizione: "Con 1 punto ki fai Schivare come azione bonus: gli attacchi contro di te hanno svantaggio se vedi chi attacca, e hai vantaggio ai TS di Destrezza.",
+    vantaggio: { ts: ["DES"] } },
   { id: "armatura-magica", nome: "Armatura Magica", durata: "8 ore", finisce: "lunga", incantesimo: "Armatura Magica", caBase: 13, bersaglio: "altri",
     descrizione: "Senza armatura la CA è 13 + mod DES." },
   { id: "scudo", nome: "Scudo", durata: "fino all'inizio del prossimo turno", finisce: "breve", incantesimo: "Scudo", caBonus: 5, bersaglio: "se",
@@ -108,6 +125,10 @@ export const EFFETTI: DefinizioneEffetto[] = [
     descrizione: "+2 alla CA." },
   { id: "pelle-coriacea", nome: "Pelle Coriacea", durata: "concentrazione, 1 ora", finisce: "lunga", incantesimo: "Pelle Coriacea", caMinima: 16, bersaglio: "altri",
     descrizione: "La CA non scende sotto 16, qualunque armatura si indossi." },
+  { id: "pelle-di-pietra", nome: "Pelle di Pietra", durata: "concentrazione, 1 ora", finisce: "lunga", incantesimo: "Pelle di Pietra",
+    bersaglio: "altri",
+    descrizione: "Resistenza ai danni contundenti, perforanti e taglienti non magici.",
+    difese: [{ tipo: "resistenza", danni: ["contundente", "perforante", "tagliente"], soloNonMagiche: true }] },
   { id: "velocita", nome: "Velocità", durata: "concentrazione, 1 minuto", finisce: "breve", incantesimo: "Velocità", caBonus: 2, bersaglio: "altri",
     descrizione: "+2 alla CA, vantaggio ai TS di Destrezza, velocità doppia e un'azione in più a turno.",
     vantaggio: { ts: ["DES"] } },

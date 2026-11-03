@@ -1,4 +1,5 @@
 import type { Caratteristica, Privilegio } from "../tipi.ts";
+import { DANNO_ANTENATO } from "../dati/danni.ts";
 
 // Catalogo ufficiale delle razze del Manuale del Giocatore 2014, con le sottorazze.
 // Le descrizioni dei privilegi sono riassunti brevi, non il testo del manuale.
@@ -27,18 +28,18 @@ const p = (nome: string, fonte: string, descrizione: string): Privilegio => ({ n
 const scurovisione = (fonte: string, metri = 18) =>
   p("Scurovisione", fonte, `Vede fino a ${metri} m in luce fioca come se fosse luce intensa, e nell'oscurità come se fosse luce fioca (solo in tonalità di grigio).`);
 
-const ANTENATI: [string, string, string, string][] = [
-  // colore, danno, area del soffio, TS
-  ["Argento", "freddo", "cono di 4,5 m", "Costituzione"],
-  ["Bianco", "freddo", "cono di 4,5 m", "Costituzione"],
-  ["Blu", "fulmine", "linea di 1,5 × 9 m", "Destrezza"],
-  ["Bronzo", "fulmine", "linea di 1,5 × 9 m", "Destrezza"],
-  ["Nero", "acido", "linea di 1,5 × 9 m", "Destrezza"],
-  ["Oro", "fuoco", "cono di 4,5 m", "Destrezza"],
-  ["Ottone", "fuoco", "linea di 1,5 × 9 m", "Destrezza"],
-  ["Rame", "acido", "linea di 1,5 × 9 m", "Destrezza"],
-  ["Rosso", "fuoco", "cono di 4,5 m", "Destrezza"],
-  ["Verde", "veleno", "cono di 4,5 m", "Costituzione"],
+// colore, area del soffio, TS; il tipo di danno è in DANNO_ANTENATO (dati/danni.ts).
+const ANTENATI: [string, string, string][] = [
+  ["Argento", "cono di 4,5 m", "Costituzione"],
+  ["Bianco", "cono di 4,5 m", "Costituzione"],
+  ["Blu", "linea di 1,5 × 9 m", "Destrezza"],
+  ["Bronzo", "linea di 1,5 × 9 m", "Destrezza"],
+  ["Nero", "linea di 1,5 × 9 m", "Destrezza"],
+  ["Oro", "cono di 4,5 m", "Destrezza"],
+  ["Ottone", "linea di 1,5 × 9 m", "Destrezza"],
+  ["Rame", "linea di 1,5 × 9 m", "Destrezza"],
+  ["Rosso", "cono di 4,5 m", "Destrezza"],
+  ["Verde", "cono di 4,5 m", "Costituzione"],
 ];
 
 export const RAZZE: SemeRazza[] = [
@@ -122,10 +123,10 @@ export const RAZZE: SemeRazza[] = [
       p("Arma a Soffio", "Dragonide", "Con un'azione esala energia distruttiva, determinata dall'antenato draconico. Le creature nell'area effettuano un tiro salvezza (CD 8 + mod COS + bonus di competenza): 2d6 danni, metà se lo superano. I danni salgono a 3d6 al 6°, 4d6 all'11° e 5d6 al 16° livello. Si usa una volta per riposo breve o lungo."),
     ],
   },
-  ...ANTENATI.map(([colore, danno, area, ts]): SemeRazza => ({
+  ...ANTENATI.map(([colore, area, ts]): SemeRazza => ({
     nome: `Dragonide (${colore})`, madre: "Dragonide", bonus: {},
     privilegi: [
-      p("Antenato Draconico", `Dragonide (${colore})`, `Drago ${colore.toLowerCase()}: soffio di ${danno} (${area}, tiro salvezza su ${ts}) e resistenza ai danni da ${danno}.`),
+      p("Antenato Draconico", `Dragonide (${colore})`, `Drago ${colore.toLowerCase()}: soffio di ${DANNO_ANTENATO[colore]} (${area}, tiro salvezza su ${ts}) e resistenza ai danni da ${DANNO_ANTENATO[colore]}.`),
     ],
   })),
   {

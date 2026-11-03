@@ -21,9 +21,10 @@ const piccolo = "p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disa
 export default function PannelloCondizioni({ char, d, setChar }: Props) {
   const [nuovo, setNuovo] = useState("");
 
-  // Dal pannello: i propri privilegi (con un uso libero) e gli incantesimi che può lanciarti un alleato.
+  // Dal pannello: le azioni di combattimento (Schivare), i propri privilegi (con un uso libero)
+  // e gli incantesimi che può lanciarti un alleato.
   // Scudo, Immagine Speculare e simili si attivano solo lanciandoli dal grimorio.
-  const { privilegi, daAlleato } = effettiAttivabili(char);
+  const { azioni, privilegi, daAlleato } = effettiAttivabili(char);
 
   const aggiungi = () => {
     if (!nuovo) return;
@@ -119,7 +120,7 @@ export default function PannelloCondizioni({ char, d, setChar }: Props) {
             );
           })}
         </div>
-        {privilegi.length + daAlleato.length > 0 && (
+        {azioni.length + privilegi.length + daAlleato.length > 0 && (
           <div className="flex gap-2 mt-3">
             <select
               value={nuovo}
@@ -127,6 +128,11 @@ export default function PannelloCondizioni({ char, d, setChar }: Props) {
               className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500"
             >
               <option value="">Aggiungi effetto...</option>
+              {azioni.length > 0 && (
+                <optgroup label="Azioni">
+                  {azioni.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                </optgroup>
+              )}
               {privilegi.length > 0 && (
                 <optgroup label="Privilegi">
                   {privilegi.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}

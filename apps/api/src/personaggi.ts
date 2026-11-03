@@ -2,8 +2,8 @@ import type { RiassuntoPersonaggio } from "@dnd/regole/api.ts";
 import { CARATTERISTICHE } from "@dnd/regole/regole.ts";
 import { personaggioVuoto } from "@dnd/regole/scheda.ts";
 import type {
-  ArmaPersonaggio, CategoriaNota, Caratteristica, CharacterData, CompetenzeAltre, Contatore, EffettoAttivo, InventoryItem,
-  NotaSessione, Spell, XPRecord,
+  ArmaPersonaggio, CategoriaNota, Caratteristica, CharacterData, CompetenzeAltre, Contatore, DifesaPersonale, EffettoAttivo,
+  InventoryItem, NotaSessione, Spell, XPRecord,
 } from "@dnd/regole/tipi.ts";
 import { armaDaRiga, armaturaDaRiga, colonneVoce, idVoci, privilegioDaRiga, voceIncantesimo } from "./catalogo.ts";
 import { inserisciRighe, riga, righe, transazione, type Esecutore, type Riga } from "./db.ts";
@@ -23,7 +23,7 @@ const TABELLE_FIGLIE = [
   "personaggio_caratteristiche", "personaggio_abilita", "personaggio_slot", "personaggio_presagio",
   "personaggio_xp", "personaggio_oggetti", "personaggio_incantesimi", "personaggio_armi", "personaggio_privilegi",
   "personaggio_competenze", "personaggio_risorse", "personaggio_condizioni", "personaggio_effetti", "personaggio_note",
-  "personaggio_note_campi",
+  "personaggio_note_campi", "personaggio_difese",
 ];
 
 // Competenze diverse da abilità e TS: tipo nella tabella `personaggio_competenze` → campo di CompetenzeAltre.
@@ -127,6 +127,8 @@ export async function scomponi(db: Esecutore, id: number, c: CharacterData, uten
       c.condizioni.map((condizione, i) => [id, testo(condizione), i]));
     await inserisci("personaggio_effetti", ["personaggio_id", "effetto", "valore", "ordine"],
       c.effetti.map((e, i) => [id, testo(e.id), typeof e.valore === "number" ? intero(e.valore) : null, i]));
+    await inserisci("personaggio_difese", ["personaggio_id", "tipo", "danno", "nota", "ordine"],
+      c.difese.map((x, i) => [id, testo(x.tipo), testo(x.danno), testo(x.nota), i]));
     await inserisci("personaggio_note", ["personaggio_id", "ordine", "id_locale", "data", "categoria", "titolo", "testo", "fatto"],
       c.note.map((n, i) => [id, i, intero(n.id, i + 1), testo(n.data), testo(n.categoria), testo(n.titolo), testo(n.testo), flag(n.fatto)]));
     await inserisci("personaggio_note_campi", ["personaggio_id", "nota_ordine", "campo", "valore"],
@@ -159,6 +161,7 @@ const SQL_SCHEDA = `
     ${lista("SELECT * FROM personaggio_risorse WHERE personaggio_id = p.id", "x.risorsa")} AS l_risorse,
     ${lista("SELECT * FROM personaggio_condizioni WHERE personaggio_id = p.id", "x.ordine")} AS l_condizioni,
     ${lista("SELECT * FROM personaggio_effetti WHERE personaggio_id = p.id", "x.ordine")} AS l_effetti,
+    ${lista("SELECT * FROM personaggio_difese WHERE personaggio_id = p.id", "x.ordine")} AS l_difese,
     ${lista("SELECT * FROM personaggio_note WHERE personaggio_id = p.id", "x.ordine")} AS l_note,
     ${lista("SELECT * FROM personaggio_note_campi WHERE personaggio_id = p.id", "x.nota_ordine, x.campo")} AS l_note_campi,
     ${lista(`SELECT ic.*, pi.preparato, pi.ordine FROM personaggio_incantesimi pi
@@ -187,6 +190,9 @@ function schedaDaRiga(p: Riga): CharacterData {
   c.condizioni = l("condizioni").map(r => testo(r.condizione));
   c.effetti = l("effetti").map((r): EffettoAttivo =>
     r.valore === null ? { id: testo(r.effetto) } : { id: testo(r.effetto), valore: Number(r.valore) });
+  c.difese = l("difese").map((r): DifesaPersonale => ({
+    tipo: testo(r.tipo) as DifesaPersonale["tipo"], danno: testo(r.danno) as DifesaPersonale["danno"], nota: testo(r.nota),
+  }));
   const campiNote = new Map<number, Record<string, string>>();
   for (const r of l("note_campi")) {
     const ordine = Number(r.nota_ordine);
