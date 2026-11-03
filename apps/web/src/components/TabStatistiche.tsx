@@ -11,6 +11,7 @@ import { conSuggerimento, tiraDanni } from "../tiroDadi";
 import type { ContestoTiro } from "@dnd/regole/dati/condizioni.ts";
 import PannelloRisorse from "./PannelloRisorse";
 import PannelloCondizioni from "./PannelloCondizioni";
+import PannelloDifese from "./PannelloDifese";
 import PannelloArmi from "./PannelloArmi";
 import OpzioniDanno, { type OpzioneDanno } from "./OpzioniDanno";
 
@@ -225,6 +226,7 @@ export default function TabStatistiche({ char, d, setChar, chiediTiro, chiediD20
       <div className="space-y-4">
         <PannelloRisorse char={char} d={d} setChar={setChar} />
         <PannelloCondizioni char={char} d={d} setChar={setChar} />
+        <PannelloDifese char={char} d={d} setChar={setChar} />
 
         {d.haPresagio && (
           <div className="bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-900/50 rounded-xl p-4 shadow-lg">

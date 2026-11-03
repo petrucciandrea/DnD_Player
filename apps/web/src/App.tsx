@@ -23,6 +23,7 @@ import { condizione, effetto } from "@dnd/regole/dati/condizioni.ts";
 import DialogoTiro from "./components/DialogoTiro";
 import Avatar from "./components/Avatar";
 import PannelloRiposoBreve from "./components/PannelloRiposoBreve";
+import FinestraDanno from "./components/FinestraDanno";
 import TiriMorte from "./components/TiriMorte";
 import TabStatistiche from "./components/TabStatistiche";
 import TabGrimorio from "./components/TabGrimorio";
@@ -201,6 +202,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
   const [quantitaPF, setQuantitaPF] = useState("");
   const [messaggio, setMessaggio] = useState<string | null>(null);
   const [riposoBreveAperto, setRiposoBreveAperto] = useState(false);
+  const [dannoAperto, setDannoAperto] = useState<number | null>(null); // quantità scritta prima di aprire la finestra
   const fileInput = useRef<HTMLInputElement>(null);
   const { richiesta, chiediTiro, chiediD20, rispondi } = useRichiestaTiro();
 
@@ -234,22 +236,32 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
   };
 
   // --- Punti ferita (regole in applicaDanno / applicaCura) ---
-  const applicaPF = async (tipo: "danno" | "cura" | "temp") => {
+  const applicaPF = (tipo: "danno" | "cura" | "temp") => {
     const n = Math.max(0, parseInt(quantitaPF) || 0);
+    if (tipo === "danno") {
+      // Il tipo di danno si sceglie nella finestra, che applica resistenze e immunità.
+      setDannoAperto(n);
+      setQuantitaPF("");
+      return;
+    }
     if (n === 0 && tipo !== "temp") return;
     setQuantitaPF("");
     if (tipo === "temp") {
       setChar(prev => ({ ...prev, combattimento: { ...prev.combattimento, pfTemporanei: n } }));
       return;
     }
-    if (tipo === "cura") {
-      setChar(prev => applicaCura(prev, n));
-      return;
-    }
+    setChar(prev => applicaCura(prev, n));
+  };
+
+  // La CD della concentrazione si calcola sul danno effettivamente subito; senza danno non c'è TS.
+  const subisciDanno = async (n: number, riepilogo: string) => {
+    setDannoAperto(null);
+    setMessaggio(riepilogo);
+    if (n === 0) return;
     const dopo = applicaDanno(char, n);
     setChar(prev => applicaDanno(prev, n));
     if (char.concentrazione && !dopo.concentrazione) {
-      setMessaggio(`A 0 PF: concentrazione su ${char.concentrazione} persa.`);
+      setMessaggio(`${riepilogo} A 0 PF: concentrazione su ${char.concentrazione} persa.`);
     } else if (dopo.concentrazione) {
       await verificaConcentrazione(dopo.concentrazione, n);
     }
@@ -512,6 +524,9 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
 
       </div>
 
+      {dannoAperto !== null && (
+        <FinestraDanno d={d} quantitaIniziale={dannoAperto} onApplica={subisciDanno} onAnnulla={() => setDannoAperto(null)} />
+      )}
       {riposoBreveAperto && (
         <PannelloRiposoBreve
           char={char}

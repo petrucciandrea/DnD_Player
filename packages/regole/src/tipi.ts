@@ -1,5 +1,7 @@
 
 // --- INTERFACCE TYPESCRIPT ---
+import type { TipoDanno } from "./dati/danni.ts";
+
 export type Caratteristica = "FOR" | "DES" | "COS" | "INT" | "SAG" | "CAR";
 
 export interface AbilityScore {
@@ -122,6 +124,16 @@ export interface EffettoAttivo {
   valore?: number; // per gli effetti con un contatore (duplicati di Immagine Speculare)
 }
 
+export type TipoDifesa = "resistenza" | "immunita" | "vulnerabilita";
+
+// Resistenza, immunità o vulnerabilità scritta a mano (oggetti magici, talenti, Resilienza Immonda...):
+// quelle di razza, classe, condizioni ed effetti si derivano (dati/danni.ts).
+export interface DifesaPersonale {
+  tipo: TipoDifesa;
+  danno: TipoDanno;
+  nota: string; // da dove viene ("Anello di Resistenza")
+}
+
 export type CategoriaNota = "sessione" | "png" | "obiettivo" | "altro";
 
 // Nota di sessione: appunti, personaggi incontrati, obiettivi (con `fatto`).
@@ -182,6 +194,7 @@ export interface CharacterData {
   condizioni: string[]; // id delle condizioni attive (dati/condizioni.ts)
   indebolimento: number; // livello da 0 a 6
   effetti: EffettoAttivo[];
+  difese: DifesaPersonale[];
   monete: {
     mr: number;
     ma: number;

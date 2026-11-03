@@ -9,6 +9,7 @@ import { competenteArma, competenteArmatura } from "./dati/competenze.ts";
 import { FONTE_STILE, STILI, haScelto, scelteDelPersonaggio, totaleScelte, type DefinizioneScelta } from "./dati/scelte.ts";
 import { COSTO_SLOT_STREGONERIA, metamagia } from "./dati/metamagia.ts";
 import { incantesimiDiSottoclasse } from "./dati/incantesimiSottoclasse.ts";
+import { difeseDelPersonaggio, haSchivataProdigiosa } from "./dati/danni.ts";
 
 // Quanto serve per calcolare danni e attacchi di un incantesimo lanciato con un certo slot.
 type IncantesimoDaLanciare = { livello: number } & Pick<DettagliIncantesimo, "danni" | "attacco">;
@@ -563,6 +564,9 @@ export function derivate(c: CharacterData) {
     attaccoArma,
     attacchiPerAzione: attacchiPerAzione(c),
     sogliaCritico: sogliaCritico(c),
+    // Resistenze, immunità e vulnerabilità da condizioni, effetti, razza, classe e lista personale.
+    difese: difeseDelPersonaggio(c),
+    schivataProdigiosa: haSchivataProdigiosa(c),
     dadiCriticoBrutale: dadiCriticoBrutale(c),
     artiMarziali,
     ca,
@@ -847,9 +851,12 @@ function privilegioDisponibile(c: CharacterData, def: DefinizioneEffetto) {
 
 // Effetti che si possono segnare dal pannello: i privilegi del personaggio e gli incantesimi che un alleato
 // può lanciare su di lui. Gli incantesimi solo personali (Scudo, Immagine Speculare) partono solo dal lancio.
-export function effettiAttivabili(c: CharacterData): { privilegi: DefinizioneEffetto[]; daAlleato: DefinizioneEffetto[] } {
+export function effettiAttivabili(c: CharacterData): {
+  azioni: DefinizioneEffetto[]; privilegi: DefinizioneEffetto[]; daAlleato: DefinizioneEffetto[];
+} {
   const liberi = EFFETTI.filter(e => !c.effetti.some(x => x.id === e.id));
   return {
+    azioni: liberi.filter(e => e.azione),
     privilegi: liberi.filter(e => e.classe && privilegioDisponibile(c, e)),
     daAlleato: liberi.filter(e => !e.classe && e.bersaglio === "altri"),
   };
@@ -861,7 +868,7 @@ export function attivaEffetto(c: CharacterData, id: string, opzioni: { daIncante
   const def = effetto(id);
   if (!def || c.effetti.some(e => e.id === id)) return c;
   if (def.classe && !privilegioDisponibile(c, def)) return c;
-  if (!def.classe && !opzioni.daIncantesimo && def.bersaglio !== "altri") return c;
+  if (!def.classe && !def.azione && !opzioni.daIncantesimo && def.bersaglio !== "altri") return c;
   const prossimo = def.consuma ? usaRisorsa(c, def.consuma) : c;
   return {
     ...prossimo,
@@ -885,15 +892,23 @@ export function cambiaConteggioEffetto(c: CharacterData, id: string, delta: numb
 
 // --- Condizioni e indebolimento ---
 
-// Le condizioni che rendono incapaci di agire interrompono la concentrazione.
+// Gli effetti che terminano quando si è incapacitati o fermi (Schivare).
+const senzaEffettiDaFermo = (c: CharacterData): CharacterData =>
+  c.effetti.some(e => effetto(e.id)?.finisceSeImmobile)
+    ? { ...c, effetti: c.effetti.filter(e => !effetto(e.id)?.finisceSeImmobile) }
+    : c;
+
+// Le condizioni che rendono incapaci di agire interrompono la concentrazione; con quelle e con
+// quelle che azzerano la velocità termina Schivare.
 export function aggiungiCondizione(c: CharacterData, id: string): CharacterData {
   const def = condizione(id);
   if (!def || c.condizioni.includes(id)) return c;
-  return {
+  const prossimo = {
     ...c,
     condizioni: [...c.condizioni, id],
     concentrazione: def.finisceConcentrazione ? null : c.concentrazione,
   };
+  return def.finisceConcentrazione || def.velocitaZero ? senzaEffettiDaFermo(prossimo) : prossimo;
 }
 
 export const rimuoviCondizione = (c: CharacterData, id: string): CharacterData =>
@@ -902,7 +917,8 @@ export const rimuoviCondizione = (c: CharacterData, id: string): CharacterData =
 // A 4 livelli i PF massimi si dimezzano: i PF attuali non possono superarli.
 export function impostaIndebolimento(c: CharacterData, livello: number): CharacterData {
   const nuovo = Math.max(0, Math.min(6, Math.trunc(livello)));
-  const prossimo = { ...c, indebolimento: nuovo };
+  // Dal 5° livello la velocità è 0: termina Schivare.
+  const prossimo = nuovo >= 5 ? senzaEffettiDaFermo({ ...c, indebolimento: nuovo }) : { ...c, indebolimento: nuovo };
   return {
     ...prossimo,
     combattimento: {

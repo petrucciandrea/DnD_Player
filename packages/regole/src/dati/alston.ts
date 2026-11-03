@@ -59,6 +59,7 @@ export const INITIAL_CHARACTER: CharacterData = {
   condizioni: [],
   indebolimento: 0,
   effetti: [],
+  difese: [],
   monete: {
     mr: 228,
     ma: 557,

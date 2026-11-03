@@ -127,13 +127,14 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
     ]);
   });
 
-  it("risorse, condizioni, indebolimento, effetti e note fanno andata e ritorno", async () => {
+  it("risorse, condizioni, indebolimento, effetti, difese e note fanno andata e ritorno", async () => {
     const { db, utente } = await archivio();
     const c = alston();
     c.risorseUsate = { "punti-ki": 2, ira: 1 };
     c.condizioni = ["prono", "avvelenato"];
     c.indebolimento = 3;
     c.effetti = [{ id: "ira" }, { id: "immagine-speculare", valore: 2 }];
+    c.difese = [{ tipo: "resistenza", danno: "freddo", nota: "Anello" }, { tipo: "vulnerabilita", danno: "fuoco", nota: "" }];
     c.note = [
       {
         id: 7, data: "30/9/2026", categoria: "png", titolo: "Il locandiere", testo: "Sa dell'osservatorio.\nSecondo rigo.", fatto: false,
@@ -144,7 +145,7 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
     const id = await creaPersonaggio(db, utente.id, c);
     expect({ ...(await componi(db, id))!, incantesimi: [] }).toEqual({ ...c, incantesimi: [] });
     // Riscrivere con meno dati sostituisce, non accumula.
-    const meno = { ...c, risorseUsate: {}, condizioni: [], effetti: [], note: [], indebolimento: 0 };
+    const meno = { ...c, risorseUsate: {}, condizioni: [], effetti: [], difese: [], note: [], indebolimento: 0 };
     await scomponi(db, id, meno, utente.id);
     expect({ ...(await componi(db, id))!, incantesimi: [] }).toEqual({ ...meno, incantesimi: [] });
   });

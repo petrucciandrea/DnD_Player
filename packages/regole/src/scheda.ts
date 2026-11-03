@@ -1,8 +1,9 @@
 import type {
-  ArmaPersonaggio, Armatura, CategoriaNota, CharacterData, Contatore, EffettoAttivo, NotaSessione,
+  ArmaPersonaggio, Armatura, CategoriaNota, CharacterData, Contatore, DifesaPersonale, EffettoAttivo, NotaSessione,
 } from "./tipi.ts";
 import { CARATTERISTICHE } from "./regole.ts";
 import { regoleClasse } from "./dati/classi.ts";
+import { TIPI_DIFESA, tipoDanno } from "./dati/danni.ts";
 
 // Validazione e normalizzazione della scheda, senza dipendenze dal browser:
 // la usano sia il client (import JSON, cache locale) sia il server (prima di salvare nell'archivio).
@@ -31,6 +32,20 @@ function effettiAttivi(v: unknown): EffettoAttivo[] {
     if (!isObj(e) || typeof e.id !== "string" || visti.has(e.id)) return [];
     visti.add(e.id);
     return [typeof e.valore === "number" && Number.isFinite(e.valore) ? { id: e.id, valore: Math.trunc(e.valore) } : { id: e.id }];
+  });
+}
+
+// Difese personali: tipo di difesa e di danno validi (il danno si riconosce anche scritto "Fuoco" o "da fuoco"),
+// senza doppioni dello stesso genere sullo stesso danno.
+function difesePersonali(v: unknown): DifesaPersonale[] {
+  const viste = new Set<string>();
+  return (Array.isArray(v) ? v : []).flatMap((d): DifesaPersonale[] => {
+    if (!isObj(d)) return [];
+    const tipo = TIPI_DIFESA.find(t => t.id === d.tipo)?.id;
+    const danno = typeof d.danno === "string" ? tipoDanno(d.danno) : null;
+    if (!tipo || !danno || viste.has(`${tipo}:${danno}`)) return [];
+    viste.add(`${tipo}:${danno}`);
+    return [{ tipo, danno, nota: typeof d.nota === "string" ? d.nota : "" }];
   });
 }
 
@@ -126,6 +141,7 @@ export const personaggioVuoto = (): CharacterData => ({
   condizioni: [],
   indebolimento: 0,
   effetti: [],
+  difese: [],
   monete: { mr: 0, ma: 0, me: 0, mo: 0, mp: 0 },
   xp: { totale: 0, storico: [] },
   armi: [],
@@ -215,6 +231,7 @@ function normalizza(d: Obj): CharacterData {
     condizioni: [...new Set(stringhe(d.condizioni))],
     indebolimento: Math.max(0, Math.min(6, intero(d.indebolimento, 0))),
     effetti: effettiAttivi(d.effetti),
+    difese: difesePersonali(d.difese),
     monete: sezione("monete", base.monete),
     xp: { ...xp, storico: Array.isArray(xp.storico) ? xp.storico.filter(isObj) : [] } as CharacterData["xp"],
     armi: armiPersonaggio(d.armi),
