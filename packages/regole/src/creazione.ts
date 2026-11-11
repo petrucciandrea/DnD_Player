@@ -2,17 +2,22 @@ import type {
   Arma, Armatura, BackgroundCatalogo, Caratteristica, CatalogoCreazione, CharacterData, IncantesimoCatalogo, InventoryItem,
   Privilegio, RazzaCatalogo, Spell,
 } from "./tipi.ts";
-import { ABILITA, CARATTERISTICHE, MUNIZIONI_INIZIALI, nuovaArma, pfPrimoLivello, usaMunizioni } from "./regole.ts";
+import {
+  ABILITA, CARATTERISTICHE, MUNIZIONI_INIZIALI, aggiungiIncantesimi, applicaSalita, derivate, livelloMassimoIncantesimi, nuovaArma,
+  pfPrimoLivello, spellDaCatalogo, usaMunizioni, xpDelLivello, type SceltaSalita,
+} from "./regole.ts";
 import { personaggioVuoto } from "./scheda.ts";
 import { opzioniScelta, scelteDelPersonaggio, totaleScelte } from "./dati/scelte.ts";
 import { incantesimiDiSottoclasse } from "./dati/incantesimiSottoclasse.ts";
 import {
-  CLASSI, GIOCHI, incantesimiIniziali, STRUMENTI_ARTIGIANO, STRUMENTI_MUSICALI, type NomeClasse, type RegoleClasse,
+  CLASSI, GIOCHI, incantatoreDi, incantesimiIniziali, STRUMENTI_ARTIGIANO, STRUMENTI_MUSICALI, type NomeClasse, type RegoleClasse,
   type VoceEquipaggiamento,
 } from "./dati/classi.ts";
 
-// Creazione di un personaggio di 1° livello (regole 2014). Funzioni pure: la procedura guidata
+// Creazione di un personaggio (regole 2014). Funzioni pure: la procedura guidata
 // (components/SchermataCreazione.tsx) raccoglie le scelte, qui si valida e si costruisce la scheda.
+// Si costruisce sempre il 1° livello (personaggioIniziale); per un livello più alto si applicano poi,
+// in ordine, le salite di livello scelte nel passo "Livelli" (personaggioCreato).
 
 export interface SceltaEquipaggiamento {
   opzione: number; // indice dell'opzione scelta nel gruppo
@@ -44,8 +49,12 @@ export interface SceltePersonaggio {
 
   equipaggiamento: SceltaEquipaggiamento[]; // un elemento per gruppo della classe
 
+  livello: number; // livello iniziale, 1–20
+  salite: SceltaSalita[]; // una per ogni livello dal 2° al livello iniziale, nell'ordine
+
   trucchetti: string[];
   incantesimi: string[];
+  preparati: string[]; // chi prepara (dalla lista o dal libro): gli incantesimi preparati all'inizio, al livello finale
 
   dettagli: {
     nome: string;
@@ -67,7 +76,8 @@ export const scelteVuote = (): SceltePersonaggio => ({
   tiri: [], assegnazione: {},
   background: "", abilitaSostitutive: [], lingueBackground: [], strumentoBackground: "",
   equipaggiamento: [],
-  trucchetti: [], incantesimi: [],
+  livello: 1, salite: [],
+  trucchetti: [], incantesimi: [], preparati: [],
   dettagli: {
     nome: "", allineamento: "", giocatore: "", eta: 0, altezza: "", peso: "", occhi: "", capelli: "", carnagione: "", avatar: "",
     tratti: "", ideali: "", legami: "", difetti: "", backgroundBio: "",
@@ -201,14 +211,11 @@ export const incantesimiDellaClasse = (catalogo: CatalogoCreazione, classe: stri
 
 export const numeroTrucchettiIniziali = (classe: string) => CLASSI[classe as NomeClasse]?.incantatore?.trucchetti[0] ?? 0;
 
-const spellDa = (i: IncantesimoCatalogo, preparato: boolean): Spell => ({
-  id: i.id, nome: i.nome, livello: i.livello, scuola: i.scuola, tempo: i.tempo, preparato,
-  ...(i.scheda ? { scheda: i.scheda } : {}),
-});
+const spellDa = spellDaCatalogo;
 
 // --- Validazione dei passi ---
 
-export type Passo = "razza" | "classe" | "caratteristiche" | "background" | "equipaggiamento" | "incantesimi" | "dettagli";
+export type Passo = "razza" | "classe" | "caratteristiche" | "background" | "equipaggiamento" | "incantesimi" | "livelli" | "dettagli";
 
 export const PASSI: { id: Passo; titolo: string }[] = [
   { id: "razza", titolo: "Razza" },
@@ -217,8 +224,44 @@ export const PASSI: { id: Passo; titolo: string }[] = [
   { id: "background", titolo: "Background" },
   { id: "equipaggiamento", titolo: "Equipaggiamento" },
   { id: "incantesimi", titolo: "Incantesimi" },
+  { id: "livelli", titolo: "Livelli" },
   { id: "dettagli", titolo: "Dettagli" },
 ];
+
+// I passi della procedura: "Livelli" solo per chi parte oltre il 1° livello.
+export const passiDi = (s: Pick<SceltePersonaggio, "livello">) => PASSI.filter(p => p.id !== "livelli" || s.livello > 1);
+
+// Le scelte con un campo cambiato. Cambiare una scelta dei passi precedenti a "Livelli" azzera le salite
+// già confermate (dipendono da classe, caratteristiche, incantesimi...) e gli incantesimi preparati; i dettagli
+// no. Abbassare il livello toglie le salite oltre il nuovo livello.
+const NON_AZZERANO: (keyof SceltePersonaggio)[] = ["dettagli", "livello", "salite", "preparati"];
+
+export function cambiaScelte(s: SceltePersonaggio, parziale: Partial<SceltePersonaggio>): SceltePersonaggio {
+  const prossime = { ...s, ...parziale };
+  if ("salite" in parziale || "preparati" in parziale) return prossime;
+  const tocca = Object.keys(parziale).some(k => !NON_AZZERANO.includes(k as keyof SceltePersonaggio));
+  if (tocca) return { ...prossime, salite: [], preparati: [] };
+  return { ...prossime, salite: s.salite.slice(0, Math.max(0, prossime.livello - 1)) };
+}
+
+// Il primo livello a cui la classe lancia incantesimi (Paladino e Ranger dal 2°), null se non incanta.
+export function primoLivelloIncantesimi(classe: string): number | null {
+  const inc = CLASSI[classe as NomeClasse]?.incantatore;
+  if (!inc) return null;
+  for (let l = 1; l <= 20; l++) if (livelloMassimoIncantesimi(inc, l) > 0 || (inc.trucchetti[l - 1] ?? 0) > 0) return l;
+  return null;
+}
+
+// Chi prepara gli incantesimi (Chierico, Druido, Paladino dall'intera lista; Mago dal libro) sceglie alla creazione
+// quelli preparati all'inizio: tra gli incantesimi del grimorio, esclusi i trucchetti e quelli di sottoclasse
+// (sempre preparati, fuori dal limite), fino al limite di preparazione. Per gli altri non c'è nulla da scegliere.
+export function preparabiliAllaCreazione(c: CharacterData): { opzioni: Spell[]; massimo: number } {
+  const d = derivate(c);
+  const inc = incantatoreDi(c.info.classe, c.info.sottoclasse);
+  if (!d.prepara || livelloMassimoIncantesimi(inc, c.info.livello) === 0) return { opzioni: [], massimo: 0 };
+  const opzioni = c.incantesimi.filter(s => s.livello > 0 && !d.semprePreparato(s.nome));
+  return { opzioni, massimo: Math.min(d.maxPreparabili ?? 0, opzioni.length) };
+}
 
 // Scelte di privilegio del 1° livello, con le opzioni del catalogo (senza catalogo non si chiedono).
 export function scelteIniziali(s: SceltePersonaggio, catalogo: CatalogoCreazione) {
@@ -247,6 +290,7 @@ export function mancaNelPasso(passo: Passo, s: SceltePersonaggio, catalogo: Cata
       return null;
     case "classe":
       if (!regole) return "Scegli una classe.";
+      if (!Number.isInteger(s.livello) || s.livello < 1 || s.livello > 20) return "Scegli un livello tra 1 e 20.";
       if (regole.livelloSottoclasse === 1 && !s.sottoclasse) return "Scegli la sottoclasse.";
       if (new Set(s.abilitaClasse).size < regole.abilita.numero) return `Scegli ${regole.abilita.numero} abilità.`;
       if (regole.strumentiAScelta && new Set(s.strumentiClasse.filter(Boolean)).size < regole.strumentiAScelta.numero) {
@@ -285,6 +329,8 @@ export function mancaNelPasso(passo: Passo, s: SceltePersonaggio, catalogo: Cata
       if (s.incantesimi.length < incantesimi) return `Scegli ${incantesimi} incantesimi.`;
       return null;
     }
+    case "livelli":
+      return s.salite.length < s.livello - 1 ? `Completa il livello ${s.salite.length + 2}.` : null;
     case "dettagli":
       return s.dettagli.nome.trim() ? null : "Dai un nome al personaggio.";
   }
@@ -365,4 +411,28 @@ export function personaggioIniziale(s: SceltePersonaggio, catalogo: CatalogoCrea
   const pf = pfPrimoLivello(c, regole.dadoVita);
   c.combattimento = { ...c.combattimento, pfAttuali: pf, pfMassimi: pf, dadiVitaRimanenti: 1 };
   return c;
+}
+
+// La scheda al livello iniziale: il 1° livello più le salite confermate, in ordine. Chi prepara dall'intera lista
+// (Chierico, Druido, Paladino) riceve tutti gli incantesimi della classe fino al livello di slot più alto, come al
+// 1° livello; sono preparati quelli scelti in `preparati`. Gli XP partono dalla soglia del livello raggiunto.
+export function personaggioCreato(s: SceltePersonaggio, catalogo: CatalogoCreazione): CharacterData {
+  const salito = s.salite
+    .slice(0, Math.max(0, s.livello - 1))
+    .reduce((c, salita) => applicaSalita(c, salita, catalogo.incantesimi), personaggioIniziale(s, catalogo));
+  const inc = incantatoreDi(salito.info.classe, salito.info.sottoclasse);
+  const massimo = livelloMassimoIncantesimi(inc, salito.info.livello);
+  const completo = inc?.modo === "preparati" && massimo > 1
+    ? aggiungiIncantesimi(salito, catalogo.incantesimi
+      .filter(i => i.livello > 1 && i.livello <= massimo && i.classi.includes(salito.info.classe))
+      .map(i => spellDa(i, false)))
+    : salito;
+  // Gli incantesimi preparati scelti, fino al limite (quelli non più validi si ignorano).
+  const preparabili = preparabiliAllaCreazione(completo);
+  const preparati = new Set(preparabili.opzioni.filter(o => s.preparati.includes(o.nome)).slice(0, preparabili.massimo).map(o => o.nome));
+  return {
+    ...completo,
+    incantesimi: completo.incantesimi.map(i => (preparati.has(i.nome) ? { ...i, preparato: true } : i)),
+    xp: { ...completo.xp, totale: xpDelLivello(completo.info.livello) },
+  };
 }
