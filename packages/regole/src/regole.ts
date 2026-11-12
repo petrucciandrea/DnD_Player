@@ -49,6 +49,9 @@ const SOGLIE_XP = [
   85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000,
 ];
 
+// XP minimi di un livello (0 al 1°): un personaggio creato a un livello alto parte da lì.
+export const xpDelLivello = (livello: number) => SOGLIE_XP[Math.max(1, Math.min(20, Math.trunc(livello))) - 1];
+
 // Slot incantesimo per livello del personaggio (indice = livello - 1).
 // Incantatori completi: Bardo, Chierico, Druido, Mago, Stregone.
 const SLOT_COMPLETO: number[][] = [
@@ -773,13 +776,12 @@ export function raggruppaIncantesimi<T extends { nome: string; livello: number; 
 // Aggiunge i PF (dal tiro del Dado Vita, o la media senza tiro), un Dado Vita e i privilegi del nuovo livello (letti dal catalogo prima di salire),
 // ed eventualmente la sottoclasse scelta a quel livello, gli incantesimi nuovi (di sottoclasse o scelti),
 // l'aumento dei punteggi di caratteristica o un talento (privilegio con fonte "Talento").
-export function saliDiLivello(
-  c: CharacterData,
-  extra: {
-    privilegi?: CharacterData["privilegi"]; sottoclasse?: string; incantesimi?: Spell[];
-    aumenti?: Partial<Record<Caratteristica, number>>; talento?: Privilegio; tiroPf?: number;
-  } = {},
-): CharacterData {
+export interface SceltaSalita {
+  privilegi?: CharacterData["privilegi"]; sottoclasse?: string; incantesimi?: Spell[];
+  aumenti?: Partial<Record<Caratteristica, number>>; talento?: Privilegio; tiroPf?: number;
+}
+
+export function saliDiLivello(c: CharacterData, extra: SceltaSalita = {}): CharacterData {
   const pf = pfPerLivello(c, regoleClasse(c.info.classe)?.dadoVita ?? 8, extra.tiroPf);
   const nuovi: CharacterData["privilegi"] = [];
   for (const p of [...(extra.privilegi ?? []), ...(extra.talento ? [extra.talento] : [])]) {
@@ -799,6 +801,23 @@ export function saliDiLivello(
   // I PF del nuovo livello usano la COS di prima: l'aumento della COS poi li corregge per tutti i livelli.
   return extra.aumenti ? applicaAumento(salito, extra.aumenti) : salito;
 }
+
+// Salita di livello completa: saliDiLivello più gli incantesimi di sottoclasse che il nuovo livello concede
+// (e quelli che mancavano), presi dal catalogo. La usano la tab Progresso e la creazione a un livello alto.
+export function applicaSalita(c: CharacterData, salita: SceltaSalita, catalogo: IncantesimoCatalogo[]): CharacterData {
+  const salito = saliDiLivello(c, salita);
+  const mancanti = new Set(incantesimiSottoclasseMancanti(salito).map(nomeIncantesimo));
+  return aggiungiIncantesimi(salito, catalogo.filter(v => mancanti.has(nomeIncantesimo(v.nome))).map(v => spellDaCatalogo(v, true)));
+}
+
+// Un incantesimo del catalogo come voce del grimorio.
+export const spellDaCatalogo = (i: IncantesimoCatalogo, preparato: boolean): Spell => ({
+  id: i.id, nome: i.nome, livello: i.livello, scuola: i.scuola, tempo: i.tempo, preparato, ...(i.scheda ? { scheda: i.scheda } : {}),
+});
+
+// +1 per ogni caratteristica scelta nel pannello di salita: la stessa due volte fa +2.
+export const aumentiDa = (car: (Caratteristica | "")[]) =>
+  car.reduce<Partial<Record<Caratteristica, number>>>((acc, k) => (k ? { ...acc, [k]: (acc[k] ?? 0) + 1 } : acc), {});
 
 // Livelli con l'aumento dei punteggi di caratteristica (o un talento): 4, 8, 12, 16, 19, più quelli della classe.
 export const haAumentoCaratteristiche = (classe: string, livello: number) =>

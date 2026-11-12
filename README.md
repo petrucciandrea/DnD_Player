@@ -74,17 +74,18 @@ Le password sono salvate nel database solo come hash (scrypt), e la sessione è 
 
 ## Creare un personaggio
 
-**Crea personaggio**, nell'elenco, apre una procedura guidata di sette passi. A destra un riepilogo mostra punteggi, PF e CA mentre scegli:
+**Crea personaggio**, nell'elenco, apre una procedura guidata di sette passi (otto se il personaggio parte oltre il 1° livello). A destra un riepilogo mostra punteggi, PF e CA mentre scegli:
 
 1. **Razza** e sottorazza (o antenato draconico), con le scelte che la razza prevede: le lingue, i +1 e le abilità del Mezzelfo, lo strumento del Nano, il trucchetto dell'Alto Elfo.
-2. **Classe**, tra le 12 del manuale: abilità a scelta, strumenti del Bardo e del Monaco, sottoclasse per Chierico, Stregone e Warlock (le altre la scelgono salendo di livello).
+2. **Classe**, tra le 12 del manuale, e **livello iniziale** (dal 1° al 20°): abilità a scelta, strumenti del Bardo e del Monaco, sottoclasse per Chierico, Stregone e Warlock (le altre la scelgono salendo di livello).
 3. **Caratteristiche**: sei tiri di 4d6 scartando il dado più basso, con i tuoi dadi o con quelli dell'app. Poi assegni i sei totali; i bonus di razza si aggiungono da soli.
 4. **Background**: se un'abilità è già tua ne scegli un'altra, come prevede il manuale. Poi lingue e strumenti.
 5. **Equipaggiamento**: le opzioni della classe (per esempio "ascia bipenne oppure un'arma da guerra da mischia") più gli oggetti e le monete del background. Armatura e scudo vengono indossati.
-6. **Incantesimi**: trucchetti e incantesimi di 1° livello dal catalogo, nei numeri della classe.
-7. **Dettagli**: nome, allineamento, aspetto, tratti, ideali, legami, difetti e storia.
+6. **Incantesimi**: trucchetti e incantesimi di 1° livello dal catalogo, nei numeri della classe. Chi prepara gli incantesimi (Chierico, Druido, Mago) sceglie anche quali sono preparati all'inizio; Paladino e Ranger incantano dal 2° livello.
+7. **Livelli** (solo oltre il 1°): si sale dal 2° al livello scelto, uno alla volta, con lo stesso pannello della tab Progresso: PF dal Dado Vita (tiro o media), sottoclasse, privilegi, aumento dei punteggi o talento, scelte di privilegio, nuovi trucchetti e incantesimi. Alla fine chi prepara gli incantesimi (anche il Paladino) sceglie quelli preparati al livello raggiunto. Cambiare una scelta dei passi precedenti azzera i livelli confermati.
+8. **Dettagli**: nome, allineamento, aspetto, tratti, ideali, legami, difetti e storia.
 
-Il personaggio nasce al 1° livello con i PF massimi del Dado Vita più COS, le competenze della classe, della razza e del background e i privilegi di 1° livello.
+Il 1° livello ha i PF massimi del Dado Vita più COS, le competenze della classe, della razza e del background e i privilegi di 1° livello; ogni livello successivo aggiunge quanto scelto nel passo Livelli. Gli XP partono dalla soglia del livello raggiunto; l'equipaggiamento resta quello iniziale.
 
 ## Salvataggio
 

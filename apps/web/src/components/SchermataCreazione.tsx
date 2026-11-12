@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, Dices, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
 import type { Caratteristica, CatalogoCreazione } from "@dnd/regole/tipi.ts";
-import { ABILITA, CARATTERISTICHE, derivate, modificatore, segno } from "@dnd/regole/regole.ts";
+import { ABILITA, CARATTERISTICHE, derivate, modificatore, segno, type SceltaSalita } from "@dnd/regole/regole.ts";
 import { CLASSI, incantesimiIniziali, LINGUE, NOMI_CLASSI, type NomeClasse } from "@dnd/regole/dati/classi.ts";
 import {
   abilitaDoppie, abilitaPrimaDelBackground, ALLINEAMENTI, armiDisponibili, bonusRazziali, incantesimiDellaClasse,
-  listaAbilitaClasse, mancaNelPasso, numeroTrucchettiIniziali, PASSI, personaggioIniziale, punteggiFinali, razzaCompleta,
+  cambiaScelte, listaAbilitaClasse, mancaNelPasso, numeroTrucchettiIniziali, passiDi, personaggioCreato, preparabiliAllaCreazione,
+  primoLivelloIncantesimi, punteggiFinali, razzaCompleta,
   scelteIniziali, scelteVuote, sommaMigliori3, sottorazzeDi, strumentiTra, type SceltePersonaggio,
 } from "@dnd/regole/creazione.ts";
 import { catalogoCreazione, importaPersonaggio } from "../accesso";
@@ -13,6 +14,7 @@ import { useRichiestaTiro } from "../tiroDadi";
 import DialogoTiro from "./DialogoTiro";
 import Avatar from "./Avatar";
 import ScegliMolti from "./ScegliMolti";
+import PannelloSalita, { SceltaIncantesimi } from "./PannelloSalita";
 
 interface Props {
   giocatore: string; // proposto nel campo "Giocatore"
@@ -104,13 +106,14 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
   const razza = cat ? razzaCompleta(cat, s.razza, s.sottorazza) : null;
   const regole = s.classe ? CLASSI[s.classe] : null;
   const bg = cat?.background.find(b => b.nome === s.background) ?? null;
-  const cambia = (parziale: Partial<SceltePersonaggio>) => setS(prev => ({ ...prev, ...parziale }));
+  // Cambiare una scelta dei passi precedenti azzera i livelli già confermati (cambiaScelte).
+  const cambia = (parziale: Partial<SceltePersonaggio>) => setS(prev => cambiaScelte(prev, parziale));
 
   // Anteprima della scheda, appena le scelte bastano a costruirla.
   const anteprima = useMemo(() => {
     if (!cat) return null;
     try {
-      const c = personaggioIniziale({ ...s, dettagli: { ...s.dettagli, nome: s.dettagli.nome || "?" } }, cat);
+      const c = personaggioCreato({ ...s, dettagli: { ...s.dettagli, nome: s.dettagli.nome || "?" } }, cat);
       return { c, d: derivate(c) };
     } catch {
       return null;
@@ -131,9 +134,11 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
     );
   }
 
-  const idPasso = PASSI[passo].id;
+  const passi = passiDi(s);
+  const indice = Math.min(passo, passi.length - 1);
+  const idPasso = passi[indice].id;
   const manca = mancaNelPasso(idPasso, s, cat);
-  const ultimo = passo === PASSI.length - 1;
+  const ultimo = indice === passi.length - 1;
 
   const tira4d6 = async () => {
     const tiri = await chiediTiro({
@@ -141,14 +146,14 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
       descrizione: "4d6: si scarta il dado più basso.",
       dadi: Array.from({ length: 4 }, (_, i) => ({ etichetta: `d6 n. ${i + 1}`, facce: 6 })),
     });
-    if (tiri) setS(prev => ({ ...prev, tiri: [...prev.tiri, tiri].slice(0, 6) }));
+    if (tiri) setS(prev => cambiaScelte(prev, { tiri: [...prev.tiri, tiri].slice(0, 6) }));
   };
 
   const crea = async () => {
     setErrore(null);
     let c;
     try {
-      c = personaggioIniziale(s, cat);
+      c = personaggioCreato(s, cat);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : String(e));
       return;
@@ -165,7 +170,7 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
   const passoRazza = () => {
     const madri = cat.razze.filter(r => r.madre === null);
     const sottorazze = sottorazzeDi(cat, s.razza);
-    const trucchettiMago = incantesimiDellaClasse(cat, "Mago", 0).map(i => i.nome);
+    const trucchettiMago = incantesimiDellaClasse(cat, "Mago", 0);
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -227,7 +232,13 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
               <ScegliN titolo="Strumento" n={1} opzioni={razza.strumentiAScelta} valori={[s.strumentoRazza]} onCambia={v => cambia({ strumentoRazza: v[0] ?? "" })} />
             )}
             {razza.trucchetto === "*" && (
-              <ScegliN titolo="Trucchetto da mago" n={1} opzioni={trucchettiMago} valori={[s.trucchettoRazza]} onCambia={v => cambia({ trucchettoRazza: v[0] ?? "" })} />
+              <SceltaIncantesimi
+                titolo="Trucchetto da mago"
+                opzioni={trucchettiMago}
+                scelte={s.trucchettoRazza ? [s.trucchettoRazza] : []}
+                massimo={1}
+                onCambia={v => cambia({ trucchettoRazza: v[0] ?? "" })}
+              />
             )}
             <div className="space-y-1">
               <div className={etichetta}>Tratti</div>
@@ -259,6 +270,15 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
       </div>
       {regole && s.classe && (
         <div className={`${card} space-y-4`}>
+          <label className="flex flex-wrap items-center gap-2 text-sm">
+            <span className={etichetta}>Livello iniziale</span>
+            <select value={s.livello} onChange={e => cambia({ livello: Number(e.target.value) })} className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-sm text-slate-200 outline-none focus:border-indigo-500">
+              {Array.from({ length: 20 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}°</option>)}
+            </select>
+            {s.livello > 1 && (
+              <span className="text-xs text-slate-500">Dopo gli incantesimi iniziali sali dal 2° al {s.livello}° livello, uno alla volta.</span>
+            )}
+          </label>
           {regole.livelloSottoclasse === 1 && (
             <ScegliN titolo="Sottoclasse" n={1} opzioni={regole.sottoclassi} valori={[s.sottoclasse]} onCambia={v => cambia({ sottoclasse: v[0] ?? "" })} />
           )}
@@ -482,10 +502,50 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
     );
   };
 
+  // Chi prepara gli incantesimi sceglie quelli preparati all'inizio, al livello finale (facoltativo: si possono
+  // preparare anche dopo dal Grimorio). Al 1° livello nel passo Incantesimi, oltre alla fine del passo Livelli.
+  const sezionePreparati = () => {
+    if (!anteprima) return null;
+    const { opzioni, massimo } = preparabiliAllaCreazione(anteprima.c);
+    if (massimo === 0) return null;
+    const nomi = new Set(opzioni.map(o => o.nome));
+    const sempre = anteprima.d.incantesimiSempre;
+    return (
+      <div className={`${card} space-y-2`}>
+        <SceltaIncantesimi
+          titolo="Incantesimi preparati"
+          opzioni={cat.incantesimi.filter(i => nomi.has(i.nome))}
+          scelte={s.preparati.filter(n => nomi.has(n))}
+          massimo={massimo}
+          onCambia={v => cambia({ preparati: v })}
+        />
+        <p className="text-xs text-slate-500">
+          Prepari ogni giorno {anteprima.d.modoIncantesimi === "libro" ? "dal libro" : "dall'intera lista della classe"}:
+          scegli fino a {massimo} {massimo === 1 ? "incantesimo pronto" : "incantesimi pronti"} all'inizio. Potrai cambiarli dal Grimorio dopo un riposo lungo.
+          {sempre.length > 0 && ` ${sempre.join(", ")} ${sempre.length === 1 ? "è sempre preparato e non conta" : "sono sempre preparati e non contano"}.`}
+        </p>
+      </div>
+    );
+  };
+
   const passoIncantesimi = () => {
     const inc = regole?.incantatore;
     if (!regole || !inc) {
       return <p className={`${card} text-sm text-slate-300`}>{s.classe || "Questa classe"} non lancia incantesimi al 1° livello.</p>;
+    }
+    // Paladino e Ranger iniziano a lanciare incantesimi più avanti.
+    const daLivello = primoLivelloIncantesimi(s.classe) ?? 1;
+    if (daLivello > 1) {
+      const quando = s.livello < daLivello
+        ? "li sceglierai salendo di livello, dalla tab Progresso."
+        : inc.modo === "preparati"
+          ? "riceverà tutta la lista della classe e sceglierai quali preparare alla fine del passo Livelli."
+          : "li sceglierai salendo di livello, nel passo Livelli.";
+      return (
+        <p className={`${card} text-sm text-slate-300`}>
+          Il {s.classe.toLowerCase()} lancia incantesimi dal {daLivello}° livello: {quando}
+        </p>
+      );
     }
     const trucchetti = incantesimiDellaClasse(cat, s.classe, 0);
     const primo = incantesimiDellaClasse(cat, s.classe, 1);
@@ -493,29 +553,94 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
     const nIncantesimi = Math.min(incantesimiIniziali(s.classe), primo.length);
     const pochi = trucchetti.length < numeroTrucchettiIniziali(s.classe) || primo.length < incantesimiIniziali(s.classe);
     return (
-      <div className={`${card} space-y-4`}>
-        {nTrucchetti > 0 && (
-          <ScegliMolti titolo="Trucchetti" opzioni={trucchetti.map(i => i.nome)} scelte={s.trucchetti} massimo={nTrucchetti} onCambia={v => cambia({ trucchetti: v })} />
-        )}
-        {nIncantesimi > 0 && (
-          <ScegliMolti
-            titolo={inc.modo === "libro" ? "Incantesimi nel libro" : "Incantesimi conosciuti"}
-            opzioni={primo.map(i => i.nome)}
-            scelte={s.incantesimi}
-            massimo={nIncantesimi}
-            onCambia={v => cambia({ incantesimi: v })}
+      <div className="space-y-4">
+        <div className={`${card} space-y-4`}>
+          {nTrucchetti > 0 && (
+            <SceltaIncantesimi titolo="Trucchetti" opzioni={trucchetti} scelte={s.trucchetti} massimo={nTrucchetti} onCambia={v => cambia({ trucchetti: v })} />
+          )}
+          {nIncantesimi > 0 && (
+            <SceltaIncantesimi
+              titolo={inc.modo === "libro" ? "Incantesimi nel libro" : "Incantesimi conosciuti"}
+              opzioni={primo}
+              scelte={s.incantesimi}
+              massimo={nIncantesimi}
+              onCambia={v => cambia({ incantesimi: v })}
+            />
+          )}
+          {inc.modo === "preparati" && (
+            <p className="text-xs text-slate-400">
+              Il {s.classe.toLowerCase()} prepara ogni giorno gli incantesimi dall'intera lista della classe: riceverà tutti quelli
+              di 1° livello presenti nel catalogo ({primo.map(i => i.nome).join(", ") || "nessuno per ora"}).
+            </p>
+          )}
+          {s.livello > 1 && inc.modo !== "conosciuti" && (
+            <p className="text-xs text-slate-400">Gli incantesimi preparati si scelgono alla fine del passo Livelli.</p>
+          )}
+          {pochi && (
+            <p className="text-xs text-amber-300">
+              Il catalogo contiene ancora pochi incantesimi per questa classe: potrai aggiungerne altri dal Grimorio.
+            </p>
+          )}
+        </div>
+        {s.livello === 1 && sezionePreparati()}
+      </div>
+    );
+  };
+
+  // Riassunto di una salita già confermata.
+  const riassuntoSalita = (x: SceltaSalita) => [
+    x.sottoclasse && `sottoclasse ${x.sottoclasse}`,
+    x.tiroPf !== undefined ? `Dado Vita ${x.tiroPf}` : "PF nella media",
+    x.aumenti && Object.entries(x.aumenti).map(([k, n]) => `${k} +${n}`).join(", "),
+    x.talento && `talento ${x.talento.nome}`,
+    (x.incantesimi?.length ?? 0) > 0 && `${x.incantesimi?.map(i => i.nome).join(", ")}`,
+  ].filter(Boolean).join(" · ");
+
+  const passoLivelli = () => {
+    const attuale = anteprima?.c;
+    if (!attuale) return <p className={`${card} text-sm text-amber-300`}>Completa prima i passi precedenti.</p>;
+    const fatti = Math.min(s.salite.length, s.livello - 1);
+    return (
+      <div className="space-y-4">
+        <div className={`${card} space-y-2 text-sm`}>
+          <p className="text-slate-300">
+            Sali dal 2° al {s.livello}° livello, uno alla volta, come nella tab Progresso.
+          </p>
+          <p className="text-xs text-slate-500">Se cambi una scelta dei passi precedenti, i livelli confermati si azzerano.</p>
+          {fatti > 0 && (
+            <>
+              <ul className="space-y-1">
+                {s.salite.slice(0, fatti).map((x, i) => (
+                  <li key={i} className="text-xs text-slate-400">
+                    <strong className="text-emerald-300">Livello {i + 2}</strong>: {riassuntoSalita(x) || "confermato"}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => cambia({ salite: s.salite.slice(0, fatti - 1) })}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Annulla il livello {fatti + 1}
+              </button>
+            </>
+          )}
+        </div>
+        {fatti < s.livello - 1 ? (
+          <PannelloSalita
+            key={fatti}
+            char={attuale}
+            chiediTiro={chiediTiro}
+            opzioni={cat.opzioniPrivilegio}
+            incantesimiCatalogo={cat.incantesimi}
+            onConferma={x => cambia({ salite: [...s.salite.slice(0, fatti), x] })}
           />
-        )}
-        {inc.modo === "preparati" && (
-          <p className="text-xs text-slate-400">
-            Il {s.classe.toLowerCase()} prepara ogni giorno gli incantesimi dall'intera lista della classe: riceverà tutti quelli
-            di 1° livello presenti nel catalogo ({primo.map(i => i.nome).join(", ") || "nessuno per ora"}).
-          </p>
-        )}
-        {pochi && (
-          <p className="text-xs text-amber-300">
-            Il catalogo contiene ancora pochi incantesimi per questa classe: potrai aggiungerne altri dal Grimorio.
-          </p>
+        ) : (
+          <>
+            <p className={`${card} text-sm text-emerald-300`}>
+              Livello {s.livello} raggiunto: {attuale.combattimento.pfMassimi} PF, {attuale.xp.totale.toLocaleString("it-IT")} XP.
+            </p>
+            {sezionePreparati()}
+          </>
         )}
       </div>
     );
@@ -575,12 +700,13 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
 
   const contenuto = {
     razza: passoRazza, classe: passoClasse, caratteristiche: passoCaratteristiche, background: passoBackground,
-    equipaggiamento: passoEquipaggiamento, incantesimi: passoIncantesimi, dettagli: passoDettagli,
+    equipaggiamento: passoEquipaggiamento, incantesimi: passoIncantesimi, livelli: passoLivelli, dettagli: passoDettagli,
   }[idPasso]();
 
   const riepilogo = [
     ["Razza", razza?.nome],
-    ["Classe", s.classe && `${s.classe}${s.sottoclasse ? ` (${s.sottoclasse})` : ""}`],
+    ["Classe", s.classe && `${s.classe}${anteprima?.c.info.sottoclasse ? ` (${anteprima.c.info.sottoclasse})` : s.sottoclasse ? ` (${s.sottoclasse})` : ""}`],
+    ["Livello", s.classe && `${anteprima?.c.info.livello ?? 1}° di ${s.livello}°`],
     ["Background", s.background],
   ] as const;
 
@@ -597,15 +723,15 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
         </header>
 
         <nav className="flex flex-wrap gap-1.5">
-          {PASSI.map((p, i) => {
+          {passi.map((p, i) => {
             const completo = mancaNelPasso(p.id, s, cat) === null;
-            const raggiungibile = PASSI.slice(0, i).every(q => mancaNelPasso(q.id, s, cat) === null);
+            const raggiungibile = passi.slice(0, i).every(q => mancaNelPasso(q.id, s, cat) === null);
             return (
               <button
                 key={p.id}
                 onClick={() => raggiungibile && setPasso(i)}
                 disabled={!raggiungibile}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-40 ${i === passo
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-40 ${i === indice
                   ? "bg-indigo-600 border-indigo-500 text-white"
                   : completo ? "bg-emerald-950/40 border-emerald-900/60 text-emerald-300" : "bg-slate-900 border-slate-800 text-slate-400"}`}
               >
@@ -621,8 +747,8 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
             {errore && <p role="alert" className="text-sm text-rose-300 bg-rose-950/40 border border-rose-900/60 rounded-lg px-3 py-2">{errore}</p>}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <button
-                onClick={() => setPasso(p => Math.max(0, p - 1))}
-                disabled={passo === 0}
+                onClick={() => setPasso(Math.max(0, indice - 1))}
+                disabled={indice === 0}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-sm text-slate-200"
               >
                 <ArrowLeft className="w-4 h-4" /> Indietro
@@ -638,7 +764,7 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
                 </button>
               ) : (
                 <button
-                  onClick={() => setPasso(p => p + 1)}
+                  onClick={() => setPasso(indice + 1)}
                   disabled={manca !== null}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold"
                 >

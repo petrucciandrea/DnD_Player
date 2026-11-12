@@ -12,6 +12,7 @@ import {
   sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot, incantesimiSottoclasseMancanti, aggiungiIncantesimi,
   PROVVISTE_COMUNI, cambiaQuantita, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, dotazioneScomponibile, scomponiDotazione,
   applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
+  applicaSalita, aumentiDa, xpDelLivello,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { calcolaDanno, difeseDelPersonaggio, haSchivataProdigiosa, tipoDanno, type Difesa } from "./dati/danni";
@@ -1189,6 +1190,31 @@ describe("salita di livello guidata", () => {
     expect(incantesimiDaImparare(pg("Warlock", 1, "L'Immondo"), catalogo, 2).incantesimi.map(i => i.nome)).toEqual(["Comando"]);
     expect(incantesimiDaImparare(pg("Ladro", 2), catalogo, 3, "Mistificatore Arcano").incantesimi.map(i => i.nome)).toEqual(["Sonno"]);
     expect(incantesimiDaImparare(pg("Guerriero", 4, "Campione"), catalogo, 5)).toEqual({ trucchetti: [], incantesimi: [] });
+  });
+
+  it("applicaSalita aggiunge dal catalogo gli incantesimi di dominio del nuovo livello", () => {
+    const c = pg("Chierico", 2, "Dominio della Vita");
+    c.incantesimi = [{ id: 1, nome: "Benedizione", livello: 1, scuola: "Invocazione", tempo: "1 azione", preparato: true }];
+    const catalogo = [voce(1, "Benedizione", 1, ["Chierico"]), voce(2, "Cura Ferite", 1, ["Chierico"]),
+      voce(3, "Ristorare Inferiore", 2, ["Chierico"]), voce(4, "Arma Spirituale", 2, ["Chierico"]), voce(5, "Silenzio", 2, ["Chierico"])];
+    const salito = applicaSalita(c, { tiroPf: 5 }, catalogo);
+    expect(salito.info.livello).toBe(3);
+    expect(salito.incantesimi.map(s => [s.nome, s.preparato])).toEqual([
+      ["Benedizione", true], ["Cura Ferite", true], ["Ristorare Inferiore", true], ["Arma Spirituale", true],
+    ]);
+    expect(applicaSalita(c, {}, []).incantesimi).toHaveLength(1); // senza catalogo resta il grimorio
+  });
+
+  it("XP minimi di ogni livello", () => {
+    expect([1, 2, 3, 5, 20].map(xpDelLivello)).toEqual([0, 300, 900, 6500, 355000]);
+    expect(xpDelLivello(0)).toBe(0);
+    expect(xpDelLivello(25)).toBe(355000);
+  });
+
+  it("aumentiDa: la stessa caratteristica due volte vale +2", () => {
+    expect(aumentiDa(["FOR", "FOR"])).toEqual({ FOR: 2 });
+    expect(aumentiDa(["FOR", "DES"])).toEqual({ FOR: 1, DES: 1 });
+    expect(aumentiDa(["", "COS"])).toEqual({ COS: 1 });
   });
 });
 
