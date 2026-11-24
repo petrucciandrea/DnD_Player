@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef, type ChangeEvent } f
 import {
   Sparkles, RefreshCw, BookOpen, Backpack, Scroll, Award,
   Download, Upload, Users, Heart, Star, X, Coffee, Brain, Cloud, CloudCheck, CloudOff, CloudUpload, LoaderCircle, LogOut, UserCog,
-  NotebookPen, UsersRound,
+  NotebookPen, Swords, UsersRound,
 } from "lucide-react";
 import type { RiassuntoParty } from "@dnd/regole/api.ts";
 import type { CharacterData, EsitoRiposoBreve } from "@dnd/regole/tipi.ts";
@@ -461,6 +461,12 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty,
               {mioParty && (
                 <button onClick={() => onApriParty(mioParty.id)} title="Apri il party" className={`${pulsante} bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border-indigo-500/40`}>
                   <UsersRound className="w-3.5 h-3.5" /> <span className="max-w-32 truncate">{mioParty.nome}</span>
+                  {mioParty.combattimento && (
+                    <span title={`Combattimento in corso, round ${mioParty.combattimento.round}`}
+                      className={`px-1.5 rounded-full text-[10px] leading-4 font-bold ${mioParty.combattimento.tuoTurno ? "bg-amber-400 text-slate-950 animate-pulse" : "bg-rose-600/40 text-rose-100"}`}>
+                      {mioParty.combattimento.tuoTurno ? "Tocca a te!" : <Swords className="w-3 h-3 inline" />}
+                    </span>
+                  )}
                   {mioParty.nonLetti > 0 && (
                     <span title="Messaggi non letti" className="min-w-4 px-1 rounded-full bg-rose-500 text-white text-[10px] leading-4 text-center">{mioParty.nonLetti}</span>
                   )}

@@ -45,6 +45,11 @@ import { rotteSalute } from "./rotte/salute.ts";
 //   POST /party/:id/diario { titolo, testo, categoria, fissata? } → la voce; fissata solo dal Master (403)
 //   PUT  /party/:id/diario/:voce { …, revisione } → la voce, 409 con la versione attuale
 //   DELETE /party/:id/diario/:voce             → 204; solo l'autore o il Master (403)
+//   GET  /party/:id/combattimento              → { attivo, round, diTurno, voci in ordine } (le nascoste solo al Master)
+//   POST /party/:id/combattimento · DELETE …   → 204; avvia o termina lo scontro (Master)
+//   POST /party/:id/combattimento/avanza { direzione: 1 | -1 } → 204; turno successivo o precedente (Master)
+//   PUT  /party/:id/combattimento/mio { valore } → 204; iniziativa del proprio personaggio (bonus dalla scheda)
+//   POST /party/:id/combattimento/voci { nome, valore, bonus?, nascosto? } → { id }; PUT e DELETE …/voci/:voce (Master)
 // Gli errori hanno sempre la forma { errore: "messaggio per l'utente" }.
 
 export interface OpzioniApp {

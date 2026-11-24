@@ -1,4 +1,4 @@
-import type { CategoriaDiario, DettaglioParty, MessaggiParty, RiassuntoParty, TiroCondiviso, VoceDiario } from "@dnd/regole/api.ts";
+import type { CategoriaDiario, Combattimento, DettaglioParty, MessaggiParty, RiassuntoParty, TiroCondiviso, VoceDiario } from "@dnd/regole/api.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
 import { erroreDa, IRRAGGIUNGIBILE } from "./accesso";
 
@@ -62,3 +62,21 @@ export const creaVoce = (id: number, voce: DatiVoce) => chiamata<VoceDiario>("PO
 export const modificaVoce = (id: number, voceId: number, voce: DatiVoce, revisione: number) =>
   chiamata<VoceDiario>("PUT", `/${id}/diario/${voceId}`, { ...voce, revisione });
 export const cancellaVoce = (id: number, voceId: number) => chiamata<null>("DELETE", `/${id}/diario/${voceId}`);
+
+export interface DatiVoceIniziativa {
+  nome?: string;
+  valore?: number;
+  bonus?: number;
+  nascosto?: boolean;
+}
+
+export const leggiCombattimento = (id: number) => chiamata<Combattimento>("GET", `/${id}/combattimento`);
+export const avviaCombattimento = (id: number) => chiamata<null>("POST", `/${id}/combattimento`);
+export const terminaCombattimento = (id: number) => chiamata<null>("DELETE", `/${id}/combattimento`);
+export const avanzaTurno = (id: number, direzione: 1 | -1) => chiamata<null>("POST", `/${id}/combattimento/avanza`, { direzione });
+export const mandaIniziativa = (id: number, valore: number) => chiamata<null>("PUT", `/${id}/combattimento/mio`, { valore });
+export const aggiungiVoceIniziativa = (id: number, voce: DatiVoceIniziativa) =>
+  chiamata<{ id: number }>("POST", `/${id}/combattimento/voci`, voce);
+export const modificaVoceIniziativa = (id: number, voceId: number, voce: DatiVoceIniziativa) =>
+  chiamata<null>("PUT", `/${id}/combattimento/voci/${voceId}`, voce);
+export const togliVoceIniziativa = (id: number, voceId: number) => chiamata<null>("DELETE", `/${id}/combattimento/voci/${voceId}`);

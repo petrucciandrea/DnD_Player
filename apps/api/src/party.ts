@@ -1,9 +1,11 @@
 import { randomInt } from "node:crypto";
 import type { DettaglioParty, MembroParty, RiassuntoParty, RiepilogoPersonaggioParty, RuoloParty } from "@dnd/regole/api.ts";
+import { suggerimentoTiro } from "@dnd/regole/dati/condizioni.ts";
 import { derivate } from "@dnd/regole/regole.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
 import { riga, righe, transazione, type Esecutore } from "./db.ts";
 import { ErroreRichiesta } from "./errori.ts";
+import { SQL_COMBATTIMENTO_ELENCO } from "./combattimento.ts";
 import { SQL_VERSIONE_DIARIO } from "./diario.ts";
 import { SQL_NON_LETTI } from "./messaggi.ts";
 import { componiMolti } from "./personaggi.ts";
@@ -103,29 +105,34 @@ export async function togliMembro(db: Esecutore, partyId: number, utenteId: numb
 export const elencoParty = async (db: Esecutore, utenteId: number): Promise<RiassuntoParty[]> =>
   (await righe(db, `
     SELECT p.id, p.nome, m.ruolo, m.personaggio_id, pe.nome AS personaggio_nome,
-      (SELECT count(*) FROM party_membri x WHERE x.party_id = p.id) AS membri, ${SQL_NON_LETTI} AS non_letti
+      (SELECT count(*) FROM party_membri x WHERE x.party_id = p.id) AS membri, ${SQL_NON_LETTI} AS non_letti,
+      ${SQL_COMBATTIMENTO_ELENCO} AS combattimento
     FROM party_membri m JOIN party p ON p.id = m.party_id LEFT JOIN personaggi pe ON pe.id = m.personaggio_id
     WHERE m.utente_id = $1 ORDER BY p.nome, p.id`, [utenteId]))
     .map(r => ({
       id: Number(r.id), nome: String(r.nome), ruolo: r.ruolo as RuoloParty,
       personaggio: r.personaggio_id === null ? null : { id: Number(r.personaggio_id), nome: String(r.personaggio_nome ?? "") },
       membri: Number(r.membri), nonLetti: Number(r.non_letti),
+      combattimento: (r.combattimento ?? null) as RiassuntoParty["combattimento"],
     }));
 
 // Lo stato in gioco di un personaggio, calcolato dalla scheda: niente valori derivati salvati.
 export function riepilogoPersonaggio(id: number, c: CharacterData): RiepilogoPersonaggioParty {
   const d = derivate(c);
+  const prova = suggerimentoTiro(c, { tipo: "prova", car: "DES" });
   return {
     id, nome: c.info.nome, classe: c.info.classe, sottoclasse: c.info.sottoclasse, livello: c.info.livello, razza: c.info.razza,
     avatar: c.info.avatar,
     pf: c.combattimento.pfAttuali, pfMassimi: d.pfMassimiEffettivi, pfTemporanei: c.combattimento.pfTemporanei,
     ca: d.ca, condizioni: c.condizioni, indebolimento: c.indebolimento,
+    iniziativa: { bonus: d.iniziativa, modalita: prova.modalita, note: prova.note },
   };
 }
 
 export async function dettaglioParty(db: Esecutore, partyId: number, utenteId: number): Promise<DettaglioParty> {
   const membri = await righe(db, `
-    SELECT p.nome AS party_nome, p.codice, ${SQL_VERSIONE_DIARIO} AS versione_diario, m.utente_id, u.username, m.ruolo, m.personaggio_id
+    SELECT p.nome AS party_nome, p.codice, ${SQL_VERSIONE_DIARIO} AS versione_diario,
+      (SELECT round FROM party_combattimento c WHERE c.party_id = p.id) AS round, m.utente_id, u.username, m.ruolo, m.personaggio_id
     FROM party p JOIN party_membri m ON m.party_id = p.id JOIN utenti u ON u.id = m.utente_id
     WHERE p.id = $1 ORDER BY m.ruolo = 'master' DESC, m.entrato, m.utente_id`, [partyId]);
   const io = membri.find(r => Number(r.utente_id) === utenteId);
@@ -146,6 +153,7 @@ export async function dettaglioParty(db: Esecutore, partyId: number, utenteId: n
     }),
     io: { utenteId, ruolo, personaggioId: io.personaggio_id === null ? null : Number(io.personaggio_id) },
     diarioVersione: String(io.versione_diario),
+    combattimento: io.round === null ? null : { round: Number(io.round) },
   };
 }
 

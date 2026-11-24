@@ -40,6 +40,7 @@ export interface RiassuntoParty {
   personaggio: { id: number; nome: string } | null; // il personaggio con cui l'utente gioca (null per il Master)
   membri: number;
   nonLetti: number; // messaggi degli altri non ancora letti (gruppo e privati)
+  combattimento: { round: number; tuoTurno: boolean } | null; // null: nessuno scontro in corso
 }
 
 // Quello che i compagni vedono di un personaggio: niente scheda completa, solo lo stato in gioco.
@@ -50,6 +51,8 @@ export interface RiepilogoPersonaggioParty extends RiassuntoPersonaggio {
   ca: number;
   condizioni: string[]; // id delle condizioni (CONDIZIONI in dati/condizioni.ts)
   indebolimento: number;
+  // Prova di DES per l'iniziativa: modificatore, e vantaggio o svantaggio da condizioni ed effetti.
+  iniziativa: { bonus: number; modalita: Modalita; note: string[] };
 }
 
 export interface MembroParty {
@@ -67,6 +70,7 @@ export interface DettaglioParty {
   membri: MembroParty[];
   io: { utenteId: number; ruolo: RuoloParty; personaggioId: number | null };
   diarioVersione: string; // cambia a ogni voce aggiunta, modificata o tolta: il client ricarica il diario
+  combattimento: { round: number } | null;
 }
 
 // Tiro di dadi pubblicato nella chat del party.
@@ -115,4 +119,22 @@ export interface VoceDiario {
   revisione: number;
   creato: string; // ISO 8601
   aggiornato: string;
+}
+
+// Voce dell'ordine d'iniziativa: un personaggio del party o un mostro/PNG del Master (personaggioId null).
+export interface VoceIniziativa {
+  id: number;
+  personaggioId: number | null;
+  nome: string;
+  valore: number;
+  bonus: number; // modificatore d'iniziativa: spareggia
+  nascosto: boolean; // i giocatori non la vedono
+}
+
+// GET /api/party/:id/combattimento. Le voci sono già nell'ordine dei turni.
+export interface Combattimento {
+  attivo: boolean;
+  round: number;
+  diTurno: number | null; // id della voce di turno
+  voci: VoceIniziativa[];
 }

@@ -1,6 +1,6 @@
 import { useCallback, useState, type FormEvent } from "react";
 import {
-  ArrowLeft, BookOpen, Check, Copy, Crown, Eye, LoaderCircle, LogOut, MessagesSquare, Pencil, RefreshCw, Shield, Trash2, UserCog, UserMinus, Users, X,
+  ArrowLeft, BookOpen, Check, Copy, Crown, Eye, LoaderCircle, LogOut, MessagesSquare, Pencil, RefreshCw, Shield, Swords, Trash2, UserCog, UserMinus, Users, X,
 } from "lucide-react";
 import type { DettaglioParty, MembroParty } from "@dnd/regole/api.ts";
 import { condizione } from "@dnd/regole/dati/condizioni.ts";
@@ -11,6 +11,7 @@ import { nonLettiPer, useMessaggi } from "../messaggi";
 import Avatar from "./Avatar";
 import PartyChat from "./PartyChat";
 import PartyDiario from "./PartyDiario";
+import PartyIniziativa from "./PartyIniziativa";
 import VistaPersonaggio from "./VistaPersonaggio";
 
 interface Props {
@@ -23,7 +24,7 @@ interface Props {
   onSessioneScaduta: () => void;
 }
 
-type Sezione = "compagni" | "chat" | "diario";
+type Sezione = "compagni" | "chat" | "diario" | "iniziativa";
 
 const AGGIORNAMENTO = 4_000; // ms: con la schermata aperta si vedono presto PF e condizioni dei compagni
 const NON_PIU_MEMBRO = "Il party non esiste più oppure non ne fai più parte.";
@@ -85,9 +86,11 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
 
   const master = party.io.ruolo === "master";
   const daLeggere = Object.values(nonLettiPer(chat.messaggi ?? [], chat.letture, party.io.utenteId)).reduce((a, b) => a + b, 0);
-  const sezioni: { id: Sezione; etichetta: string; icona: typeof Users; badge?: number }[] = [
+  const mio = party.membri.find(m => m.utenteId === party.io.utenteId)?.personaggio ?? null;
+  const sezioni: { id: Sezione; etichetta: string; icona: typeof Users; badge?: number; nota?: string }[] = [
     { id: "compagni", etichetta: "Compagni", icona: Users },
     { id: "chat", etichetta: "Chat", icona: MessagesSquare, badge: daLeggere },
+    { id: "iniziativa", etichetta: "Iniziativa", icona: Swords, ...(party.combattimento ? { nota: `Round ${party.combattimento.round}` } : {}) },
     { id: "diario", etichetta: "Diario", icona: BookOpen },
   ];
 
@@ -194,6 +197,7 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
                 ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"}`}
             >
               <x.icona className="w-4 h-4" /> {x.etichetta}
+              {x.nota && <span className="px-1.5 rounded-full bg-rose-600/30 text-rose-200 text-[11px] leading-5">{x.nota}</span>}
               {(x.badge ?? 0) > 0 && (
                 <span className="min-w-5 px-1 rounded-full bg-rose-500 text-white text-[11px] leading-5 text-center">{x.badge}</span>
               )}
@@ -202,6 +206,7 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
         </nav>
 
         {sezione === "chat" && <PartyChat io={party.io.utenteId} membri={party.membri} chat={chat} />}
+        {sezione === "iniziativa" && <PartyIniziativa partyId={partyId} ruolo={party.io.ruolo} mio={mio} riuscito={riuscito} />}
         {sezione === "diario" && <PartyDiario partyId={partyId} io={party.io} versione={party.diarioVersione} riuscito={riuscito} />}
 
         {sezione === "compagni" && <section className="space-y-3">

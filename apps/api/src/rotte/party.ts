@@ -1,4 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import {
+  aggiungiVoce, avanza, avviaCombattimento, datiIniziativaDa, iniziativaPersonaggio, leggiCombattimento, modificaVoceIniziativa,
+  terminaCombattimento, togliVoce,
+} from "../combattimento.ts";
 import { cancellaVoce, creaVoce, datiVoceDa, modificaVoce, voceDiario, vociDiario } from "../diario.ts";
 import { corpoOggetto, ErroreRichiesta } from "../errori.ts";
 import { leggiMessaggi, LUNGHEZZA_MESSAGGIO, masterDel, scriviMessaggio, segnaLetto, tiroDa } from "../messaggi.ts";
@@ -173,6 +177,68 @@ export async function rotteParty(app: FastifyInstance) {
     if (!voce) throw new ErroreRichiesta(404, "Voce inesistente");
     if (voce.autoreId !== io && membro.ruolo !== "master") throw new ErroreRichiesta(403, "Può cancellarla solo chi l'ha scritta o il Master");
     await cancellaVoce(app.db, id, voce.id);
+    return risposta.status(204).send();
+  });
+
+  // Iniziativa: il Master gestisce lo scontro, ogni giocatore inserisce l'iniziativa del suo personaggio.
+  type ConVoce = { Params: { id: string; voce: string } };
+  const conMaster = async (richiesta: FastifyRequest<ConId>) => {
+    const id = idParty(richiesta.params.id);
+    richiediMaster(await membroDi(app.db, id, utenteDi(richiesta).id));
+    return id;
+  };
+
+  app.get<ConId>("/party/:id/combattimento", async richiesta => {
+    const id = idParty(richiesta.params.id);
+    const membro = await membroDi(app.db, id, utenteDi(richiesta).id);
+    return leggiCombattimento(app.db, id, membro.ruolo === "master");
+  });
+
+  app.post<ConId>("/party/:id/combattimento", async (richiesta, risposta) => {
+    await avviaCombattimento(app.db, await conMaster(richiesta));
+    return risposta.status(204).send();
+  });
+
+  app.delete<ConId>("/party/:id/combattimento", async (richiesta, risposta) => {
+    await terminaCombattimento(app.db, await conMaster(richiesta));
+    return risposta.status(204).send();
+  });
+
+  app.post<ConId>("/party/:id/combattimento/avanza", async (richiesta, risposta) => {
+    const id = await conMaster(richiesta);
+    const { direzione } = corpoOggetto(richiesta.body);
+    if (direzione !== 1 && direzione !== -1) throw new ErroreRichiesta(400, "Direzione: 1 o -1");
+    await avanza(app.db, id, direzione);
+    return risposta.status(204).send();
+  });
+
+  app.put<ConId>("/party/:id/combattimento/mio", async (richiesta, risposta) => {
+    const id = idParty(richiesta.params.id);
+    const membro = await membroDi(app.db, id, utenteDi(richiesta).id);
+    if (membro.personaggioId === null) throw new ErroreRichiesta(400, "Il Master non ha un personaggio");
+    const { valore } = datiIniziativaDa(corpoOggetto(richiesta.body), false);
+    if (valore === undefined) throw new ErroreRichiesta(400, "Iniziativa non valida");
+    await iniziativaPersonaggio(app.db, id, membro.personaggioId, valore);
+    return risposta.status(204).send();
+  });
+
+  app.post<ConId>("/party/:id/combattimento/voci", async (richiesta, risposta) => {
+    const id = await conMaster(richiesta);
+    const voce = await aggiungiVoce(app.db, id, datiIniziativaDa(corpoOggetto(richiesta.body), true));
+    return risposta.status(201).send({ id: voce });
+  });
+
+  app.put<ConVoce>("/party/:id/combattimento/voci/:voce", async (richiesta, risposta) => {
+    const id = await conMaster(richiesta);
+    const ok = await modificaVoceIniziativa(app.db, id, idDa(richiesta.params.voce, "Voce inesistente"),
+      datiIniziativaDa(corpoOggetto(richiesta.body), false));
+    if (!ok) throw new ErroreRichiesta(404, "Voce inesistente");
+    return risposta.status(204).send();
+  });
+
+  app.delete<ConVoce>("/party/:id/combattimento/voci/:voce", async (richiesta, risposta) => {
+    const id = await conMaster(richiesta);
+    if (!(await togliVoce(app.db, id, idDa(richiesta.params.voce, "Voce inesistente")))) throw new ErroreRichiesta(404, "Voce inesistente");
     return risposta.status(204).send();
   });
 

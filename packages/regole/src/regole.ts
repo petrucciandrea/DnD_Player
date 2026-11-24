@@ -445,6 +445,24 @@ export function esitoTsMorte(c: CharacterData, d20: number): CharacterData {
 // Il danno non scende mai sotto 0.
 export const totaleDanni = (tiri: number[], mod: number) => Math.max(0, tiri.reduce((a, b) => a + b, 0) + mod);
 
+// Ordine dei turni: iniziativa più alta prima; a parità vince il modificatore più alto, poi il nome.
+export const ordineIniziativa = <T extends { id: number; nome: string; valore: number; bonus: number }>(voci: T[]): T[] =>
+  [...voci].sort((a, b) => b.valore - a.valore || b.bonus - a.bonus || a.nome.localeCompare(b.nome, "it") || a.id - b.id);
+
+// Il turno dopo (o prima, con direzione -1) di `diTurno`; passando dall'ultimo al primo cambia il round.
+// Prima del primo turno (diTurno null o voce sparita) si parte dal primo.
+export function avanzaTurno(
+  ordine: { id: number }[], diTurno: number | null, round: number, direzione: 1 | -1,
+): { diTurno: number | null; round: number } {
+  if (ordine.length === 0) return { diTurno: null, round };
+  const indice = ordine.findIndex(v => v.id === diTurno);
+  if (indice < 0) return { diTurno: ordine[0].id, round };
+  const prossimo = indice + direzione;
+  if (prossimo >= ordine.length) return { diTurno: ordine[0].id, round: round + 1 };
+  if (prossimo < 0) return round > 1 ? { diTurno: ordine[ordine.length - 1].id, round: round - 1 } : { diTurno: ordine[0].id, round };
+  return { diTurno: ordine[prossimo].id, round };
+}
+
 // Tiro da pubblicare nella chat del party, dalla richiesta del dialogo e dai risultati.
 // Un d20 con vantaggio o svantaggio ha due dadi; se è stata inserita solo la somma resta un solo valore.
 export function esitoTiroCondiviso(

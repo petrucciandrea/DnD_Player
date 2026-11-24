@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { INITIAL_CHARACTER } from "@dnd/regole/dati/alston.ts";
-import type { DettaglioParty, MessaggiParty, VoceDiario } from "@dnd/regole/api.ts";
+import type { Combattimento, DettaglioParty, MessaggiParty, VoceDiario } from "@dnd/regole/api.ts";
 import { costruisciApp } from "../src/app.ts";
 import { creaUtente } from "../src/accesso.ts";
 import { normalizzaCodice, nuovoCodice } from "../src/party.ts";
@@ -80,7 +80,7 @@ describe("party: creazione e ingresso", () => {
     expect(dalMaster.codice).toBe(codice);
 
     expect((await chiama("giocatore", "GET", "/api/party")).json()).toEqual([
-      { id: partyId, nome: "La Compagnia", ruolo: "giocatore", personaggio: { id: pg, nome: "Bruenor" }, membri: 2, nonLetti: 0 },
+      { id: partyId, nome: "La Compagnia", ruolo: "giocatore", personaggio: { id: pg, nome: "Bruenor" }, membri: 2, nonLetti: 0, combattimento: null },
     ]);
     const elenco = (await chiama("giocatore", "GET", "/api/personaggi")).json();
     expect(elenco[0].party).toEqual({ id: partyId, nome: "La Compagnia" });
@@ -374,6 +374,78 @@ describe("party: diario", () => {
     const r = await a.inject({ method: "POST", url: "/api/registrazione", payload: { username: "estraneo", password: "segretissima" } });
     const estraneo = cookieDa(r.headers["set-cookie"]);
     expect((await a.inject({ method: "GET", url, headers: { cookie: estraneo } })).statusCode).toBe(404);
+  });
+});
+
+describe("party: iniziativa", () => {
+  async function scontro() {
+    const t = await tavolo("master", "uno", "due");
+    const { id: partyId, codice } = await t.party("master");
+    const bruenor = await t.personaggio("uno", "Bruenor");
+    await t.chiama("uno", "POST", "/api/party/entra", { codice, personaggioId: bruenor });
+    await t.chiama("due", "POST", "/api/party/entra", { codice, personaggioId: await t.personaggio("due", "Drizzt") });
+    const url = `/api/party/${partyId}/combattimento`;
+    const stato = async (utente: string) => (await t.chiama(utente, "GET", url)).json() as Combattimento;
+    return { ...t, partyId, url, stato, bruenor };
+  }
+
+  it("il Master avvia, i giocatori inseriscono l'iniziativa (bonus dalla scheda), le voci nascoste le vede solo il Master", async () => {
+    const { chiama, url, stato, bruenor } = await scontro();
+    expect(await stato("uno")).toEqual({ attivo: false, round: 0, diTurno: null, voci: [] });
+    expect((await chiama("uno", "PUT", `${url}/mio`, { valore: 14 })).statusCode).toBe(409); // nessuno scontro
+    expect((await chiama("uno", "POST", url)).statusCode).toBe(403);
+    expect((await chiama("master", "POST", url)).statusCode).toBe(204);
+
+    expect((await chiama("uno", "PUT", `${url}/mio`, { valore: 14 })).statusCode).toBe(204);
+    expect((await chiama("due", "PUT", `${url}/mio`, { valore: 9 })).statusCode).toBe(204);
+    expect((await chiama("uno", "PUT", `${url}/mio`, { valore: 16 })).statusCode).toBe(204); // si può correggere
+    expect((await chiama("master", "PUT", `${url}/mio`, { valore: 16 })).statusCode).toBe(400);
+    expect((await chiama("master", "POST", `${url}/voci`, { nome: "Goblin", valore: 12, bonus: 2 })).statusCode).toBe(201);
+    expect((await chiama("master", "POST", `${url}/voci`, { nome: "Assassino", valore: 20, nascosto: true })).statusCode).toBe(201);
+    expect((await chiama("uno", "POST", `${url}/voci`, { nome: "Drago", valore: 30 })).statusCode).toBe(403);
+    expect((await chiama("master", "POST", `${url}/voci`, { nome: "", valore: 30 })).statusCode).toBe(400);
+
+    const master = await stato("master");
+    expect(master.voci.map(v => [v.nome, v.valore])).toEqual([["Assassino", 20], ["Bruenor", 16], ["Goblin", 12], ["Drizzt", 9]]);
+    const desDiAlston = Math.floor((INITIAL_CHARACTER.caratteristiche.DES.valore - 10) / 2);
+    expect(master.voci[1]).toMatchObject({ personaggioId: bruenor, bonus: desDiAlston });
+    expect((await stato("due")).voci.map(v => v.nome)).toEqual(["Bruenor", "Goblin", "Drizzt"]);
+  });
+
+  it("il Master avanza i turni e i round; tuoTurno compare nell'elenco dei party; termina cancella tutto", async () => {
+    const { chiama, url, stato } = await scontro();
+    await chiama("master", "POST", url);
+    await chiama("uno", "PUT", `${url}/mio`, { valore: 15 });
+    await chiama("due", "PUT", `${url}/mio`, { valore: 10 });
+    const nascosto = (await chiama("master", "POST", `${url}/voci`, { nome: "Ombra", valore: 5, nascosto: true })).json().id;
+
+    expect((await chiama("uno", "POST", `${url}/avanza`, { direzione: 1 })).statusCode).toBe(403);
+    expect((await chiama("master", "POST", `${url}/avanza`, { direzione: 2 })).statusCode).toBe(400);
+    await chiama("master", "POST", `${url}/avanza`, { direzione: 1 });
+    const primo = await stato("uno");
+    expect(primo.voci.find(v => v.id === primo.diTurno)?.nome).toBe("Bruenor");
+    expect((await chiama("uno", "GET", "/api/party")).json()[0].combattimento).toEqual({ round: 1, tuoTurno: true });
+    expect((await chiama("due", "GET", "/api/party")).json()[0].combattimento).toEqual({ round: 1, tuoTurno: false });
+
+    await chiama("master", "POST", `${url}/avanza`, { direzione: 1 }); // Drizzt
+    await chiama("master", "POST", `${url}/avanza`, { direzione: 1 }); // Ombra (nascosta)
+    expect((await stato("uno")).diTurno).toBeNull(); // i giocatori non vedono di chi è il turno
+    expect((await stato("master")).diTurno).toBe(nascosto);
+    await chiama("master", "POST", `${url}/avanza`, { direzione: 1 });
+    expect(await stato("due")).toMatchObject({ round: 2 });
+
+    // Il Master mostra la voce nascosta e la toglie.
+    expect((await chiama("master", "PUT", `${url}/voci/${nascosto}`, { nascosto: false })).statusCode).toBe(204);
+    expect((await stato("uno")).voci.map(v => v.nome)).toContain("Ombra");
+    expect((await chiama("master", "DELETE", `${url}/voci/${nascosto}`)).statusCode).toBe(204);
+    expect((await chiama("master", "DELETE", `${url}/voci/${nascosto}`)).statusCode).toBe(404);
+
+    expect((await chiama("master", "DELETE", url)).statusCode).toBe(204);
+    expect((await stato("uno")).attivo).toBe(false);
+    expect((await chiama("uno", "GET", "/api/party")).json()[0].combattimento).toBeNull();
+    // Un nuovo scontro parte senza le voci del precedente.
+    await chiama("master", "POST", url);
+    expect((await stato("master")).voci).toEqual([]);
   });
 });
 

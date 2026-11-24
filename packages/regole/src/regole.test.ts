@@ -12,7 +12,7 @@ import {
   sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot, incantesimiSottoclasseMancanti, aggiungiIncantesimi,
   PROVVISTE_COMUNI, cambiaQuantita, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, dotazioneScomponibile, scomponiDotazione,
   applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
-  applicaSalita, aumentiDa, xpDelLivello, esitoTiroCondiviso,
+  applicaSalita, aumentiDa, xpDelLivello, esitoTiroCondiviso, ordineIniziativa, avanzaTurno,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { calcolaDanno, difeseDelPersonaggio, haSchivataProdigiosa, tipoDanno, type Difesa } from "./dati/danni";
@@ -1496,5 +1496,30 @@ describe("tiri condivisi nel party", () => {
       dadi: [{ etichetta: "Totale", facce: 12 }], tiri: [9], totale: 12,
     });
     expect(esitoTiroCondiviso({ ...danni, bonus: -5 }, { tiri: [1, 1], modalita: "normale" }).totale).toBe(0);
+  });
+});
+
+describe("iniziativa", () => {
+  const voci = [
+    { id: 1, nome: "Goblin", valore: 12, bonus: 2 },
+    { id: 2, nome: "Bruenor", valore: 15, bonus: 0 },
+    { id: 3, nome: "Alston", valore: 12, bonus: 3 },
+    { id: 4, nome: "Bugbear", valore: 12, bonus: 2 },
+  ];
+
+  it("ordina per iniziativa, poi per modificatore, poi per nome", () => {
+    expect(ordineIniziativa(voci).map(v => v.nome)).toEqual(["Bruenor", "Alston", "Bugbear", "Goblin"]);
+    expect(voci[0].nome).toBe("Goblin"); // non modifica l'originale
+  });
+
+  it("avanza il turno e cambia round passando dall'ultimo al primo; indietro non va sotto il round 1", () => {
+    const ordine = ordineIniziativa(voci);
+    expect(avanzaTurno(ordine, null, 1, 1)).toEqual({ diTurno: 2, round: 1 });
+    expect(avanzaTurno(ordine, 2, 1, 1)).toEqual({ diTurno: 3, round: 1 });
+    expect(avanzaTurno(ordine, 1, 1, 1)).toEqual({ diTurno: 2, round: 2 });
+    expect(avanzaTurno(ordine, 2, 2, -1)).toEqual({ diTurno: 1, round: 1 });
+    expect(avanzaTurno(ordine, 2, 1, -1)).toEqual({ diTurno: 2, round: 1 });
+    expect(avanzaTurno(ordine, 99, 3, 1)).toEqual({ diTurno: 2, round: 3 });
+    expect(avanzaTurno([], 2, 1, 1)).toEqual({ diTurno: null, round: 1 });
   });
 });
