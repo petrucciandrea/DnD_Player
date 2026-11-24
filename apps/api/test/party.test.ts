@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { INITIAL_CHARACTER } from "@dnd/regole/dati/alston.ts";
-import type { DettaglioParty, MessaggiParty } from "@dnd/regole/api.ts";
+import type { DettaglioParty, MessaggiParty, VoceDiario } from "@dnd/regole/api.ts";
 import { costruisciApp } from "../src/app.ts";
 import { creaUtente } from "../src/accesso.ts";
 import { normalizzaCodice, nuovoCodice } from "../src/party.ts";
@@ -308,6 +308,72 @@ describe("party: chat", () => {
     expect((await chiama("uno", "GET", `/api/party/${partyId}/messaggi`)).statusCode).toBe(404);
     expect((await scrivi("uno", "Ci sono ancora?")).statusCode).toBe(404);
     expect((await leggi("due")).messaggi[0]).toMatchObject({ autore: "uno", ruoloAutore: null });
+  });
+});
+
+describe("party: diario", () => {
+  async function partyConDiario() {
+    const t = await tavolo("master", "uno", "due");
+    const { id: partyId, codice } = await t.party("master");
+    await t.chiama("uno", "POST", "/api/party/entra", { codice, personaggioId: await t.personaggio("uno", "Bruenor") });
+    await t.chiama("due", "POST", "/api/party/entra", { codice, personaggioId: await t.personaggio("due", "Drizzt") });
+    const url = `/api/party/${partyId}/diario`;
+    const voce = { titolo: "Sessione 1", testo: "Arrivo a Phandalin", categoria: "sessione" };
+    return { ...t, partyId, url, voce };
+  }
+
+  it("tutti scrivono e leggono; le voci fissate (solo dal Master) vengono prima", async () => {
+    const { chiama, url, voce, partyId } = await partyConDiario();
+    const prima = await chiama("uno", "POST", url, voce);
+    expect(prima.statusCode).toBe(201);
+    expect(prima.json()).toMatchObject({ ...voce, fissata: false, autore: "Bruenor", aggiornatoDa: "Bruenor", revisione: 1 });
+    expect((await chiama("uno", "POST", url, { ...voce, fissata: true })).statusCode).toBe(403);
+    const fissata = await chiama("master", "POST", url, { titolo: "Regole della casa", testo: "", categoria: "altro", fissata: true });
+    expect(fissata.json()).toMatchObject({ fissata: true, autore: "Master" });
+    await chiama("due", "POST", url, { titolo: "Sildar", testo: "Cavaliere", categoria: "png" });
+
+    expect((await chiama("due", "GET", url)).json().map((v: VoceDiario) => v.titolo)).toEqual(["Regole della casa", "Sildar", "Sessione 1"]);
+    const versione = (await chiama("uno", "GET", `/api/party/${partyId}`)).json().diarioVersione;
+    expect(versione).toMatch(/^3:/);
+  });
+
+  it("voci non valide: 400", async () => {
+    const { chiama, url, voce } = await partyConDiario();
+    expect((await chiama("uno", "POST", url, { ...voce, titolo: " " })).statusCode).toBe(400);
+    expect((await chiama("uno", "POST", url, { ...voce, categoria: "mostro" })).statusCode).toBe(400);
+    expect((await chiama("uno", "POST", url, { ...voce, testo: "x".repeat(20_001) })).statusCode).toBe(400);
+  });
+
+  it("la modifica usa la revisione: 409 con la versione attuale; solo il Master cambia la fissata", async () => {
+    const { chiama, url, voce } = await partyConDiario();
+    const creata = (await chiama("uno", "POST", url, voce)).json() as VoceDiario;
+    const modificata = await chiama("due", "PUT", `${url}/${creata.id}`, { ...voce, testo: "Goblin sulla strada", revisione: 1 });
+    expect(modificata.statusCode).toBe(200);
+    expect(modificata.json()).toMatchObject({ testo: "Goblin sulla strada", revisione: 2, autore: "Bruenor", aggiornatoDa: "Drizzt" });
+
+    const tardiva = await chiama("uno", "PUT", `${url}/${creata.id}`, { ...voce, testo: "Versione vecchia", revisione: 1 });
+    expect(tardiva.statusCode).toBe(409);
+    expect(tardiva.json()).toMatchObject({ testo: "Goblin sulla strada", revisione: 2 });
+
+    expect((await chiama("uno", "PUT", `${url}/${creata.id}`, { ...voce, fissata: true, revisione: 2 })).statusCode).toBe(403);
+    // La stessa fissata (nessun cambiamento) va bene anche per un giocatore.
+    expect((await chiama("uno", "PUT", `${url}/${creata.id}`, { ...voce, fissata: false, revisione: 2 })).statusCode).toBe(200);
+    expect((await chiama("master", "PUT", `${url}/${creata.id}`, { ...voce, fissata: true, revisione: 3 })).json().fissata).toBe(true);
+    expect((await chiama("uno", "PUT", `${url}/999`, { ...voce, revisione: 1 })).statusCode).toBe(404);
+  });
+
+  it("la cancella solo chi l'ha scritta o il Master; i non membri ricevono 404", async () => {
+    const { chiama, url, voce, app: a } = await partyConDiario();
+    const creata = (await chiama("uno", "POST", url, voce)).json() as VoceDiario;
+    const altra = (await chiama("uno", "POST", url, { ...voce, titolo: "Sessione 2" })).json() as VoceDiario;
+    expect((await chiama("due", "DELETE", `${url}/${creata.id}`)).statusCode).toBe(403);
+    expect((await chiama("uno", "DELETE", `${url}/${creata.id}`)).statusCode).toBe(204);
+    expect((await chiama("master", "DELETE", `${url}/${altra.id}`)).statusCode).toBe(204);
+    expect((await chiama("master", "DELETE", `${url}/${altra.id}`)).statusCode).toBe(404);
+
+    const r = await a.inject({ method: "POST", url: "/api/registrazione", payload: { username: "estraneo", password: "segretissima" } });
+    const estraneo = cookieDa(r.headers["set-cookie"]);
+    expect((await a.inject({ method: "GET", url, headers: { cookie: estraneo } })).statusCode).toBe(404);
   });
 });
 

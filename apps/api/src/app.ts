@@ -41,6 +41,10 @@ import { rotteSalute } from "./rotte/salute.ts";
 //   POST /party/:id/messaggi { testo, destinatarioId? } → { id }; destinatario: un altro membro (privato)
 //   POST /party/:id/messaggi { tiro, segreto? } → { id }; un tiro di dadi, segreto = solo al Master
 //   PUT  /party/:id/letto { con, fino }        → 204; segna letta la conversazione (con 0 = gruppo)
+//   GET  /party/:id/diario                     → voci del diario (prima le fissate)
+//   POST /party/:id/diario { titolo, testo, categoria, fissata? } → la voce; fissata solo dal Master (403)
+//   PUT  /party/:id/diario/:voce { …, revisione } → la voce, 409 con la versione attuale
+//   DELETE /party/:id/diario/:voce             → 204; solo l'autore o il Master (403)
 // Gli errori hanno sempre la forma { errore: "messaggio per l'utente" }.
 
 export interface OpzioniApp {

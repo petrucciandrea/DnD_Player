@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { cancellaVoce, creaVoce, datiVoceDa, modificaVoce, voceDiario, vociDiario } from "../diario.ts";
 import { corpoOggetto, ErroreRichiesta } from "../errori.ts";
 import { leggiMessaggi, LUNGHEZZA_MESSAGGIO, masterDel, scriviMessaggio, segnaLetto, tiroDa } from "../messaggi.ts";
 import { idDa, interoValido } from "../parametri.ts";
@@ -125,6 +126,53 @@ export async function rotteParty(app: FastifyInstance) {
     const { con, fino } = corpoOggetto(richiesta.body);
     if (!interoValido(con) || !idMessaggioValido(fino)) throw new ErroreRichiesta(400, "Servono con e fino");
     await segnaLetto(app.db, id, io, con, fino);
+    return risposta.status(204).send();
+  });
+
+  // Diario di campagna: tutti i membri leggono e scrivono, solo il Master fissa una voce in alto;
+  // una voce la cancellano chi l'ha scritta e il Master.
+  app.get<ConId>("/party/:id/diario", async richiesta => {
+    const id = idParty(richiesta.params.id);
+    await membroDi(app.db, id, utenteDi(richiesta).id);
+    return vociDiario(app.db, id);
+  });
+
+  app.post<ConId>("/party/:id/diario", async (richiesta, risposta) => {
+    const id = idParty(richiesta.params.id);
+    const io = utenteDi(richiesta).id;
+    const membro = await membroDi(app.db, id, io);
+    const dati = datiVoceDa(corpoOggetto(richiesta.body));
+    if (dati.fissata && membro.ruolo !== "master") throw new ErroreRichiesta(403, "Solo il Master può fissare una voce");
+    return risposta.status(201).send(await creaVoce(app.db, id, io, dati));
+  });
+
+  app.put<{ Params: { id: string; voce: string } }>("/party/:id/diario/:voce", async (richiesta, risposta) => {
+    const id = idParty(richiesta.params.id);
+    const io = utenteDi(richiesta).id;
+    const membro = await membroDi(app.db, id, io);
+    const vid = idDa(richiesta.params.voce, "Voce inesistente");
+    const corpo = corpoOggetto(richiesta.body);
+    const dati = datiVoceDa(corpo);
+    if (!interoValido(corpo.revisione)) throw new ErroreRichiesta(400, "Serve la revisione");
+    const attuale = await voceDiario(app.db, id, vid);
+    if (!attuale) throw new ErroreRichiesta(404, "Voce inesistente");
+    if (dati.fissata !== undefined && dati.fissata !== attuale.fissata && membro.ruolo !== "master") {
+      throw new ErroreRichiesta(403, "Solo il Master può fissare una voce");
+    }
+    const esito = await modificaVoce(app.db, id, vid, io, dati, corpo.revisione);
+    if (esito.ok) return esito.voce;
+    if (esito.attuale) return risposta.status(409).send(esito.attuale);
+    throw new ErroreRichiesta(404, "Voce inesistente");
+  });
+
+  app.delete<{ Params: { id: string; voce: string } }>("/party/:id/diario/:voce", async (richiesta, risposta) => {
+    const id = idParty(richiesta.params.id);
+    const io = utenteDi(richiesta).id;
+    const membro = await membroDi(app.db, id, io);
+    const voce = await voceDiario(app.db, id, idDa(richiesta.params.voce, "Voce inesistente"));
+    if (!voce) throw new ErroreRichiesta(404, "Voce inesistente");
+    if (voce.autoreId !== io && membro.ruolo !== "master") throw new ErroreRichiesta(403, "Può cancellarla solo chi l'ha scritta o il Master");
+    await cancellaVoce(app.db, id, voce.id);
     return risposta.status(204).send();
   });
 

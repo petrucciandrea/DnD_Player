@@ -66,6 +66,7 @@ export interface DettaglioParty {
   codice: string | null; // solo per il Master, già nella forma XXXX-XXXX
   membri: MembroParty[];
   io: { utenteId: number; ruolo: RuoloParty; personaggioId: number | null };
+  diarioVersione: string; // cambia a ogni voce aggiunta, modificata o tolta: il client ricarica il diario
 }
 
 // Tiro di dadi pubblicato nella chat del party.
@@ -97,4 +98,21 @@ export interface MessaggioParty {
 export interface MessaggiParty {
   messaggi: MessaggioParty[];
   letture: Record<number, number>;
+}
+
+export type CategoriaDiario = "sessione" | "png" | "luogo" | "missione" | "altro";
+
+// Voce del diario di campagna (GET /api/party/:id/diario).
+export interface VoceDiario {
+  id: number;
+  titolo: string;
+  testo: string;
+  categoria: CategoriaDiario;
+  fissata: boolean; // in alto, la sceglie il Master
+  autoreId: number | null;
+  autore: string; // nome nel party (personaggio, "Master" o username)
+  aggiornatoDa: string;
+  revisione: number;
+  creato: string; // ISO 8601
+  aggiornato: string;
 }

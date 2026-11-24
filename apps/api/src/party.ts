@@ -4,6 +4,7 @@ import { derivate } from "@dnd/regole/regole.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
 import { riga, righe, transazione, type Esecutore } from "./db.ts";
 import { ErroreRichiesta } from "./errori.ts";
+import { SQL_VERSIONE_DIARIO } from "./diario.ts";
 import { SQL_NON_LETTI } from "./messaggi.ts";
 import { componiMolti } from "./personaggi.ts";
 
@@ -124,7 +125,7 @@ export function riepilogoPersonaggio(id: number, c: CharacterData): RiepilogoPer
 
 export async function dettaglioParty(db: Esecutore, partyId: number, utenteId: number): Promise<DettaglioParty> {
   const membri = await righe(db, `
-    SELECT p.nome AS party_nome, p.codice, m.utente_id, u.username, m.ruolo, m.personaggio_id
+    SELECT p.nome AS party_nome, p.codice, ${SQL_VERSIONE_DIARIO} AS versione_diario, m.utente_id, u.username, m.ruolo, m.personaggio_id
     FROM party p JOIN party_membri m ON m.party_id = p.id JOIN utenti u ON u.id = m.utente_id
     WHERE p.id = $1 ORDER BY m.ruolo = 'master' DESC, m.entrato, m.utente_id`, [partyId]);
   const io = membri.find(r => Number(r.utente_id) === utenteId);
@@ -144,6 +145,7 @@ export async function dettaglioParty(db: Esecutore, partyId: number, utenteId: n
       };
     }),
     io: { utenteId, ruolo, personaggioId: io.personaggio_id === null ? null : Number(io.personaggio_id) },
+    diarioVersione: String(io.versione_diario),
   };
 }
 
