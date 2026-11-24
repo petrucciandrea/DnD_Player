@@ -1,5 +1,6 @@
 import type { MessaggiParty, MessaggioParty, RuoloParty, TiroCondiviso } from "@dnd/regole/api.ts";
 import { riga, righe, type Esecutore, type Riga } from "./db.ts";
+import { ErroreRichiesta } from "./errori.ts";
 
 // Chat del party. Un utente vede i messaggi di gruppo e i privati che ha scritto o ricevuto.
 // Il nome dell'autore si ricava in lettura (personaggio nel party, "Master" o username), non si copia nel messaggio.
@@ -73,3 +74,36 @@ export const SQL_NON_LETTI = `
       AND l.con_utente_id = CASE WHEN mm.destinatario_id IS NULL THEN 0 ELSE mm.autore_id END
     WHERE mm.party_id = p.id AND mm.autore_id <> $1 AND (mm.destinatario_id IS NULL OR mm.destinatario_id = $1)
       AND mm.id > coalesce(l.ultimo, 0))`;
+
+const MASSIMO_DADI = 40;
+const MODALITA = new Set(["normale", "vantaggio", "svantaggio"]);
+const intero = (v: unknown, min: number, max: number): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
+const testoBreve = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
+
+// Un tiro condiviso arriva dal client: se ne controlla la forma e si tengono solo i campi noti.
+export function tiroDa(v: unknown): TiroCondiviso {
+  const errore = () => new ErroreRichiesta(400, "Tiro non valido");
+  if (typeof v !== "object" || v === null || Array.isArray(v)) throw errore();
+  const t = v as Record<string, unknown>;
+  const { titolo, descrizione, dadi, tiri, modalita, bonus, totale, presagio } = t;
+  if (!testoBreve(titolo, 200) || !titolo.trim()) throw errore();
+  if (descrizione !== undefined && !testoBreve(descrizione, 500)) throw errore();
+  if (!Array.isArray(dadi) || dadi.length < 1 || dadi.length > MASSIMO_DADI) throw errore();
+  if (!Array.isArray(tiri) || tiri.length < 1 || tiri.length > MASSIMO_DADI || !tiri.every(n => intero(n, 0, 10_000))) throw errore();
+  const dadiPuliti = dadi.map(d => {
+    const x = (typeof d === "object" && d !== null ? d : {}) as Record<string, unknown>;
+    if (!testoBreve(x.etichetta, 60) || !intero(x.facce, 2, 1000)) throw errore();
+    return { etichetta: x.etichetta, facce: x.facce };
+  });
+  if (typeof modalita !== "string" || !MODALITA.has(modalita) || !intero(bonus, -100, 100) || !intero(totale, -1000, 100_000)) throw errore();
+  return {
+    titolo: titolo.trim(), ...(descrizione ? { descrizione } : {}), dadi: dadiPuliti, tiri: tiri as number[],
+    modalita: modalita as TiroCondiviso["modalita"], bonus, totale, ...(presagio === true ? { presagio: true } : {}),
+  };
+}
+
+// L'utente Master del party.
+export async function masterDel(db: Esecutore, partyId: number): Promise<number> {
+  const r = await riga(db, "SELECT utente_id FROM party_membri WHERE party_id = $1 AND ruolo = 'master'", [partyId]);
+  return Number(r!.utente_id);
+}

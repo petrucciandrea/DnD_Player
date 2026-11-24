@@ -109,3 +109,26 @@ export function useRichiestaTiro() {
 
   return { richiesta, chiediTiro, chiediD20, rispondi };
 }
+
+// Con il personaggio in un party, i tiri si possono pubblicare nella chat: a tutti o solo al Master.
+export type Condivisione = "no" | "gruppo" | "master";
+
+const CHIAVE_CONDIVISIONE = "dnd_condivisione_tiri";
+
+// L'ultima scelta si ricorda su questo dispositivo (solo una comodità: senza storage vale "gruppo").
+export function condivisioneSalvata(): Condivisione {
+  try {
+    const v = localStorage.getItem(CHIAVE_CONDIVISIONE);
+    return v === "no" || v === "master" ? v : "gruppo";
+  } catch {
+    return "gruppo";
+  }
+}
+
+export function salvaCondivisione(c: Condivisione) {
+  try {
+    localStorage.setItem(CHIAVE_CONDIVISIONE, c);
+  } catch {
+    // Storage non disponibile: la scelta vale solo per questa sessione.
+  }
+}

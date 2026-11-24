@@ -39,6 +39,7 @@ import { rotteSalute } from "./rotte/salute.ts";
 //   GET  /party/:id/personaggi/:personaggio    → scheda completa di un personaggio del party (Master)
 //   GET  /party/:id/messaggi?dopo=n | prima=n  → { messaggi (gruppo e privati dell'utente), letture }
 //   POST /party/:id/messaggi { testo, destinatarioId? } → { id }; destinatario: un altro membro (privato)
+//   POST /party/:id/messaggi { tiro, segreto? } → { id }; un tiro di dadi, segreto = solo al Master
 //   PUT  /party/:id/letto { con, fino }        → 204; segna letta la conversazione (con 0 = gruppo)
 // Gli errori hanno sempre la forma { errore: "messaggio per l'utente" }.
 

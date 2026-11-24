@@ -1,4 +1,5 @@
 // Regole D&D 5e (edizione 2014). Le regole delle singole classi stanno in dati/classi.ts.
+import type { TiroCondiviso } from "./api.ts";
 import type {
   Arma, ArmaPersonaggio, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, IncantesimoCatalogo, InventoryItem, Privilegio, PrivilegioClasse, Spell,
 } from "./tipi.ts";
@@ -443,6 +444,26 @@ export function esitoTsMorte(c: CharacterData, d20: number): CharacterData {
 
 // Il danno non scende mai sotto 0.
 export const totaleDanni = (tiri: number[], mod: number) => Math.max(0, tiri.reduce((a, b) => a + b, 0) + mod);
+
+// Tiro da pubblicare nella chat del party, dalla richiesta del dialogo e dai risultati.
+// Un d20 con vantaggio o svantaggio ha due dadi; se è stata inserita solo la somma resta un solo valore.
+export function esitoTiroCondiviso(
+  r: { titolo: string; descrizione?: string; dadi: { etichetta: string; facce: number }[]; bonus?: number; d20?: boolean },
+  risposta: { tiri: number[]; modalita: Modalita; presagio?: number },
+): TiroCondiviso {
+  const bonus = r.bonus ?? 0;
+  const presagio = risposta.presagio !== undefined;
+  const base = { titolo: r.titolo, ...(r.descrizione ? { descrizione: r.descrizione } : {}), tiri: risposta.tiri, bonus };
+  if (r.d20) {
+    const modalita = presagio ? "normale" : risposta.modalita;
+    const dadi = risposta.tiri.map((_, i) => ({ etichetta: risposta.tiri.length > 1 ? `${i + 1}° d20` : "d20", facce: 20 }));
+    return { ...base, dadi, modalita, totale: risultatoD20(risposta.tiri, modalita) + bonus, ...(presagio ? { presagio: true } : {}) };
+  }
+  const dadi = risposta.tiri.length === r.dadi.length
+    ? r.dadi
+    : [{ etichetta: "Totale", facce: r.dadi.reduce((acc, d) => acc + d.facce, 0) }];
+  return { ...base, dadi, modalita: "normale", totale: totaleDanni(risposta.tiri, bonus) };
+}
 
 // PF a ogni livello dal 2° in poi: il tiro del Dado Vita oppure la sua media (arrotondata per eccesso), + COS, almeno 1.
 // Un tiro fuori da 1–dadoVita vale come la media. Robustezza Nanica e Resilienza Draconica aggiungono 1 PF per livello.

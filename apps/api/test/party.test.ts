@@ -273,6 +273,34 @@ describe("party: chat", () => {
     expect((await chiama("due", "PUT", `/api/party/${partyId}/letto`, { con: -1, fino: 1 })).statusCode).toBe(400);
   });
 
+  it("tiri condivisi: al gruppo o segreti al Master; un tiro malformato è rifiutato", async () => {
+    const { chiama, leggi, partyId, id } = await partyConTre();
+    const tiro = {
+      titolo: "Attacco: Ascia", dadi: [{ etichetta: "1° d20", facce: 20 }, { etichetta: "2° d20", facce: 20 }],
+      tiri: [7, 16], modalita: "vantaggio", bonus: 5, totale: 21, extra: "ignorato",
+    };
+    const url = `/api/party/${partyId}/messaggi`;
+    expect((await chiama("uno", "POST", url, { tiro })).statusCode).toBe(201);
+    expect((await chiama("uno", "POST", url, { tiro: { ...tiro, titolo: "Inganno" }, segreto: true })).statusCode).toBe(201);
+
+    const visti = (await leggi("due")).messaggi;
+    expect(visti).toHaveLength(1);
+    expect(visti[0]).toMatchObject({ tipo: "tiro", testo: "", destinatarioId: null });
+    expect(visti[0].tiro).toEqual({
+      titolo: "Attacco: Ascia", dadi: tiro.dadi, tiri: [7, 16], modalita: "vantaggio", bonus: 5, totale: 21,
+    });
+    const delMaster = (await leggi("master")).messaggi;
+    expect(delMaster.map(m => [m.tiro?.titolo, m.destinatarioId])).toEqual([["Attacco: Ascia", null], ["Inganno", id.master]]);
+
+    for (const sbagliato of [
+      { ...tiro, tiri: [] }, { ...tiro, tiri: [1.5] }, { ...tiro, modalita: "doppio" }, { ...tiro, titolo: "" },
+      { ...tiro, dadi: Array.from({ length: 41 }, () => ({ etichetta: "d6", facce: 6 })) }, "tiro",
+    ]) {
+      expect((await chiama("uno", "POST", url, { tiro: sbagliato })).statusCode).toBe(400);
+    }
+    expect((await chiama("master", "POST", url, { tiro, segreto: true })).statusCode).toBe(400);
+  });
+
   it("chi esce dal party non legge né scrive più; i suoi messaggi restano con lo username", async () => {
     const { scrivi, leggi, chiama, partyId, id } = await partyConTre();
     await scrivi("uno", "Me ne vado");

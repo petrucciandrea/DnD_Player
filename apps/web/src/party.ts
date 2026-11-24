@@ -1,4 +1,4 @@
-import type { DettaglioParty, MessaggiParty, RiassuntoParty } from "@dnd/regole/api.ts";
+import type { DettaglioParty, MessaggiParty, RiassuntoParty, TiroCondiviso } from "@dnd/regole/api.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
 import { erroreDa, IRRAGGIUNGIBILE } from "./accesso";
 
@@ -44,3 +44,5 @@ export const leggiMessaggi = (id: number, cursore: { dopo?: number; prima?: numb
 export const inviaMessaggio = (id: number, testo: string, destinatarioId: number | null) =>
   chiamata<{ id: number }>("POST", `/${id}/messaggi`, { testo, ...(destinatarioId !== null ? { destinatarioId } : {}) });
 export const segnaLetto = (id: number, con: number, fino: number) => chiamata<null>("PUT", `/${id}/letto`, { con, fino });
+export const inviaTiro = (id: number, tiro: TiroCondiviso, segreto: boolean) =>
+  chiamata<{ id: number }>("POST", `/${id}/messaggi`, { tiro, segreto });

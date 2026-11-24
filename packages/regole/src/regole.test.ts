@@ -12,7 +12,7 @@ import {
   sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot, incantesimiSottoclasseMancanti, aggiungiIncantesimi,
   PROVVISTE_COMUNI, cambiaQuantita, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, dotazioneScomponibile, scomponiDotazione,
   applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
-  applicaSalita, aumentiDa, xpDelLivello,
+  applicaSalita, aumentiDa, xpDelLivello, esitoTiroCondiviso,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { calcolaDanno, difeseDelPersonaggio, haSchivataProdigiosa, tipoDanno, type Difesa } from "./dati/danni";
@@ -1466,5 +1466,35 @@ describe("danni subiti: resistenze, immunità e vulnerabilità", () => {
       { tipo: "resistenza", danno: "fuoco", nota: "Anello" },
       { tipo: "immunita", danno: "veleno", nota: "" },
     ]);
+  });
+});
+
+describe("tiri condivisi nel party", () => {
+  const d20 = { titolo: "Attacco: Pugnale", dadi: [{ etichetta: "Risultato", facce: 20 }], bonus: 5, d20: true };
+
+  it("d20 normale, con vantaggio e con svantaggio: conta il dado giusto più il bonus", () => {
+    expect(esitoTiroCondiviso(d20, { tiri: [12], modalita: "normale" })).toEqual({
+      titolo: "Attacco: Pugnale", dadi: [{ etichetta: "d20", facce: 20 }], tiri: [12], modalita: "normale", bonus: 5, totale: 17,
+    });
+    const vantaggio = esitoTiroCondiviso(d20, { tiri: [4, 15], modalita: "vantaggio" });
+    expect(vantaggio.dadi).toEqual([{ etichetta: "1° d20", facce: 20 }, { etichetta: "2° d20", facce: 20 }]);
+    expect(vantaggio.totale).toBe(20);
+    expect(esitoTiroCondiviso(d20, { tiri: [4, 15], modalita: "svantaggio" }).totale).toBe(9);
+  });
+
+  it("il Presagio sostituisce il d20: modalità normale e segnato", () => {
+    const t = esitoTiroCondiviso(d20, { tiri: [18], modalita: "vantaggio", presagio: 0 });
+    expect(t).toMatchObject({ tiri: [18], modalita: "normale", totale: 23, presagio: true });
+  });
+
+  it("danni: somma dei dadi più il modificatore, mai sotto zero; con la sola somma un dado 'Totale'", () => {
+    const danni = { titolo: "Danni", descrizione: "2d6 + 3 danni taglienti", dadi: [{ etichetta: "1° dado", facce: 6 }, { etichetta: "2° dado", facce: 6 }], bonus: 3 };
+    expect(esitoTiroCondiviso(danni, { tiri: [2, 5], modalita: "normale" })).toMatchObject({
+      descrizione: "2d6 + 3 danni taglienti", dadi: danni.dadi, totale: 10,
+    });
+    expect(esitoTiroCondiviso(danni, { tiri: [9], modalita: "normale" })).toMatchObject({
+      dadi: [{ etichetta: "Totale", facce: 12 }], tiri: [9], totale: 12,
+    });
+    expect(esitoTiroCondiviso({ ...danni, bonus: -5 }, { tiri: [1, 1], modalita: "normale" }).totale).toBe(0);
   });
 });

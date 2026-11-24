@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { corpoOggetto, ErroreRichiesta } from "../errori.ts";
-import { leggiMessaggi, LUNGHEZZA_MESSAGGIO, scriviMessaggio, segnaLetto } from "../messaggi.ts";
+import { leggiMessaggi, LUNGHEZZA_MESSAGGIO, masterDel, scriviMessaggio, segnaLetto, tiroDa } from "../messaggi.ts";
 import { idDa, interoValido } from "../parametri.ts";
 import {
   creaParty, dettaglioParty, elencoParty, eMembro, entraNelParty, LUNGHEZZA_NOME, membroDi, personaggioNelParty, richiediMaster,
@@ -100,8 +100,15 @@ export async function rotteParty(app: FastifyInstance) {
   app.post<ConId>("/party/:id/messaggi", { config: { rateLimit: LIMITE_MESSAGGI } }, async (richiesta, risposta) => {
     const id = idParty(richiesta.params.id);
     const io = utenteDi(richiesta).id;
-    await membroDi(app.db, id, io);
+    const membro = await membroDi(app.db, id, io);
     const corpo = corpoOggetto(richiesta.body);
+    // Un tiro di dadi: a tutto il gruppo, oppure segreto (solo al Master) se lo fa un giocatore.
+    if (corpo.tiro !== undefined) {
+      const tiro = tiroDa(corpo.tiro);
+      if (corpo.segreto === true && membro.ruolo === "master") throw new ErroreRichiesta(400, "Il Master non può mandare un tiro segreto a sé stesso");
+      const destinatarioId = corpo.segreto === true ? await masterDel(app.db, id) : null;
+      return risposta.status(201).send({ id: await scriviMessaggio(app.db, id, io, { testo: "", destinatarioId, tiro }) });
+    }
     const testo = typeof corpo.testo === "string" ? corpo.testo.trim() : "";
     if (testo.length < 1 || testo.length > LUNGHEZZA_MESSAGGIO) {
       throw new ErroreRichiesta(400, `Il messaggio deve avere da 1 a ${LUNGHEZZA_MESSAGGIO} caratteri`);

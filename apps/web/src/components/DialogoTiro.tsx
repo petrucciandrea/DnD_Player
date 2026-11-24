@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Dices, Eye, X } from "lucide-react";
-import type { Dado, RichiestaTiro, RispostaTiro } from "../tiroDadi";
+import { Dices, Eye, Lock, MessagesSquare, X } from "lucide-react";
+import type { Condivisione, Dado, RichiestaTiro, RispostaTiro } from "../tiroDadi";
 import type { Modalita } from "@dnd/regole/regole.ts";
 import { segno, tiraD } from "@dnd/regole/regole.ts";
 
@@ -8,7 +8,15 @@ interface Props {
   richiesta: RichiestaTiro;
   presagio?: { indice: number; valore: number }[]; // dadi del Presagio ancora disponibili
   onRisposta: (risposta: RispostaTiro | null) => void;
+  // Solo con il personaggio in un party: dove pubblicare il risultato nella chat.
+  condivisione?: { scelta: Condivisione; onScelta: (c: Condivisione) => void };
 }
+
+const CONDIVISIONI: { id: Condivisione; label: string }[] = [
+  { id: "no", label: "No" },
+  { id: "gruppo", label: "Gruppo" },
+  { id: "master", label: "Solo Master" },
+];
 
 const MODALITA: { id: Modalita; label: string }[] = [
   { id: "normale", label: "Normale" },
@@ -16,7 +24,7 @@ const MODALITA: { id: Modalita; label: string }[] = [
   { id: "svantaggio", label: "Svantaggio" },
 ];
 
-export default function DialogoTiro({ richiesta, presagio = [], onRisposta }: Props) {
+export default function DialogoTiro({ richiesta, presagio = [], onRisposta, condivisione }: Props) {
   const [modalita, setModalita] = useState<Modalita>(richiesta.modalita ?? "normale");
   const [valori, setValori] = useState<string[]>([]);
   const [totale, setTotale] = useState("");
@@ -121,6 +129,28 @@ export default function DialogoTiro({ richiesta, presagio = [], onRisposta }: Pr
                   className="px-3 py-1.5 rounded-lg border border-indigo-500 bg-indigo-950/80 hover:border-indigo-300 text-indigo-100 font-mono font-black"
                 >
                   {p.valore}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {condivisione && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 flex items-center gap-1 shrink-0">
+              <MessagesSquare className="w-3.5 h-3.5" /> Condividi
+            </span>
+            <div className="flex-1 grid grid-cols-3 gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800">
+              {CONDIVISIONI.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => condivisione.onScelta(c.id)}
+                  className={`py-1 rounded-lg text-[11px] font-semibold transition flex items-center justify-center gap-1 ${
+                    condivisione.scelta === c.id ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {c.id === "master" && <Lock className="w-3 h-3" />} {c.label}
                 </button>
               ))}
             </div>

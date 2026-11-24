@@ -7,7 +7,7 @@ import {
 import type { RiassuntoParty } from "@dnd/regole/api.ts";
 import type { CharacterData, EsitoRiposoBreve } from "@dnd/regole/tipi.ts";
 import {
-  applicaCura, applicaDanno, cdConcentrazione, derivate, riposoBreve, riposoLungo, segno, usaPresagio,
+  applicaCura, applicaDanno, cdConcentrazione, derivate, esitoTiroCondiviso, riposoBreve, riposoLungo, segno, usaPresagio,
 } from "@dnd/regole/regole.ts";
 import {
   carica, ricordaUltimoPersonaggio, salva, salvaRiferimento, scaricaDalServer, ultimoPersonaggio,
@@ -20,9 +20,11 @@ import SchermataPersonaggi from "./components/SchermataPersonaggi";
 import SchermataCreazione from "./components/SchermataCreazione";
 import FinestraAccount from "./components/FinestraAccount";
 import SchermataParty from "./components/SchermataParty";
-import { elencoParty } from "./party";
+import { elencoParty, inviaTiro } from "./party";
 import { usePolling } from "./usePolling";
-import { conSuggerimento, useRichiestaTiro, type RispostaTiro } from "./tiroDadi";
+import {
+  condivisioneSalvata, conSuggerimento, salvaCondivisione, useRichiestaTiro, type Condivisione, type RispostaTiro,
+} from "./tiroDadi";
 import { condizione, effetto } from "@dnd/regole/dati/condizioni.ts";
 import DialogoTiro from "./components/DialogoTiro";
 import Avatar from "./components/Avatar";
@@ -259,10 +261,23 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty,
   const d = derivate(char);
   const { combattimento: pf } = char;
 
+  // Dove pubblicare i tiri nella chat del party (se il personaggio è in un party).
+  const [condivisione, setCondivisione] = useState<Condivisione>(condivisioneSalvata);
+  const scegliCondivisione = (c: Condivisione) => {
+    setCondivisione(c);
+    salvaCondivisione(c);
+  };
+
   // Un dado del Presagio scelto nel dialogo del tiro risulta usato.
   const rispondiTiro = (risposta: RispostaTiro | null) => {
     const indice = risposta?.presagio;
     if (indice !== undefined) setChar(prev => usaPresagio(prev, indice));
+    if (risposta && richiesta && mioParty && condivisione !== "no") {
+      const tiro = esitoTiroCondiviso(richiesta, risposta);
+      void inviaTiro(mioParty.id, tiro, condivisione === "master").then(esito => {
+        if (esito !== "sessione scaduta" && "errore" in esito) setMessaggio(`Tiro non condiviso: ${esito.errore}`);
+      });
+    }
     rispondi(risposta);
   };
 
@@ -592,7 +607,15 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty,
           onAnnulla={() => setRiposoBreveAperto(false)}
         />
       )}
-      {richiesta && <DialogoTiro key={richiesta.id} richiesta={richiesta} presagio={d.presagioDisponibile} onRisposta={rispondiTiro} />}
+      {richiesta && (
+        <DialogoTiro
+          key={richiesta.id}
+          richiesta={richiesta}
+          presagio={d.presagioDisponibile}
+          onRisposta={rispondiTiro}
+          condivisione={mioParty ? { scelta: condivisione, onScelta: scegliCondivisione } : undefined}
+        />
+      )}
     </div>
   );
 }

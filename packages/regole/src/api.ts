@@ -77,6 +77,7 @@ export interface TiroCondiviso {
   modalita: Modalita;
   bonus: number;
   totale: number;
+  presagio?: boolean; // il d20 è un dado del Presagio
 }
 
 export interface MessaggioParty {

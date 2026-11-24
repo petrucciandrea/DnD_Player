@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Crown, Lock, LoaderCircle, MessagesSquare, Send } from "lucide-react";
+import { Crown, Dices, Eye, Lock, LoaderCircle, MessagesSquare, Send } from "lucide-react";
+import { segno } from "@dnd/regole/regole.ts";
 import type { MembroParty, MessaggioParty } from "@dnd/regole/api.ts";
 import { conversazioneDi, nonLettiPer, type Chat } from "../messaggi";
 
@@ -139,10 +140,58 @@ function Fumetto({ m, mio, conNome }: { m: MessaggioParty; mio: boolean; conNome
       {conNome && !mio && (
         <span className={`text-[11px] font-semibold px-1 ${m.ruoloAutore === "master" ? "text-amber-300" : "text-indigo-300"}`}>{m.autore}</span>
       )}
-      <div className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-sm whitespace-pre-wrap break-words ${mio
+      {m.tiro ? <CartaTiro m={m} mio={mio} /> : <div className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-sm whitespace-pre-wrap break-words ${mio
         ? "bg-indigo-600 text-white rounded-br-sm" : "bg-slate-800 text-slate-100 rounded-bl-sm"}`}>
         {m.testo}
         <span className={`ml-2 text-[10px] align-bottom ${mio ? "text-indigo-200/80" : "text-slate-500"}`}>{orario(m.creato)}</span>
+      </div>}
+    </div>
+  );
+}
+
+const ETICHETTE_MODALITA = { normale: null, vantaggio: "Vantaggio", svantaggio: "Svantaggio" } as const;
+
+// Un tiro di dadi pubblicato: dadi, modalità, bonus e il totale in grande. Segreto se è privato (solo al Master).
+function CartaTiro({ m, mio }: { m: MessaggioParty; mio: boolean }) {
+  const t = m.tiro!;
+  const modalita = ETICHETTE_MODALITA[t.modalita];
+  // Con vantaggio o svantaggio uno dei due d20 non conta.
+  const scartato = modalita ? t.tiri.indexOf(t.modalita === "vantaggio" ? Math.min(...t.tiri) : Math.max(...t.tiri)) : -1;
+  const critico = t.dadi.every(d => d.facce === 20) && t.totale - t.bonus === 20;
+  const fallimento = t.dadi.every(d => d.facce === 20) && t.totale - t.bonus === 1;
+  return (
+    <div className={`w-64 max-w-[85%] rounded-2xl border px-3 py-2 space-y-1.5 ${mio ? "bg-indigo-950/60 border-indigo-500/40" : "bg-slate-800/80 border-slate-700"}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-sm font-bold text-slate-100 flex items-center gap-1.5 min-w-0">
+          <Dices className="w-4 h-4 text-amber-400 shrink-0" /> <span className="truncate">{t.titolo}</span>
+        </div>
+        <span className="text-[10px] text-slate-500 shrink-0">{orario(m.creato)}</span>
+      </div>
+      {t.descrizione && <p className="text-[11px] text-slate-400">{t.descrizione}</p>}
+      <div className="flex items-end justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1 text-xs">
+          {t.tiri.map((n, i) => (
+            <span key={i} title={t.dadi[i] ? `d${t.dadi[i].facce}` : undefined}
+              className={`px-1.5 py-0.5 rounded-md border font-mono ${i === scartato ? "border-slate-700 text-slate-500 line-through" : "border-slate-600 text-slate-200"}`}>
+              {n}
+            </span>
+          ))}
+          {t.bonus !== 0 && <span className="text-slate-400 font-mono">{segno(t.bonus)}</span>}
+        </div>
+        <div className={`text-3xl font-black leading-none ${critico ? "text-emerald-400" : fallimento ? "text-rose-400" : "text-white"}`}>{t.totale}</div>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {modalita && (
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${t.modalita === "vantaggio" ? "bg-emerald-600/20 text-emerald-300" : "bg-rose-600/20 text-rose-300"}`}>
+            {modalita}
+          </span>
+        )}
+        {t.presagio && <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-600/20 text-indigo-300 flex items-center gap-1"><Eye className="w-3 h-3" /> Presagio</span>}
+        {critico && <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-600/20 text-emerald-300">20 naturale</span>}
+        {fallimento && <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-600/20 text-rose-300">1 naturale</span>}
+        {m.destinatarioId !== null && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-600/20 text-amber-300 flex items-center gap-1"><Lock className="w-3 h-3" /> Segreto</span>
+        )}
       </div>
     </div>
   );
