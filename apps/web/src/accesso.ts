@@ -11,10 +11,10 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 const utenteDa = (v: unknown): Utente | null =>
   isObj(v) && typeof v.id === "number" && typeof v.username === "string" ? { id: v.id, username: v.username } : null;
 
-const erroreDa = (corpo: unknown, predefinito: string) =>
+export const erroreDa = (corpo: unknown, predefinito: string) =>
   isObj(corpo) && typeof corpo.errore === "string" ? corpo.errore : predefinito;
 
-const IRRAGGIUNGIBILE = "Archivio non raggiungibile: controlla la connessione e riprova.";
+export const IRRAGGIUNGIBILE = "Archivio non raggiungibile: controlla la connessione e riprova.";
 
 // Il server gratuito si spegne dopo un periodo di inattività e si riaccende alla prima richiesta
 // (circa 30-60 s). Nel frattempo il proxy può rispondere con un errore temporaneo: si riprova.

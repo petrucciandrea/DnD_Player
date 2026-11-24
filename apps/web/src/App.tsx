@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState, useRef, type ChangeEvent } f
 import {
   Sparkles, RefreshCw, BookOpen, Backpack, Scroll, Award,
   Download, Upload, Users, Heart, Star, X, Coffee, Brain, Cloud, CloudCheck, CloudOff, CloudUpload, LoaderCircle, LogOut, UserCog,
-  NotebookPen,
+  NotebookPen, UsersRound,
 } from "lucide-react";
+import type { RiassuntoParty } from "@dnd/regole/api.ts";
 import type { CharacterData, EsitoRiposoBreve } from "@dnd/regole/tipi.ts";
 import {
   applicaCura, applicaDanno, cdConcentrazione, derivate, riposoBreve, riposoLungo, segno, usaPresagio,
@@ -18,6 +19,9 @@ import SchermataAccesso from "./components/SchermataAccesso";
 import SchermataPersonaggi from "./components/SchermataPersonaggi";
 import SchermataCreazione from "./components/SchermataCreazione";
 import FinestraAccount from "./components/FinestraAccount";
+import SchermataParty from "./components/SchermataParty";
+import { elencoParty } from "./party";
+import { usePolling } from "./usePolling";
 import { conSuggerimento, useRichiestaTiro, type RispostaTiro } from "./tiroDadi";
 import { condizione, effetto } from "@dnd/regole/dati/condizioni.ts";
 import DialogoTiro from "./components/DialogoTiro";
@@ -50,6 +54,7 @@ export default function App() {
   const [avviso, setAvviso] = useState<string | null>(null);
   const [accountAperto, setAccountAperto] = useState(false);
   const [inCreazione, setInCreazione] = useState(false);
+  const [partyAperto, setPartyAperto] = useState<number | null>(null);
   const [risveglio, setRisveglio] = useState(false); // la verifica della sessione sta durando: il server si sta avviando
 
   const entra = useCallback((u: Utente) => {
@@ -82,6 +87,7 @@ export default function App() {
     setAccountAperto(false);
     setSessione(null);
     setPersonaggio(null);
+    setPartyAperto(null);
     setAvviso(SESSIONE_SCADUTA);
   }, []);
 
@@ -120,7 +126,19 @@ export default function App() {
     setAccountAperto(false);
     setAvviso(null);
     setPersonaggio(null);
+    setPartyAperto(null);
     setSessione(null);
+  };
+
+  const chiudiParty = (messaggio: string | null) => {
+    setPartyAperto(null);
+    setAvviso(messaggio);
+  };
+
+  // Dal party si apre la propria scheda: se è già quella aperta basta chiudere il party.
+  const apriDalParty = async (id: number) => {
+    setPartyAperto(null);
+    if (id !== personaggio) await apriPersonaggio(id);
   };
 
   if (sessione === "verifica") {
@@ -155,33 +173,51 @@ export default function App() {
       />
     );
   }
+  const schermataParty = partyAperto !== null && (
+    <SchermataParty
+      key={partyAperto}
+      partyId={partyAperto}
+      utente={sessione}
+      onTorna={chiudiParty}
+      onApriPersonaggio={apriDalParty}
+      onAccount={() => setAccountAperto(true)}
+      onEsci={uscita}
+      onSessioneScaduta={sessioneScaduta}
+    />
+  );
   if (personaggio === null) {
     return (
       <>
-        <SchermataPersonaggi
+        {schermataParty || <SchermataPersonaggi
           utente={sessione}
           avviso={avviso}
           onScegli={apriPersonaggio}
           onCrea={() => setInCreazione(true)}
+          onApriParty={id => { setAvviso(null); setPartyAperto(id); }}
           onAccount={() => setAccountAperto(true)}
           onEsci={uscita}
           onSessioneScaduta={sessioneScaduta}
-        />
+        />}
         {account}
       </>
     );
   }
   return (
     <>
-      <Scheda
-        key={personaggio}
-        personaggio={personaggio}
-        utente={sessione}
-        avvisi={avvisi}
-        onCambiaPersonaggio={() => chiudiPersonaggio(null)}
-        onAccount={() => setAccountAperto(true)}
-        onEsci={uscita}
-      />
+      {/* Con il party aperto la scheda resta montata (nascosta): la sincronizzazione continua. */}
+      <div hidden={partyAperto !== null}>
+        <Scheda
+          key={personaggio}
+          personaggio={personaggio}
+          utente={sessione}
+          avvisi={avvisi}
+          onCambiaPersonaggio={() => chiudiPersonaggio(null)}
+          onApriParty={setPartyAperto}
+          onAccount={() => setAccountAperto(true)}
+          onEsci={uscita}
+        />
+      </div>
+      {schermataParty}
       {account}
     </>
   );
@@ -192,11 +228,23 @@ interface PropsScheda {
   utente: Utente;
   avvisi: AvvisiSincronizzazione;
   onCambiaPersonaggio: () => void;
+  onApriParty: (id: number) => void;
   onAccount: () => void;
   onEsci: () => void;
 }
 
-function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, onEsci }: PropsScheda) {
+const CONTROLLO_PARTY = 15_000; // ms
+
+function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty, onAccount, onEsci }: PropsScheda) {
+  // Il party del personaggio, per il pulsante nell'intestazione. Il 401 lo gestisce già la sincronizzazione.
+  const [mioParty, setMioParty] = useState<RiassuntoParty | null>(null);
+  const controllaParty = useCallback(async () => {
+    const esito = await elencoParty();
+    if (esito === "sessione scaduta" || "errore" in esito) return;
+    setMioParty(esito.dati.find(p => p.personaggio?.id === personaggio) ?? null);
+  }, [personaggio]);
+  usePolling(controllaParty, CONTROLLO_PARTY);
+
   const [activeTab, setActiveTab] = useState<Tab>("statistiche");
   const [char, setChar] = useState<CharacterData>(() => carica(personaggio) ?? personaggioVuoto());
   const [quantitaPF, setQuantitaPF] = useState("");
@@ -395,6 +443,11 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
                 <Upload className="w-3.5 h-3.5" /> Importa JSON
               </button>
               <input ref={fileInput} type="file" accept="application/json,.json" onChange={importa} className="hidden" />
+              {mioParty && (
+                <button onClick={() => onApriParty(mioParty.id)} title="Apri il party" className={`${pulsante} bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border-indigo-500/40`}>
+                  <UsersRound className="w-3.5 h-3.5" /> <span className="max-w-32 truncate">{mioParty.nome}</span>
+                </button>
+              )}
               <button onClick={onCambiaPersonaggio} title="Torna all'elenco dei personaggi" className={pulsanteNeutro}>
                 <Users className="w-3.5 h-3.5" /> Personaggi
               </button>

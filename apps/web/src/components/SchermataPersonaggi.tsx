@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { ChevronRight, LoaderCircle, LogOut, Sparkles, Upload, UserCog, UserPlus } from "lucide-react";
+import { ChevronRight, Crown, LoaderCircle, LogIn, LogOut, Sparkles, Upload, UserCog, UserPlus, Users } from "lucide-react";
+import type { RiassuntoParty } from "@dnd/regole/api.ts";
 import { elencoPersonaggi, importaPersonaggio, type RiassuntoPersonaggio, type Utente } from "../accesso";
+import { elencoParty } from "../party";
 import { daJSON } from "@dnd/regole/scheda.ts";
 import Avatar from "./Avatar";
+import FinestraNuovoParty from "./FinestraNuovoParty";
 
 const pulsanteNeutro = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700";
 
@@ -11,13 +14,16 @@ interface Props {
   avviso?: string | null;
   onScegli: (id: number) => Promise<void>;
   onCrea: () => void;
+  onApriParty: (id: number) => void;
   onAccount: () => void;
   onEsci: () => void;
   onSessioneScaduta: () => void;
 }
 
-export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, onAccount, onEsci, onSessioneScaduta }: Props) {
+export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, onApriParty, onAccount, onEsci, onSessioneScaduta }: Props) {
   const [elenco, setElenco] = useState<RiassuntoPersonaggio[] | "caricamento" | "offline">("caricamento");
+  const [party, setParty] = useState<RiassuntoParty[] | null>(null);
+  const [finestraParty, setFinestraParty] = useState<"crea" | "entra" | null>(null);
   const [inApertura, setInApertura] = useState<number | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -28,6 +34,11 @@ export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, 
       if (!attivo) return;
       if (r === "sessione scaduta") return onSessioneScaduta();
       setElenco(r);
+    });
+    elencoParty().then(r => {
+      if (!attivo) return;
+      if (r === "sessione scaduta") return onSessioneScaduta();
+      if ("dati" in r) setParty(r.dati);
     });
     return () => { attivo = false; };
   }, [onSessioneScaduta]);
@@ -103,6 +114,11 @@ export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, 
                   <div className="text-xs text-slate-400 truncate">
                     {[p.razza, p.classe && `${p.classe} Liv. ${p.livello}`, p.sottoclasse].filter(Boolean).join(" • ")}
                   </div>
+                  {p.party && (
+                    <div className="text-xs text-indigo-300/80 truncate flex items-center gap-1 mt-0.5">
+                      <Users className="w-3 h-3 shrink-0" /> {p.party.nome}
+                    </div>
+                  )}
                 </div>
                 {inApertura === p.id
                   ? <LoaderCircle className="w-4 h-4 text-indigo-400 animate-spin" />
@@ -140,7 +156,59 @@ export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, 
             <input ref={fileInput} type="file" accept="application/json,.json" onChange={importa} className="hidden" />
           </div>
         )}
+
+        {Array.isArray(elenco) && party && (
+          <section className="space-y-3 pt-2">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Users className="w-5 h-5 text-indigo-400" /> Party
+            </h2>
+            {party.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {party.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => onApriParty(p.id)}
+                    className="group text-left bg-slate-900 border border-slate-800 hover:border-indigo-500/60 rounded-xl p-4 transition flex items-center gap-3"
+                  >
+                    <div className="w-10 h-10 shrink-0 rounded-full bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center">
+                      {p.ruolo === "master" ? <Crown className="w-5 h-5 text-amber-300" /> : <Users className="w-5 h-5 text-indigo-300" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-slate-100 truncate">{p.nome}</div>
+                      <div className="text-xs text-slate-400 truncate">
+                        {p.ruolo === "master" ? "Sei il Master" : `Giochi con ${p.personaggio?.nome || "il tuo personaggio"}`}
+                        {` • ${p.membri} ${p.membri === 1 ? "membro" : "membri"}`}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-indigo-300" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400">
+                Gioca con i tuoi amici: entra in un party con il codice del Master, oppure creane uno e fai tu da Master.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setFinestraParty("entra")} className={`${pulsanteNeutro} px-4 py-2 text-sm`}>
+                <LogIn className="w-4 h-4" /> Entra con un codice
+              </button>
+              <button onClick={() => setFinestraParty("crea")} className={`${pulsanteNeutro} px-4 py-2 text-sm`}>
+                <Crown className="w-4 h-4" /> Crea un party
+              </button>
+            </div>
+          </section>
+        )}
       </div>
+      {finestraParty && Array.isArray(elenco) && (
+        <FinestraNuovoParty
+          modo={finestraParty}
+          personaggi={elenco}
+          onFatto={id => { setFinestraParty(null); onApriParty(id); }}
+          onSessioneScaduta={onSessioneScaduta}
+          onChiudi={() => setFinestraParty(null)}
+        />
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import type pg from "pg";
 import { ErroreRichiesta } from "./errori.ts";
 import { rotteAccesso } from "./rotte/accesso.ts";
 import { rotteCatalogo } from "./rotte/catalogo.ts";
+import { rotteParty } from "./rotte/party.ts";
 import { rottePersonaggi } from "./rotte/personaggi.ts";
 import { rotteSalute } from "./rotte/salute.ts";
 
@@ -26,6 +27,16 @@ import { rotteSalute } from "./rotte/salute.ts";
 //   GET  /incantesimi                          → catalogo degli incantesimi
 //   GET  /creazione                            → cataloghi per creare un personaggio (razze, background, armi...)
 //   GET  /classi/:classe/privilegi?livello=n&sottoclasse=… → privilegi di classe di quel livello (con fino=n: fino a quel livello)
+// Party (404 se l'utente non ne fa parte, 403 se un giocatore chiede un'azione del Master):
+//   GET  /party                                → party dell'utente (riassunto)
+//   POST /party { nome }                       → crea un party di cui l'utente è il Master → { id, codice }
+//   POST /party/entra { codice, personaggioId } → { id }; 404 se il codice non vale, 409 se il personaggio è già in un party
+//   GET  /party/:id                            → { nome, codice (solo al Master), membri con il riepilogo dei personaggi, io }
+//   PUT  /party/:id { nome }                   → 204 (Master)
+//   POST /party/:id/codice                     → { codice } nuovo; il vecchio non vale più (Master)
+//   DELETE /party/:id                          → 204, scioglie il party (Master)
+//   DELETE /party/:id/membri/:utente           → 204; un giocatore esce, il Master espelle
+//   GET  /party/:id/personaggi/:personaggio    → scheda completa di un personaggio del party (Master)
 // Gli errori hanno sempre la forma { errore: "messaggio per l'utente" }.
 
 export interface OpzioniApp {
@@ -92,6 +103,7 @@ export async function costruisciApp(opzioni: OpzioniApp): Promise<FastifyInstanc
     await api.register(rotteAccesso);
     await api.register(rottePersonaggi);
     await api.register(rotteCatalogo);
+    await api.register(rotteParty);
   }, { prefix: "/api" });
 
   return app;

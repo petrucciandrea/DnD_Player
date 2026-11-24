@@ -123,7 +123,7 @@ describe("personaggi: scomporre e ricomporre la scheda", () => {
     const id = await creaPersonaggio(db, utente.id, alston());
     await creaPersonaggio(db, altro.id, alston());
     expect(await elencoPersonaggi(db, utente.id)).toEqual([
-      { id, nome: "Alston il Breve", classe: "Mago", sottoclasse: "Scuola di Divinazione", livello: 3, razza: "Gnomo delle Rocce", avatar: "" },
+      { id, nome: "Alston il Breve", classe: "Mago", sottoclasse: "Scuola di Divinazione", livello: 3, razza: "Gnomo delle Rocce", avatar: "", party: null },
     ]);
   });
 

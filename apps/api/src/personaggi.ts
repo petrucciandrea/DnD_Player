@@ -259,6 +259,13 @@ export async function componi(db: Esecutore, id: number): Promise<CharacterData 
   return p ? schedaDaRiga(p) : null;
 }
 
+// Più schede con una sola query, per id.
+export async function componiMolti(db: Esecutore, ids: number[]): Promise<Map<number, CharacterData>> {
+  if (ids.length === 0) return new Map();
+  const r = await righe(db, `${SQL_SCHEDA} WHERE p.id = ANY($1::int[])`, [ids]);
+  return new Map(r.map(p => [Number(p.id), schedaDaRiga(p)]));
+}
+
 // Scheda e revisione, solo se il personaggio è dell'utente.
 export async function componiDiUtente(db: Esecutore, id: number, utenteId: number): Promise<{ dati: CharacterData; revisione: number } | null> {
   const p = await riga(db, `${SQL_SCHEDA} WHERE p.id = $1 AND p.utente_id = $2`, [id, utenteId]);
@@ -281,8 +288,12 @@ export async function creaPersonaggio(
 }
 
 export const elencoPersonaggi = async (db: Esecutore, utenteId: number): Promise<RiassuntoPersonaggio[]> =>
-  (await righe(db, "SELECT id, nome, classe, sottoclasse, livello, razza, avatar FROM personaggi WHERE utente_id = $1 ORDER BY id", [utenteId]))
+  (await righe(db, `
+    SELECT p.id, p.nome, p.classe, p.sottoclasse, p.livello, p.razza, p.avatar, pa.id AS party_id, pa.nome AS party_nome
+    FROM personaggi p LEFT JOIN party_membri m ON m.personaggio_id = p.id LEFT JOIN party pa ON pa.id = m.party_id
+    WHERE p.utente_id = $1 ORDER BY p.id`, [utenteId]))
     .map(r => ({
       id: Number(r.id), nome: testo(r.nome), classe: testo(r.classe), sottoclasse: testo(r.sottoclasse),
       livello: Number(r.livello), razza: testo(r.razza), avatar: testo(r.avatar),
+      party: r.party_id === null ? null : { id: Number(r.party_id), nome: testo(r.party_nome) },
     }));
