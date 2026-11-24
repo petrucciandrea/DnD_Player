@@ -37,6 +37,9 @@ import { rotteSalute } from "./rotte/salute.ts";
 //   DELETE /party/:id                          → 204, scioglie il party (Master)
 //   DELETE /party/:id/membri/:utente           → 204; un giocatore esce, il Master espelle
 //   GET  /party/:id/personaggi/:personaggio    → scheda completa di un personaggio del party (Master)
+//   GET  /party/:id/messaggi?dopo=n | prima=n  → { messaggi (gruppo e privati dell'utente), letture }
+//   POST /party/:id/messaggi { testo, destinatarioId? } → { id }; destinatario: un altro membro (privato)
+//   PUT  /party/:id/letto { con, fino }        → 204; segna letta la conversazione (con 0 = gruppo)
 // Gli errori hanno sempre la forma { errore: "messaggio per l'utente" }.
 
 export interface OpzioniApp {

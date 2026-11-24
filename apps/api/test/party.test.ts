@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { INITIAL_CHARACTER } from "@dnd/regole/dati/alston.ts";
-import type { DettaglioParty } from "@dnd/regole/api.ts";
+import type { DettaglioParty, MessaggiParty } from "@dnd/regole/api.ts";
 import { costruisciApp } from "../src/app.ts";
 import { creaUtente } from "../src/accesso.ts";
 import { normalizzaCodice, nuovoCodice } from "../src/party.ts";
@@ -80,7 +80,7 @@ describe("party: creazione e ingresso", () => {
     expect(dalMaster.codice).toBe(codice);
 
     expect((await chiama("giocatore", "GET", "/api/party")).json()).toEqual([
-      { id: partyId, nome: "La Compagnia", ruolo: "giocatore", personaggio: { id: pg, nome: "Bruenor" }, membri: 2 },
+      { id: partyId, nome: "La Compagnia", ruolo: "giocatore", personaggio: { id: pg, nome: "Bruenor" }, membri: 2, nonLetti: 0 },
     ]);
     const elenco = (await chiama("giocatore", "GET", "/api/personaggi")).json();
     expect(elenco[0].party).toEqual({ id: partyId, nome: "La Compagnia" });
@@ -192,6 +192,94 @@ describe("party: codice rigenerato, uscita, espulsione, scioglimento", () => {
     expect((await chiama("master", "DELETE", `/api/party/${partyId}`)).statusCode).toBe(204);
     expect((await chiama("master", "GET", `/api/party/${partyId}`)).statusCode).toBe(404);
     expect((await chiama("master", "GET", "/api/party")).json()).toEqual([]);
+  });
+});
+
+describe("party: chat", () => {
+  // Party con il Master e due giocatori (Bruenor e Drizzt).
+  async function partyConTre() {
+    const t = await tavolo("master", "uno", "due");
+    const { id: partyId, codice } = await t.party("master");
+    await t.chiama("uno", "POST", "/api/party/entra", { codice, personaggioId: await t.personaggio("uno", "Bruenor") });
+    await t.chiama("due", "POST", "/api/party/entra", { codice, personaggioId: await t.personaggio("due", "Drizzt") });
+    const scrivi = (utente: string, testo: string, destinatarioId?: number) =>
+      t.chiama(utente, "POST", `/api/party/${partyId}/messaggi`, { testo, ...(destinatarioId ? { destinatarioId } : {}) });
+    const leggi = async (utente: string, query = "") =>
+      (await t.chiama(utente, "GET", `/api/party/${partyId}/messaggi${query}`)).json() as MessaggiParty;
+    const nonLetti = async (utente: string) => (await t.chiama(utente, "GET", "/api/party")).json()[0].nonLetti as number;
+    return { ...t, partyId, scrivi, leggi, nonLetti };
+  }
+
+  it("i messaggi di gruppo li vedono tutti, i privati solo autore e destinatario", async () => {
+    const { scrivi, leggi, id } = await partyConTre();
+    expect((await scrivi("uno", "  Ciao a tutti!  ")).statusCode).toBe(201);
+    expect((await scrivi("uno", "Psst, Master", id.master)).statusCode).toBe(201);
+    await scrivi("master", "Benvenuti");
+
+    const delMaster = await leggi("master");
+    expect(delMaster.messaggi.map(m => [m.autore, m.testo, m.destinatarioId])).toEqual([
+      ["Bruenor", "Ciao a tutti!", null], ["Bruenor", "Psst, Master", id.master], ["Master", "Benvenuti", null],
+    ]);
+    expect(delMaster.messaggi[0]).toMatchObject({ autoreId: id.uno, ruoloAutore: "giocatore", tipo: "testo", tiro: null });
+    expect((await leggi("uno")).messaggi).toHaveLength(3);
+    expect((await leggi("due")).messaggi.map(m => m.testo)).toEqual(["Ciao a tutti!", "Benvenuti"]);
+  });
+
+  it("messaggi non validi: testo vuoto o troppo lungo, destinatario fuori dal party o sé stessi", async () => {
+    const { scrivi, chiama, id, partyId } = await partyConTre();
+    expect((await scrivi("uno", "   ")).statusCode).toBe(400);
+    expect((await scrivi("uno", "x".repeat(2001))).statusCode).toBe(400);
+    expect((await scrivi("uno", "a me", id.uno)).statusCode).toBe(400);
+    expect((await scrivi("uno", "a nessuno", 999_999)).statusCode).toBe(400);
+    expect((await chiama("uno", "GET", `/api/party/${partyId}/messaggi?dopo=abc`)).statusCode).toBe(400);
+  });
+
+  it("dopo e prima scorrono i messaggi; senza cursore arrivano gli ultimi 100", async () => {
+    const { leggi, app: a, partyId, id } = await partyConTre();
+    const db = (a as FastifyInstance).db;
+    await db.query(
+      "INSERT INTO party_messaggi (party_id, autore_id, testo) SELECT $1, $2, 'n' || g FROM generate_series(1, 120) g",
+      [partyId, id.uno]);
+    const ultimi = await leggi("due");
+    expect(ultimi.messaggi).toHaveLength(100);
+    expect(ultimi.messaggi.at(-1)!.testo).toBe("n120");
+    const primo = ultimi.messaggi[0];
+    expect(primo.testo).toBe("n21");
+    const precedenti = await leggi("due", `?prima=${primo.id}`);
+    expect(precedenti.messaggi.map(m => m.testo)).toEqual(Array.from({ length: 20 }, (_, i) => `n${i + 1}`));
+    const nuovi = await leggi("due", `?dopo=${ultimi.messaggi.at(-2)!.id}`);
+    expect(nuovi.messaggi.map(m => m.testo)).toEqual(["n120"]);
+  });
+
+  it("i non letti contano gruppo e privati ricevuti, non i propri; si azzerano per conversazione", async () => {
+    const { scrivi, leggi, nonLetti, chiama, partyId, id } = await partyConTre();
+    await scrivi("uno", "Ciao");
+    await scrivi("uno", "Solo per te", id.due);
+    await scrivi("uno", "Per il Master", id.master);
+    expect(await nonLetti("uno")).toBe(0);
+    expect(await nonLetti("due")).toBe(2);
+    expect(await nonLetti("master")).toBe(2);
+
+    const messaggi = (await leggi("due")).messaggi;
+    const gruppo = messaggi.find(m => m.destinatarioId === null)!.id;
+    expect((await chiama("due", "PUT", `/api/party/${partyId}/letto`, { con: 0, fino: gruppo })).statusCode).toBe(204);
+    expect(await nonLetti("due")).toBe(1); // il privato resta da leggere
+    const privato = messaggi.find(m => m.destinatarioId === id.due)!.id;
+    await chiama("due", "PUT", `/api/party/${partyId}/letto`, { con: id.uno, fino: privato });
+    expect(await nonLetti("due")).toBe(0);
+    // Non si torna indietro.
+    await chiama("due", "PUT", `/api/party/${partyId}/letto`, { con: 0, fino: 0 });
+    expect((await leggi("due")).letture).toEqual({ 0: gruppo, [id.uno]: privato });
+    expect((await chiama("due", "PUT", `/api/party/${partyId}/letto`, { con: -1, fino: 1 })).statusCode).toBe(400);
+  });
+
+  it("chi esce dal party non legge né scrive più; i suoi messaggi restano con lo username", async () => {
+    const { scrivi, leggi, chiama, partyId, id } = await partyConTre();
+    await scrivi("uno", "Me ne vado");
+    await chiama("uno", "DELETE", `/api/party/${partyId}/membri/${id.uno}`);
+    expect((await chiama("uno", "GET", `/api/party/${partyId}/messaggi`)).statusCode).toBe(404);
+    expect((await scrivi("uno", "Ci sono ancora?")).statusCode).toBe(404);
+    expect((await leggi("due")).messaggi[0]).toMatchObject({ autore: "uno", ruoloAutore: null });
   });
 });
 

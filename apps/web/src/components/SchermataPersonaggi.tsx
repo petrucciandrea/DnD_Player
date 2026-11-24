@@ -180,6 +180,9 @@ export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, 
                         {` • ${p.membri} ${p.membri === 1 ? "membro" : "membri"}`}
                       </div>
                     </div>
+                    {p.nonLetti > 0 && (
+                      <span title="Messaggi non letti" className="min-w-5 px-1 rounded-full bg-rose-500 text-white text-[11px] leading-5 text-center">{p.nonLetti}</span>
+                    )}
                     <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-indigo-300" />
                   </button>
                 ))}

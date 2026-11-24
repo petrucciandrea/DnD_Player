@@ -1,3 +1,4 @@
+import type { Modalita } from "./regole.ts";
 import type { DettagliIncantesimo } from "./tipi.ts";
 
 // Contratto tra client e server: forme delle risposte dell'API che non sono già in tipi.ts.
@@ -38,6 +39,7 @@ export interface RiassuntoParty {
   ruolo: RuoloParty;
   personaggio: { id: number; nome: string } | null; // il personaggio con cui l'utente gioca (null per il Master)
   membri: number;
+  nonLetti: number; // messaggi degli altri non ancora letti (gruppo e privati)
 }
 
 // Quello che i compagni vedono di un personaggio: niente scheda completa, solo lo stato in gioco.
@@ -64,4 +66,34 @@ export interface DettaglioParty {
   codice: string | null; // solo per il Master, già nella forma XXXX-XXXX
   membri: MembroParty[];
   io: { utenteId: number; ruolo: RuoloParty; personaggioId: number | null };
+}
+
+// Tiro di dadi pubblicato nella chat del party.
+export interface TiroCondiviso {
+  titolo: string;
+  descrizione?: string;
+  dadi: { etichetta: string; facce: number }[];
+  tiri: number[];
+  modalita: Modalita;
+  bonus: number;
+  totale: number;
+}
+
+export interface MessaggioParty {
+  id: number;
+  autoreId: number;
+  autore: string; // nome del personaggio, "Master" o lo username di chi non è più nel party
+  ruoloAutore: RuoloParty | null; // null: l'autore non è più nel party
+  destinatarioId: number | null; // null: a tutto il gruppo
+  tipo: "testo" | "tiro";
+  testo: string;
+  tiro: TiroCondiviso | null;
+  creato: string; // ISO 8601
+}
+
+// GET /api/party/:id/messaggi. `letture`: fin dove l'utente ha letto ogni conversazione
+// (chiave 0 = gruppo, altrimenti l'id dell'altro utente del privato).
+export interface MessaggiParty {
+  messaggi: MessaggioParty[];
+  letture: Record<number, number>;
 }

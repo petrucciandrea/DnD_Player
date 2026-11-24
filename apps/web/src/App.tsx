@@ -446,6 +446,9 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty,
               {mioParty && (
                 <button onClick={() => onApriParty(mioParty.id)} title="Apri il party" className={`${pulsante} bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border-indigo-500/40`}>
                   <UsersRound className="w-3.5 h-3.5" /> <span className="max-w-32 truncate">{mioParty.nome}</span>
+                  {mioParty.nonLetti > 0 && (
+                    <span title="Messaggi non letti" className="min-w-4 px-1 rounded-full bg-rose-500 text-white text-[10px] leading-4 text-center">{mioParty.nonLetti}</span>
+                  )}
                 </button>
               )}
               <button onClick={onCambiaPersonaggio} title="Torna all'elenco dei personaggi" className={pulsanteNeutro}>

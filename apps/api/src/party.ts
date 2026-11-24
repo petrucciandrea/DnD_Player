@@ -4,6 +4,7 @@ import { derivate } from "@dnd/regole/regole.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
 import { riga, righe, transazione, type Esecutore } from "./db.ts";
 import { ErroreRichiesta } from "./errori.ts";
+import { SQL_NON_LETTI } from "./messaggi.ts";
 import { componiMolti } from "./personaggi.ts";
 
 // Party: il Master lo crea e riceve un codice d'invito; i giocatori entrano con il codice e un loro personaggio.
@@ -101,13 +102,13 @@ export async function togliMembro(db: Esecutore, partyId: number, utenteId: numb
 export const elencoParty = async (db: Esecutore, utenteId: number): Promise<RiassuntoParty[]> =>
   (await righe(db, `
     SELECT p.id, p.nome, m.ruolo, m.personaggio_id, pe.nome AS personaggio_nome,
-      (SELECT count(*) FROM party_membri x WHERE x.party_id = p.id) AS membri
+      (SELECT count(*) FROM party_membri x WHERE x.party_id = p.id) AS membri, ${SQL_NON_LETTI} AS non_letti
     FROM party_membri m JOIN party p ON p.id = m.party_id LEFT JOIN personaggi pe ON pe.id = m.personaggio_id
     WHERE m.utente_id = $1 ORDER BY p.nome, p.id`, [utenteId]))
     .map(r => ({
       id: Number(r.id), nome: String(r.nome), ruolo: r.ruolo as RuoloParty,
       personaggio: r.personaggio_id === null ? null : { id: Number(r.personaggio_id), nome: String(r.personaggio_nome ?? "") },
-      membri: Number(r.membri),
+      membri: Number(r.membri), nonLetti: Number(r.non_letti),
     }));
 
 // Lo stato in gioco di un personaggio, calcolato dalla scheda: niente valori derivati salvati.
@@ -144,6 +145,10 @@ export async function dettaglioParty(db: Esecutore, partyId: number, utenteId: n
     }),
     io: { utenteId, ruolo, personaggioId: io.personaggio_id === null ? null : Number(io.personaggio_id) },
   };
+}
+
+export async function eMembro(db: Esecutore, partyId: number, utenteId: number): Promise<boolean> {
+  return Boolean(await riga(db, "SELECT 1 FROM party_membri WHERE party_id = $1 AND utente_id = $2", [partyId, utenteId]));
 }
 
 // Il personaggio è di un giocatore di questo party?

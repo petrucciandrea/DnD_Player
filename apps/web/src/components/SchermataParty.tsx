@@ -1,13 +1,15 @@
 import { useCallback, useState, type FormEvent } from "react";
 import {
-  ArrowLeft, Check, Copy, Crown, Eye, LoaderCircle, LogOut, Pencil, RefreshCw, Shield, Trash2, UserCog, UserMinus, Users, X,
+  ArrowLeft, Check, Copy, Crown, Eye, LoaderCircle, LogOut, MessagesSquare, Pencil, RefreshCw, Shield, Trash2, UserCog, UserMinus, Users, X,
 } from "lucide-react";
 import type { DettaglioParty, MembroParty } from "@dnd/regole/api.ts";
 import { condizione } from "@dnd/regole/dati/condizioni.ts";
 import type { Utente } from "../accesso";
 import { dettaglioParty, type EsitoParty, rigeneraCodice, rinominaParty, sciogliParty, togliMembro } from "../party";
 import { usePolling } from "../usePolling";
+import { nonLettiPer, useMessaggi } from "../messaggi";
 import Avatar from "./Avatar";
+import PartyChat from "./PartyChat";
 import VistaPersonaggio from "./VistaPersonaggio";
 
 interface Props {
@@ -19,6 +21,8 @@ interface Props {
   onEsci: () => void;
   onSessioneScaduta: () => void;
 }
+
+type Sezione = "compagni" | "chat";
 
 const AGGIORNAMENTO = 4_000; // ms: con la schermata aperta si vedono presto PF e condizioni dei compagni
 const NON_PIU_MEMBRO = "Il party non esiste più oppure non ne fai più parte.";
@@ -55,6 +59,8 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
   }, [partyId, riuscito]);
 
   usePolling(carica, AGGIORNAMENTO);
+  const chat = useMessaggi(partyId, riuscito);
+  const [sezione, setSezione] = useState<Sezione>("compagni");
 
   const esegui = async (azione: () => Promise<EsitoParty<unknown>>, dopo?: () => void) => {
     setInCorso(true);
@@ -77,6 +83,11 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
   }
 
   const master = party.io.ruolo === "master";
+  const daLeggere = Object.values(nonLettiPer(chat.messaggi ?? [], chat.letture, party.io.utenteId)).reduce((a, b) => a + b, 0);
+  const sezioni: { id: Sezione; etichetta: string; icona: typeof Users; badge?: number }[] = [
+    { id: "compagni", etichetta: "Compagni", icona: Users },
+    { id: "chat", etichetta: "Chat", icona: MessagesSquare, badge: daLeggere },
+  ];
 
   const salvaNome = (e: FormEvent) => {
     e.preventDefault();
@@ -172,8 +183,25 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
           <p role="alert" className="text-sm text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded-lg px-3 py-2">{errore}</p>
         )}
 
-        <section className="space-y-3">
-          <h2 className="text-sm text-slate-400 font-semibold uppercase tracking-wider">Compagni</h2>
+        <nav className="flex gap-1 overflow-x-auto bg-slate-900 border border-slate-800 rounded-xl p-1">
+          {sezioni.map(x => (
+            <button
+              key={x.id}
+              onClick={() => setSezione(x.id)}
+              className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${sezione === x.id
+                ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"}`}
+            >
+              <x.icona className="w-4 h-4" /> {x.etichetta}
+              {(x.badge ?? 0) > 0 && (
+                <span className="min-w-5 px-1 rounded-full bg-rose-500 text-white text-[11px] leading-5 text-center">{x.badge}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        {sezione === "chat" && <PartyChat io={party.io.utenteId} membri={party.membri} chat={chat} />}
+
+        {sezione === "compagni" && <section className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             {party.membri.map(m => (
               <CartaMembro
@@ -191,7 +219,7 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
           {party.membri.length === 1 && master && (
             <p className="text-sm text-slate-400">Nessun giocatore per ora: condividi il codice d'invito.</p>
           )}
-        </section>
+        </section>}
 
         <div className="flex justify-end pt-2">
           {master ? (

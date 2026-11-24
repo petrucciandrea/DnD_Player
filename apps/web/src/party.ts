@@ -1,4 +1,4 @@
-import type { DettaglioParty, RiassuntoParty } from "@dnd/regole/api.ts";
+import type { DettaglioParty, MessaggiParty, RiassuntoParty } from "@dnd/regole/api.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
 import { erroreDa, IRRAGGIUNGIBILE } from "./accesso";
 
@@ -6,6 +6,9 @@ import { erroreDa, IRRAGGIUNGIBILE } from "./accesso";
 // o l'utente non ne fa più parte; `stato` 0 vuol dire server non raggiungibile.
 
 export type EsitoParty<T> = { dati: T } | { errore: string; stato: number } | "sessione scaduta";
+
+// Controlla l'esito di una chiamata: true se è andata; altrimenti chi la passa ha già gestito l'errore.
+export type ControllaEsito = <T>(esito: EsitoParty<T>) => esito is { dati: T };
 
 async function chiamata<T>(metodo: "GET" | "POST" | "PUT" | "DELETE", percorso: string, corpo?: unknown): Promise<EsitoParty<T>> {
   try {
@@ -33,3 +36,11 @@ export const sciogliParty = (id: number) => chiamata<null>("DELETE", `/${id}`);
 export const togliMembro = (id: number, utenteId: number) => chiamata<null>("DELETE", `/${id}/membri/${utenteId}`);
 export const schedaNelParty = (id: number, personaggioId: number) =>
   chiamata<CharacterData>("GET", `/${id}/personaggi/${personaggioId}`);
+
+export const leggiMessaggi = (id: number, cursore: { dopo?: number; prima?: number } = {}) => {
+  const query = cursore.dopo !== undefined ? `?dopo=${cursore.dopo}` : cursore.prima !== undefined ? `?prima=${cursore.prima}` : "";
+  return chiamata<MessaggiParty>("GET", `/${id}/messaggi${query}`);
+};
+export const inviaMessaggio = (id: number, testo: string, destinatarioId: number | null) =>
+  chiamata<{ id: number }>("POST", `/${id}/messaggi`, { testo, ...(destinatarioId !== null ? { destinatarioId } : {}) });
+export const segnaLetto = (id: number, con: number, fino: number) => chiamata<null>("PUT", `/${id}/letto`, { con, fino });
