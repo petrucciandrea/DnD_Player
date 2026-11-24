@@ -129,6 +129,35 @@ export function cambiaQuantita(c: CharacterData, id: number, delta: number): Cha
   };
 }
 
+// Oggetto scambiato con il tesoro del party: i campi dello Zaino senza l'id locale.
+export type OggettoScambiato = Omit<InventoryItem, "id">;
+
+// Aggiunge allo Zaino un oggetto preso dal tesoro: si somma a uno uguale (stesso nome e peso), altrimenti è nuovo con `id`.
+export function mettiNelloZaino(c: CharacterData, o: OggettoScambiato, id: number): CharacterData {
+  const uguale = c.inventario.find(it => it.nome.toLowerCase() === o.nome.toLowerCase() && it.peso === o.peso && !!it.consumabile === !!o.consumabile);
+  if (uguale) return { ...c, inventario: c.inventario.map(it => (it === uguale ? { ...it, qta: it.qta + o.qta } : it)) };
+  return { ...c, inventario: [{ ...o, id }, ...c.inventario] };
+}
+
+// Toglie `qta` unità di un oggetto dello Zaino (depositato nel tesoro). Un oggetto finito sparisce; una provvista resta a 0.
+export function togliDalloZaino(c: CharacterData, id: number, qta: number): CharacterData {
+  return {
+    ...c,
+    inventario: c.inventario.flatMap(it => {
+      if (it.id !== id) return [it];
+      const resto = Math.max(0, it.qta - qta);
+      return resto > 0 || it.consumabile ? [{ ...it, qta: resto }] : [];
+    }),
+  };
+}
+
+// Aggiunge (o toglie, con valori negativi) monete alla borsa; nessun taglio scende sotto zero.
+export function cambiaMonete(c: CharacterData, delta: Partial<CharacterData["monete"]>): CharacterData {
+  const monete = { ...c.monete };
+  for (const k of Object.keys(monete) as (keyof typeof monete)[]) monete[k] = Math.max(0, monete[k] + (delta[k] ?? 0));
+  return { ...c, monete };
+}
+
 export function impostaConsumabile(c: CharacterData, id: number, consumabile: boolean): CharacterData {
   return {
     ...c,

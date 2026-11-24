@@ -50,6 +50,11 @@ import { rotteSalute } from "./rotte/salute.ts";
 //   POST /party/:id/combattimento/avanza { direzione: 1 | -1 } → 204; turno successivo o precedente (Master)
 //   PUT  /party/:id/combattimento/mio { valore } → 204; iniziativa del proprio personaggio (bonus dalla scheda)
 //   POST /party/:id/combattimento/voci { nome, valore, bonus?, nascosto? } → { id }; PUT e DELETE …/voci/:voce (Master)
+//   GET  /party/:id/tesoro                     → { monete, oggetti, movimenti }
+//   POST /party/:id/tesoro/monete { delta }    → monete del tesoro; 409 se non bastano
+//   POST /party/:id/tesoro/oggetti { nome, qta, peso, … } → { id }; si somma a un oggetto uguale
+//   POST /party/:id/tesoro/oggetti/:oggetto/prendi { qta } → l'oggetto preso; 404 se non c'è più, 409 se non basta
+//   DELETE /party/:id/tesoro/oggetti/:oggetto  → 204; il Master toglie l'oggetto dal tesoro
 // Gli errori hanno sempre la forma { errore: "messaggio per l'utente" }.
 
 export interface OpzioniApp {

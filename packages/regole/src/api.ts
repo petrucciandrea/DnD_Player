@@ -1,5 +1,5 @@
 import type { Modalita } from "./regole.ts";
-import type { DettagliIncantesimo } from "./tipi.ts";
+import type { CharacterData, DettagliIncantesimo, InventoryItem } from "./tipi.ts";
 
 // Contratto tra client e server: forme delle risposte dell'API che non sono già in tipi.ts.
 
@@ -137,4 +137,23 @@ export interface Combattimento {
   round: number;
   diTurno: number | null; // id della voce di turno
   voci: VoceIniziativa[];
+}
+
+export type Monete = CharacterData["monete"];
+
+// Oggetto del tesoro del party: come uno dello Zaino, con l'id del tesoro.
+export type OggettoTesoro = InventoryItem;
+
+export interface MovimentoTesoro {
+  id: number;
+  chi: string; // nome nel party di chi l'ha fatto
+  descrizione: string; // "ha messo 2× Pozione di guarigione", "ha preso 10 mo"…
+  creato: string; // ISO 8601
+}
+
+// GET /api/party/:id/tesoro
+export interface Tesoro {
+  monete: Monete;
+  oggetti: OggettoTesoro[];
+  movimenti: MovimentoTesoro[]; // i più recenti prima
 }

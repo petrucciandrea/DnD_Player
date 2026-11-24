@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { INITIAL_CHARACTER } from "@dnd/regole/dati/alston.ts";
-import type { Combattimento, DettaglioParty, MessaggiParty, VoceDiario } from "@dnd/regole/api.ts";
+import type { Combattimento, DettaglioParty, MessaggiParty, Tesoro, VoceDiario } from "@dnd/regole/api.ts";
 import { costruisciApp } from "../src/app.ts";
 import { creaUtente } from "../src/accesso.ts";
 import { normalizzaCodice, nuovoCodice } from "../src/party.ts";
@@ -446,6 +446,68 @@ describe("party: iniziativa", () => {
     // Un nuovo scontro parte senza le voci del precedente.
     await chiama("master", "POST", url);
     expect((await stato("master")).voci).toEqual([]);
+  });
+});
+
+describe("party: tesoro", () => {
+  async function conTesoro() {
+    const t = await tavolo("master", "uno", "due");
+    const { id: partyId, codice } = await t.party("master");
+    await t.chiama("uno", "POST", "/api/party/entra", { codice, personaggioId: await t.personaggio("uno", "Bruenor") });
+    await t.chiama("due", "POST", "/api/party/entra", { codice, personaggioId: await t.personaggio("due", "Drizzt") });
+    const url = `/api/party/${partyId}/tesoro`;
+    const tesoro = async (utente = "uno") => (await t.chiama(utente, "GET", url)).json() as Tesoro;
+    return { ...t, url, tesoro };
+  }
+
+  it("le monete si mettono e si prendono senza mai scendere sotto zero", async () => {
+    const { chiama, url, tesoro } = await conTesoro();
+    expect((await tesoro()).monete).toEqual({ mr: 0, ma: 0, me: 0, mo: 0, mp: 0 });
+    expect((await chiama("uno", "POST", `${url}/monete`, { delta: { mo: 10, ma: 5 } })).json()).toEqual({ mr: 0, ma: 5, me: 0, mo: 10, mp: 0 });
+    const troppe = await chiama("due", "POST", `${url}/monete`, { delta: { mo: -11 } });
+    expect(troppe.statusCode).toBe(409);
+    expect((await tesoro()).monete.mo).toBe(10);
+    expect((await chiama("due", "POST", `${url}/monete`, { delta: { mo: -4 } })).json().mo).toBe(6);
+    // Due prelievi contemporanei: uno solo va a buon fine.
+    const [a, b] = await Promise.all([
+      chiama("uno", "POST", `${url}/monete`, { delta: { mo: -6 } }),
+      chiama("due", "POST", `${url}/monete`, { delta: { mo: -6 } }),
+    ]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409]);
+    expect((await tesoro()).monete.mo).toBe(0);
+
+    for (const delta of [{}, { mo: 1, ma: -1 }, { oro: 3 }, { mo: 1.5 }, "10"]) {
+      expect((await chiama("uno", "POST", `${url}/monete`, { delta })).statusCode).toBe(400);
+    }
+  });
+
+  it("gli oggetti uguali si sommano; prendere ne toglie, il secondo che prende l'ultimo riceve 404", async () => {
+    const { chiama, url, tesoro } = await conTesoro();
+    const pozione = { nome: "Pozione di guarigione", qta: 2, peso: 0.25 };
+    const id = (await chiama("uno", "POST", `${url}/oggetti`, pozione)).json().id;
+    expect((await chiama("due", "POST", `${url}/oggetti`, { ...pozione, nome: "pozione di guarigione", qta: 1 })).json().id).toBe(id);
+    await chiama("master", "POST", `${url}/oggetti`, { nome: "Razioni (1 giorno)", qta: 5, peso: 1, consumabile: true, consumoGiornaliero: 1 });
+    expect((await tesoro()).oggetti.map(o => [o.nome, o.qta])).toEqual([["Pozione di guarigione", 3], ["Razioni (1 giorno)", 5]]);
+
+    const presa = await chiama("due", "POST", `${url}/oggetti/${id}/prendi`, { qta: 2 });
+    expect(presa.json()).toEqual({ nome: "Pozione di guarigione", qta: 2, peso: 0.25 });
+    expect((await chiama("uno", "POST", `${url}/oggetti/${id}/prendi`, { qta: 2 })).statusCode).toBe(409);
+    expect((await chiama("uno", "POST", `${url}/oggetti/${id}/prendi`, { qta: 1 })).statusCode).toBe(200);
+    expect((await chiama("due", "POST", `${url}/oggetti/${id}/prendi`, { qta: 1 })).statusCode).toBe(404);
+    expect((await chiama("uno", "POST", `${url}/oggetti`, { nome: "", qta: 1 })).statusCode).toBe(400);
+    expect((await chiama("uno", "POST", `${url}/oggetti`, { nome: "Sasso", qta: 0 })).statusCode).toBe(400);
+  });
+
+  it("il Master toglie un oggetto; lo storico dice chi ha fatto cosa, dal più recente", async () => {
+    const { chiama, url, tesoro } = await conTesoro();
+    await chiama("master", "POST", `${url}/oggetti`, { nome: "Gemma", qta: 1, peso: 0 });
+    await chiama("uno", "POST", `${url}/monete`, { delta: { mo: 20 } });
+    const gemma = (await tesoro()).oggetti[0].id;
+    expect((await chiama("uno", "DELETE", `${url}/oggetti/${gemma}`)).statusCode).toBe(403);
+    expect((await chiama("master", "DELETE", `${url}/oggetti/${gemma}`)).statusCode).toBe(204);
+    expect((await tesoro()).movimenti.map(m => `${m.chi} ${m.descrizione}`)).toEqual([
+      "Master ha tolto 1× Gemma", "Bruenor ha messo 20 mo", "Master ha messo 1× Gemma",
+    ]);
   });
 });
 

@@ -13,6 +13,7 @@ import {
 } from "../party.ts";
 import { componi } from "../personaggi.ts";
 import { richiediUtente, tokenDa, utenteDi } from "../sessione.ts";
+import { cambiaMoneteTesoro, deltaMoneteDa, leggiTesoro, mettiOggetto, oggettoDa, prendiOggetto } from "../tesoro.ts";
 
 // Il codice d'invito è l'unica protezione del party: si limita chi prova molti codici.
 const LIMITE_INGRESSO = { max: 10, timeWindow: "5 minutes", keyGenerator: (r: FastifyRequest) => tokenDa(r) ?? r.ip } as const;
@@ -239,6 +240,44 @@ export async function rotteParty(app: FastifyInstance) {
   app.delete<ConVoce>("/party/:id/combattimento/voci/:voce", async (richiesta, risposta) => {
     const id = await conMaster(richiesta);
     if (!(await togliVoce(app.db, id, idDa(richiesta.params.voce, "Voce inesistente")))) throw new ErroreRichiesta(404, "Voce inesistente");
+    return risposta.status(204).send();
+  });
+
+  // Tesoro comune: ogni membro mette e prende; il Master può anche togliere un oggetto (venduto, perso…).
+  type ConOggetto = { Params: { id: string; oggetto: string } };
+  const membroDelParty = async (richiesta: FastifyRequest<ConId>) => {
+    const id = idParty(richiesta.params.id);
+    const io = utenteDi(richiesta).id;
+    return { id, io, membro: await membroDi(app.db, id, io) };
+  };
+
+  app.get<ConId>("/party/:id/tesoro", async richiesta => leggiTesoro(app.db, (await membroDelParty(richiesta)).id));
+
+  app.post<ConId>("/party/:id/tesoro/monete", async richiesta => {
+    const { id, io } = await membroDelParty(richiesta);
+    return cambiaMoneteTesoro(app.db, id, io, deltaMoneteDa(corpoOggetto(richiesta.body).delta));
+  });
+
+  app.post<ConId>("/party/:id/tesoro/oggetti", async (richiesta, risposta) => {
+    const { id, io } = await membroDelParty(richiesta);
+    return risposta.status(201).send({ id: await mettiOggetto(app.db, id, io, oggettoDa(corpoOggetto(richiesta.body))) });
+  });
+
+  app.post<ConOggetto>("/party/:id/tesoro/oggetti/:oggetto/prendi", async richiesta => {
+    const { id, io } = await membroDelParty(richiesta);
+    const { qta } = corpoOggetto(richiesta.body);
+    if (!Number.isInteger(qta) || (qta as number) < 1) throw new ErroreRichiesta(400, "Quantità non valida");
+    return prendiOggetto(app.db, id, io, idDa(richiesta.params.oggetto, "Oggetto inesistente"), qta as number);
+  });
+
+  app.delete<ConOggetto>("/party/:id/tesoro/oggetti/:oggetto", async (richiesta, risposta) => {
+    const { id, io, membro } = await membroDelParty(richiesta);
+    richiediMaster(membro);
+    const oggetto = idDa(richiesta.params.oggetto, "Oggetto inesistente");
+    const tesoro = await leggiTesoro(app.db, id);
+    const voce = tesoro.oggetti.find(o => o.id === oggetto);
+    if (!voce) throw new ErroreRichiesta(404, "Questo oggetto non è più nel tesoro");
+    await prendiOggetto(app.db, id, io, oggetto, voce.qta, "ha tolto");
     return risposta.status(204).send();
   });
 

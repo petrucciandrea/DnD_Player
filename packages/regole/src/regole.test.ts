@@ -13,6 +13,7 @@ import {
   PROVVISTE_COMUNI, cambiaQuantita, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, dotazioneScomponibile, scomponiDotazione,
   applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
   applicaSalita, aumentiDa, xpDelLivello, esitoTiroCondiviso, ordineIniziativa, avanzaTurno,
+  mettiNelloZaino, togliDalloZaino, cambiaMonete,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { calcolaDanno, difeseDelPersonaggio, haSchivataProdigiosa, tipoDanno, type Difesa } from "./dati/danni";
@@ -1521,5 +1522,40 @@ describe("iniziativa", () => {
     expect(avanzaTurno(ordine, 2, 1, -1)).toEqual({ diTurno: 2, round: 1 });
     expect(avanzaTurno(ordine, 99, 3, 1)).toEqual({ diTurno: 2, round: 3 });
     expect(avanzaTurno([], 2, 1, 1)).toEqual({ diTurno: null, round: 1 });
+  });
+});
+
+describe("scambi con il tesoro del party", () => {
+  const conZaino = () => {
+    const c = structuredClone(INITIAL_CHARACTER);
+    c.inventario = [
+      { id: 1, nome: "Pozione di guarigione", qta: 3, peso: 0.25 },
+      { id: 2, nome: "Razioni (1 giorno)", qta: 2, peso: 1, consumabile: true, consumoGiornaliero: 1 },
+    ];
+    c.monete = { mr: 0, ma: 5, me: 0, mo: 20, mp: 0 };
+    return c;
+  };
+
+  it("un oggetto preso si somma a uno uguale, altrimenti diventa una voce nuova", () => {
+    const c = conZaino();
+    const somma = mettiNelloZaino(c, { nome: "pozione di guarigione", qta: 2, peso: 0.25 }, 99);
+    expect(somma.inventario.find(i => i.id === 1)?.qta).toBe(5);
+    expect(somma.inventario).toHaveLength(2);
+    const nuovo = mettiNelloZaino(c, { nome: "Gemma", qta: 1, peso: 0 }, 99);
+    expect(nuovo.inventario[0]).toEqual({ id: 99, nome: "Gemma", qta: 1, peso: 0 });
+    expect(c.inventario).toHaveLength(2); // l'originale non cambia
+  });
+
+  it("un oggetto depositato cala; finito sparisce, una provvista resta a 0", () => {
+    const c = conZaino();
+    expect(togliDalloZaino(c, 1, 2).inventario.find(i => i.id === 1)?.qta).toBe(1);
+    expect(togliDalloZaino(c, 1, 3).inventario.some(i => i.id === 1)).toBe(false);
+    expect(togliDalloZaino(c, 2, 5).inventario.find(i => i.id === 2)?.qta).toBe(0);
+  });
+
+  it("le monete si aggiungono e si tolgono senza scendere sotto zero", () => {
+    const c = conZaino();
+    expect(cambiaMonete(c, { mo: -10, ma: 3 }).monete).toEqual({ mr: 0, ma: 8, me: 0, mo: 10, mp: 0 });
+    expect(cambiaMonete(c, { mo: -50 }).monete.mo).toBe(0);
   });
 });

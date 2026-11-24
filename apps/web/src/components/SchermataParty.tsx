@@ -1,6 +1,6 @@
 import { useCallback, useState, type FormEvent } from "react";
 import {
-  ArrowLeft, BookOpen, Check, Copy, Crown, Eye, LoaderCircle, LogOut, MessagesSquare, Pencil, RefreshCw, Shield, Swords, Trash2, UserCog, UserMinus, Users, X,
+  ArrowLeft, BookOpen, Check, Copy, Crown, Eye, Gem, LoaderCircle, LogOut, MessagesSquare, Pencil, RefreshCw, Shield, Swords, Trash2, UserCog, UserMinus, Users, X,
 } from "lucide-react";
 import type { DettaglioParty, MembroParty } from "@dnd/regole/api.ts";
 import { condizione } from "@dnd/regole/dati/condizioni.ts";
@@ -12,6 +12,7 @@ import Avatar from "./Avatar";
 import PartyChat from "./PartyChat";
 import PartyDiario from "./PartyDiario";
 import PartyIniziativa from "./PartyIniziativa";
+import PannelloTesoro from "./PannelloTesoro";
 import VistaPersonaggio from "./VistaPersonaggio";
 
 interface Props {
@@ -24,7 +25,7 @@ interface Props {
   onSessioneScaduta: () => void;
 }
 
-type Sezione = "compagni" | "chat" | "diario" | "iniziativa";
+type Sezione = "compagni" | "chat" | "diario" | "iniziativa" | "tesoro";
 
 const AGGIORNAMENTO = 4_000; // ms: con la schermata aperta si vedono presto PF e condizioni dei compagni
 const NON_PIU_MEMBRO = "Il party non esiste più oppure non ne fai più parte.";
@@ -92,6 +93,7 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
     { id: "chat", etichetta: "Chat", icona: MessagesSquare, badge: daLeggere },
     { id: "iniziativa", etichetta: "Iniziativa", icona: Swords, ...(party.combattimento ? { nota: `Round ${party.combattimento.round}` } : {}) },
     { id: "diario", etichetta: "Diario", icona: BookOpen },
+    { id: "tesoro", etichetta: "Tesoro", icona: Gem },
   ];
 
   const salvaNome = (e: FormEvent) => {
@@ -207,6 +209,17 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
 
         {sezione === "chat" && <PartyChat io={party.io.utenteId} membri={party.membri} chat={chat} />}
         {sezione === "iniziativa" && <PartyIniziativa partyId={partyId} ruolo={party.io.ruolo} mio={mio} riuscito={riuscito} />}
+        {sezione === "tesoro" && (
+          <div className="space-y-3">
+            {!master && mio && (
+              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2">
+                Per prendere o mettere oggetti e monete usa lo Zaino della tua scheda.
+                <button onClick={() => onApriPersonaggio(mio.id)} className={`${pulsanteNeutro} ml-auto`}><Eye className="w-3.5 h-3.5" /> Apri la mia scheda</button>
+              </div>
+            )}
+            <PannelloTesoro partyId={partyId} master={master} />
+          </div>
+        )}
         {sezione === "diario" && <PartyDiario partyId={partyId} io={party.io} versione={party.diarioVersione} riuscito={riuscito} />}
 
         {sezione === "compagni" && <section className="space-y-3">

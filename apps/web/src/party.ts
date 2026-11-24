@@ -1,4 +1,6 @@
-import type { CategoriaDiario, Combattimento, DettaglioParty, MessaggiParty, RiassuntoParty, TiroCondiviso, VoceDiario } from "@dnd/regole/api.ts";
+import type {
+  CategoriaDiario, Combattimento, DettaglioParty, MessaggiParty, Monete, OggettoTesoro, RiassuntoParty, Tesoro, TiroCondiviso, VoceDiario,
+} from "@dnd/regole/api.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
 import { erroreDa, IRRAGGIUNGIBILE } from "./accesso";
 
@@ -80,3 +82,11 @@ export const aggiungiVoceIniziativa = (id: number, voce: DatiVoceIniziativa) =>
 export const modificaVoceIniziativa = (id: number, voceId: number, voce: DatiVoceIniziativa) =>
   chiamata<null>("PUT", `/${id}/combattimento/voci/${voceId}`, voce);
 export const togliVoceIniziativa = (id: number, voceId: number) => chiamata<null>("DELETE", `/${id}/combattimento/voci/${voceId}`);
+
+export const leggiTesoro = (id: number) => chiamata<Tesoro>("GET", `/${id}/tesoro`);
+// Positivi si mettono, negativi si prendono; 409 se nel tesoro non bastano.
+export const cambiaMoneteTesoro = (id: number, delta: Partial<Monete>) => chiamata<Monete>("POST", `/${id}/tesoro/monete`, { delta });
+export const mettiNelTesoro = (id: number, oggetto: Omit<OggettoTesoro, "id">) => chiamata<{ id: number }>("POST", `/${id}/tesoro/oggetti`, oggetto);
+export const prendiDalTesoro = (id: number, oggettoId: number, qta: number) =>
+  chiamata<Omit<OggettoTesoro, "id">>("POST", `/${id}/tesoro/oggetti/${oggettoId}/prendi`, { qta });
+export const togliDalTesoro = (id: number, oggettoId: number) => chiamata<null>("DELETE", `/${id}/tesoro/oggetti/${oggettoId}`);

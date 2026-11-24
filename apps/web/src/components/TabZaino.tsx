@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Plus, Minus, Trash2, Shield, Utensils, Package, PackageOpen, Sunrise } from "lucide-react";
+import { Plus, Minus, Trash2, Shield, Utensils, Package, PackageOpen, Sunrise, UsersRound } from "lucide-react";
 import type { Armatura, CharacterData, InventoryItem } from "@dnd/regole/tipi.ts";
 import type { SetChar } from "../stato.ts";
 import type { Derivate } from "@dnd/regole/regole.ts";
@@ -7,11 +7,13 @@ import {
   PESO_SCUDO, PROVVISTE_COMUNI, cambiaQuantita, dotazioneScomponibile, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, scomponiDotazione, segno,
 } from "@dnd/regole/regole.ts";
 import { catalogoCreazione } from "../accesso";
+import PannelloTesoro from "./PannelloTesoro";
 
 interface Props {
   char: CharacterData;
   d: Derivate;
   setChar: SetChar;
+  party?: { id: number; nome: string } | null; // il party del personaggio: si scambia con il suo tesoro
 }
 
 const MONETE: { k: keyof CharacterData["monete"]; label: string; color: string }[] = [
@@ -24,7 +26,7 @@ const MONETE: { k: keyof CharacterData["monete"]; label: string; color: string }
 
 const arrotonda = (n: number) => Number(n.toFixed(2));
 
-export default function TabZaino({ char, d, setChar }: Props) {
+export default function TabZaino({ char, d, setChar, party }: Props) {
   const [newItemInput, setNewItemInput] = useState({ nome: "", qta: 1, peso: 1, consumabile: false, consumo: 0 });
   const [messaggio, setMessaggio] = useState<string | null>(null);
   const [armature, setArmature] = useState<Armatura[]>([]);
@@ -319,6 +321,15 @@ export default function TabZaino({ char, d, setChar }: Props) {
       <div className="bg-slate-900 border border-slate-800 rounded-xl divide-y divide-slate-800/60">
         {oggetti.map(riga)}
       </div>
+
+      {party && (
+        <section className="space-y-3 pt-2">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <UsersRound className="w-5 h-5 text-indigo-400" /> Tesoro del party: {party.nome}
+          </h3>
+          <PannelloTesoro partyId={party.id} master={false} scambi={{ char, setChar }} />
+        </section>
+      )}
     </div>
   );
 }
