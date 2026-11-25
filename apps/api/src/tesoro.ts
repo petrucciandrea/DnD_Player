@@ -21,16 +21,30 @@ const oggettoDaRiga = (r: Riga): OggettoTesoro => ({
   ...(r.consumabile ? { consumabile: true, consumoGiornaliero: Number(r.consumo_giornaliero) } : {}),
 });
 
+// Il tesoro comune: le monete del gruppo, il bottino da assegnare e gli oggetti del party che i personaggi
+// portano nello Zaino (personaggio_oggetti.del_party), così si ha il quadro completo.
 export async function leggiTesoro(db: Esecutore, partyId: number): Promise<Tesoro> {
-  const [monete, oggetti, movimenti] = await Promise.all([
+  const [monete, oggetti, portati, movimenti] = await Promise.all([
     riga(db, "SELECT mr, ma, me, mo, mp FROM party_monete WHERE party_id = $1", [partyId]),
     righe(db, "SELECT * FROM party_oggetti WHERE party_id = $1 ORDER BY nome, id", [partyId]),
+    righe(db, `
+      SELECT pm.personaggio_id, pe.nome AS personaggio_nome, po.id_locale AS id, po.nome, po.qta, po.peso, po.consumabile, po.consumo_giornaliero
+      FROM party_membri pm JOIN personaggi pe ON pe.id = pm.personaggio_id
+        JOIN personaggio_oggetti po ON po.personaggio_id = pm.personaggio_id AND po.del_party
+      WHERE pm.party_id = $1 ORDER BY pe.nome, pm.personaggio_id, po.ordine`, [partyId]),
     righe(db, `SELECT mv.id, mv.descrizione, mv.creato, ${nomeNelParty} AS chi FROM party_tesoro_movimenti mv
       WHERE mv.party_id = $1 ORDER BY mv.id DESC LIMIT ${MOVIMENTI}`, [partyId]),
   ]);
   return {
     monete: Object.fromEntries(TAGLI.map(k => [k, Number(monete?.[k] ?? 0)])) as Monete,
     oggetti: oggetti.map(oggettoDaRiga),
+    portati: portati.reduce<Tesoro["portati"]>((gruppi, r) => {
+      const pid = Number(r.personaggio_id);
+      let gruppo = gruppi.find(g => g.personaggioId === pid);
+      if (!gruppo) gruppi.push(gruppo = { personaggioId: pid, nome: String(r.personaggio_nome || "Senza nome"), oggetti: [] });
+      gruppo.oggetti.push(oggettoDaRiga(r));
+      return gruppi;
+    }, []),
     movimenti: movimenti.map(r => ({
       id: Number(r.id), chi: String(r.chi ?? "—"), descrizione: String(r.descrizione), creato: new Date(r.creato as string).toISOString(),
     })),
@@ -100,15 +114,15 @@ export async function mettiOggetto(db: Esecutore, partyId: number, utenteId: num
     const id = uguale ? Number(uguale.id) : Number((await riga(t, `
       INSERT INTO party_oggetti (party_id, nome, qta, peso, consumabile, consumo_giornaliero) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
     [partyId, o.nome, o.qta, o.peso, !!o.consumabile, o.consumoGiornaliero ?? 0]))!.id);
-    await registra(t, partyId, utenteId, `ha messo ${o.qta}× ${o.nome}`);
+    await registra(t, partyId, utenteId, `ha messo nel bottino ${o.qta}× ${o.nome}`);
     return id;
   });
 }
 
-// Prende `qta` unità di un oggetto: restituisce ciò che è stato preso. 404 se l'oggetto non c'è più,
+// Prende `qta` unità di un oggetto del bottino: restituisce ciò che è stato preso. 404 se l'oggetto non c'è più,
 // 409 se ne resta meno di quanto chiesto (un altro l'ha preso nel frattempo).
 export async function prendiOggetto(
-  db: Esecutore, partyId: number, utenteId: number, id: number, qta: number, verbo = "ha preso",
+  db: Esecutore, partyId: number, utenteId: number, id: number, qta: number, verbo = "ha preso", perChi = "",
 ): Promise<Omit<OggettoTesoro, "id">> {
   return transazione(db, async t => {
     const r = await riga(t, "SELECT * FROM party_oggetti WHERE party_id = $1 AND id = $2 FOR UPDATE", [partyId, id]);
@@ -117,7 +131,7 @@ export async function prendiOggetto(
     if (Number(r.qta) === qta) await t.query("DELETE FROM party_oggetti WHERE id = $1", [id]);
     else await t.query("UPDATE party_oggetti SET qta = qta - $2, aggiornato = now() WHERE id = $1", [id, qta]);
     const oggetto = oggettoDaRiga(r);
-    await registra(t, partyId, utenteId, `${verbo} ${qta}× ${oggetto.nome}`);
+    await registra(t, partyId, utenteId, `${verbo} ${qta}× ${oggetto.nome}${perChi}`);
     return {
       nome: oggetto.nome, qta, peso: oggetto.peso,
       ...(oggetto.consumabile ? { consumabile: true, consumoGiornaliero: oggetto.consumoGiornaliero } : {}),

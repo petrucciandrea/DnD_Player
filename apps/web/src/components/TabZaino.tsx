@@ -4,7 +4,7 @@ import type { Armatura, CharacterData, InventoryItem } from "@dnd/regole/tipi.ts
 import type { SetChar } from "../stato.ts";
 import type { Derivate } from "@dnd/regole/regole.ts";
 import {
-  PESO_SCUDO, PROVVISTE_COMUNI, cambiaQuantita, dotazioneScomponibile, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, scomponiDotazione, segno,
+  PESO_SCUDO, PROVVISTE_COMUNI, cambiaQuantita, impostaDelParty, dotazioneScomponibile, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, scomponiDotazione, segno,
 } from "@dnd/regole/regole.ts";
 import { catalogoCreazione } from "../accesso";
 import PannelloTesoro from "./PannelloTesoro";
@@ -13,7 +13,8 @@ interface Props {
   char: CharacterData;
   d: Derivate;
   setChar: SetChar;
-  party?: { id: number; nome: string } | null; // il party del personaggio: si scambia con il suo tesoro
+  // Il party del personaggio: si scambia con il suo tesoro e si segnano gli oggetti "del party".
+  party?: { id: number; nome: string; personaggio: { id: number } | null } | null;
 }
 
 const MONETE: { k: keyof CharacterData["monete"]; label: string; color: string }[] = [
@@ -116,6 +117,12 @@ export default function TabZaino({ char, d, setChar, party }: Props) {
       <div key={it.id} className="p-3 flex flex-wrap justify-between items-center gap-2 hover:bg-slate-800/30 transition text-sm">
         <div>
           <span className={`font-semibold ${finita ? "text-rose-400" : "text-slate-200"}`}>{it.nome}</span>
+          {party && it.delParty && (
+            <span title={`Lo porti tu, ma è del party ${party.nome}: compare nel tesoro comune`}
+              className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+              del party
+            </span>
+          )}
           <span className="text-xs text-slate-500 ml-2">{arrotonda(it.peso * it.qta)} kg</span>
           {giorni !== null && (
             <span className={`text-xs ml-2 ${giorni === 0 ? "text-rose-400" : giorni <= 2 ? "text-amber-300" : "text-slate-400"}`}>
@@ -154,6 +161,15 @@ export default function TabZaino({ char, d, setChar, party }: Props) {
           {dotazioneScomponibile(it) && (
             <button onClick={() => scomponi(it)} title="Scomponi negli oggetti che contiene" className="text-slate-500 hover:text-emerald-400 p-1 ml-2">
               <PackageOpen className="w-4 h-4" />
+            </button>
+          )}
+          {party && (
+            <button
+              onClick={() => setChar(prev => impostaDelParty(prev, it.id, !it.delParty))}
+              title={it.delParty ? "È del party: rendilo tuo" : "È tuo: rendilo del party (compare nel tesoro comune)"}
+              className={`p-1 ml-2 ${it.delParty ? "text-indigo-300 hover:text-slate-400" : "text-slate-500 hover:text-indigo-300"}`}
+            >
+              <UsersRound className="w-4 h-4" />
             </button>
           )}
           <button
@@ -327,7 +343,9 @@ export default function TabZaino({ char, d, setChar, party }: Props) {
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <UsersRound className="w-5 h-5 text-indigo-400" /> Tesoro del party: {party.nome}
           </h3>
-          <PannelloTesoro partyId={party.id} master={false} scambi={{ char, setChar }} />
+          {party.personaggio && (
+            <PannelloTesoro partyId={party.id} master={false} scambi={{ personaggioId: party.personaggio.id, char, setChar }} />
+          )}
         </section>
       )}
     </div>

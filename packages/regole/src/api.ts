@@ -151,9 +151,17 @@ export interface MovimentoTesoro {
   creato: string; // ISO 8601
 }
 
+// Oggetti del party portati da un personaggio: stanno nel suo Zaino (pesano su di lui e li gestisce lui).
+export interface PortatiDa {
+  personaggioId: number;
+  nome: string; // nome del personaggio
+  oggetti: OggettoTesoro[]; // id = id dell'oggetto nello Zaino
+}
+
 // GET /api/party/:id/tesoro
 export interface Tesoro {
   monete: Monete;
-  oggetti: OggettoTesoro[];
+  oggetti: OggettoTesoro[]; // bottino ancora da assegnare: non lo porta nessuno
+  portati: PortatiDa[]; // oggetti del party, per personaggio che li porta
   movimenti: MovimentoTesoro[]; // i più recenti prima
 }

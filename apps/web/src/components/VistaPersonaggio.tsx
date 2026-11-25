@@ -181,7 +181,12 @@ function Contenuto({ c }: { c: CharacterData }) {
           <ul className="text-sm text-slate-300 space-y-0.5">
             {c.armatura && <li>{c.armatura.nome} (indossata)</li>}
             {c.scudo && <li>Scudo</li>}
-            {c.inventario.map(o => <li key={o.id}>{o.nome}{o.qta !== 1 && ` ×${o.qta}`}</li>)}
+            {c.inventario.map(o => (
+              <li key={o.id}>
+                {o.nome}{o.qta !== 1 && ` ×${o.qta}`}
+                {o.delParty && <span className="ml-1.5 text-[10px] text-indigo-300">del party</span>}
+              </li>
+            ))}
           </ul>
         </Sezione>
         <Sezione titolo="Privilegi">

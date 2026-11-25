@@ -87,6 +87,7 @@ export const leggiTesoro = (id: number) => chiamata<Tesoro>("GET", `/${id}/tesor
 // Positivi si mettono, negativi si prendono; 409 se nel tesoro non bastano.
 export const cambiaMoneteTesoro = (id: number, delta: Partial<Monete>) => chiamata<Monete>("POST", `/${id}/tesoro/monete`, { delta });
 export const mettiNelTesoro = (id: number, oggetto: Omit<OggettoTesoro, "id">) => chiamata<{ id: number }>("POST", `/${id}/tesoro/oggetti`, oggetto);
-export const prendiDalTesoro = (id: number, oggettoId: number, qta: number) =>
-  chiamata<Omit<OggettoTesoro, "id">>("POST", `/${id}/tesoro/oggetti/${oggettoId}/prendi`, { qta });
+// Prende dal bottino: `delParty` se l'oggetto resta del party (lo porta chi lo prende).
+export const prendiDalTesoro = (id: number, oggettoId: number, qta: number, delParty: boolean) =>
+  chiamata<Omit<OggettoTesoro, "id">>("POST", `/${id}/tesoro/oggetti/${oggettoId}/prendi`, { qta, delParty });
 export const togliDalTesoro = (id: number, oggettoId: number) => chiamata<null>("DELETE", `/${id}/tesoro/oggetti/${oggettoId}`);

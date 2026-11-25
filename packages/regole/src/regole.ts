@@ -132,11 +132,28 @@ export function cambiaQuantita(c: CharacterData, id: number, delta: number): Cha
 // Oggetto scambiato con il tesoro del party: i campi dello Zaino senza l'id locale.
 export type OggettoScambiato = Omit<InventoryItem, "id">;
 
-// Aggiunge allo Zaino un oggetto preso dal tesoro: si somma a uno uguale (stesso nome e peso), altrimenti è nuovo con `id`.
+// Aggiunge allo Zaino un oggetto preso dal bottino del party, come proprio o come "del party" (`delParty`).
+// Si somma a uno uguale (nome senza maiuscole, peso, provvista e stessa appartenenza), altrimenti è nuovo con `id`.
 export function mettiNelloZaino(c: CharacterData, o: OggettoScambiato, id: number): CharacterData {
-  const uguale = c.inventario.find(it => it.nome.toLowerCase() === o.nome.toLowerCase() && it.peso === o.peso && !!it.consumabile === !!o.consumabile);
+  const uguale = c.inventario.find(it => it.nome.toLowerCase() === o.nome.toLowerCase() && it.peso === o.peso
+    && !!it.consumabile === !!o.consumabile && !!it.delParty === !!o.delParty);
   if (uguale) return { ...c, inventario: c.inventario.map(it => (it === uguale ? { ...it, qta: it.qta + o.qta } : it)) };
-  return { ...c, inventario: [{ ...o, id }, ...c.inventario] };
+  const { delParty, ...resto } = o;
+  return { ...c, inventario: [{ ...resto, id, ...(delParty ? { delParty: true } : {}) }, ...c.inventario] };
+}
+
+// Chi porta un oggetto decide se è suo o del party: un oggetto del party compare nel tesoro comune.
+export function impostaDelParty(c: CharacterData, id: number, delParty: boolean): CharacterData {
+  return {
+    ...c,
+    inventario: c.inventario.map(it => {
+      if (it.id !== id) return it;
+      const copia = { ...it };
+      if (delParty) copia.delParty = true;
+      else delete copia.delParty;
+      return copia;
+    }),
+  };
 }
 
 // Toglie `qta` unità di un oggetto dello Zaino (depositato nel tesoro). Un oggetto finito sparisce; una provvista resta a 0.

@@ -1,8 +1,8 @@
 import { useCallback, useState, type FormEvent } from "react";
-import { Coins, Gem, History, LoaderCircle, Minus, PackagePlus, Plus, Trash2 } from "lucide-react";
-import type { Monete, Tesoro } from "@dnd/regole/api.ts";
+import { Coins, Gem, History, LoaderCircle, Minus, PackagePlus, Plus, Trash2, UserRound, UsersRound } from "lucide-react";
+import type { Monete, OggettoTesoro, PortatiDa, Tesoro } from "@dnd/regole/api.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
-import { cambiaMonete, mettiNelloZaino, togliDalloZaino } from "@dnd/regole/regole.ts";
+import { cambiaMonete, impostaDelParty, mettiNelloZaino, togliDalloZaino } from "@dnd/regole/regole.ts";
 import type { SetChar } from "../stato.ts";
 import {
   cambiaMoneteTesoro, leggiTesoro, mettiNelTesoro, prendiDalTesoro, togliDalTesoro, type EsitoParty,
@@ -13,7 +13,7 @@ interface Props {
   partyId: number;
   master: boolean;
   // Con la scheda del personaggio: si prende e si mette dallo Zaino e dalla borsa.
-  scambi?: { char: CharacterData; setChar: SetChar };
+  scambi?: { personaggioId: number; char: CharacterData; setChar: SetChar };
 }
 
 const AGGIORNAMENTO = 8_000; // ms
@@ -29,8 +29,9 @@ const pulsanteNeutro = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border 
 
 const quando = (iso: string) => new Date(iso).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-// Tesoro comune del party. La scheda cambia solo dopo la risposta positiva del server:
-// se la chiamata fallisce non si duplicano né si perdono oggetti o monete.
+// Tesoro comune del party: le monete del gruppo, gli oggetti del party (ognuno lo porta un personaggio, nel suo
+// Zaino: pesa su di lui e lo gestisce lui) e il bottino ancora da assegnare. La scheda cambia solo dopo la
+// risposta positiva del server: se la chiamata fallisce non si duplicano né si perdono oggetti o monete.
 export default function PannelloTesoro({ partyId, master, scambi }: Props) {
   const [tesoro, setTesoro] = useState<Tesoro | null>(null);
   const [messaggio, setMessaggio] = useState<string | null>(null);
@@ -84,10 +85,11 @@ export default function PannelloTesoro({ partyId, master, scambi }: Props) {
     });
   };
 
-  const prendiOggetto = (id: number, disponibili: number) => {
+  // Chi prende decide se l'oggetto è suo o del party: in entrambi i casi lo porta lui.
+  const prendiOggetto = (id: number, disponibili: number, delParty: boolean) => {
     const qta = Math.min(disponibili, Math.max(1, Math.floor(Number(prelievo[id] ?? 1)) || 1));
-    void esegui(() => prendiDalTesoro(partyId, id, qta), oggetto => {
-      scambi?.setChar(prev => mettiNelloZaino(prev, oggetto, Date.now()));
+    void esegui(() => prendiDalTesoro(partyId, id, qta, delParty), oggetto => {
+      scambi?.setChar(prev => mettiNelloZaino(prev, { ...oggetto, delParty }, Date.now()));
       setPrelievo(p => ({ ...p, [id]: "1" }));
     });
   };
@@ -102,8 +104,8 @@ export default function PannelloTesoro({ partyId, master, scambi }: Props) {
     if (!mioOggetto) return;
     const qta = Math.floor(Number(deposito.qta));
     if (!(qta >= 1 && qta <= mioOggetto.qta)) return setMessaggio(`Puoi mettere da 1 a ${mioOggetto.qta} ${mioOggetto.nome}.`);
-    const { id, ...campi } = mioOggetto;
-    void esegui(() => mettiNelTesoro(partyId, { ...campi, qta }), () => {
+    const { id, nome, peso, consumabile, consumoGiornaliero } = mioOggetto;
+    void esegui(() => mettiNelTesoro(partyId, { nome, peso, qta, ...(consumabile ? { consumabile, consumoGiornaliero } : {}) }), () => {
       scambi?.setChar(prev => togliDalloZaino(prev, id, qta));
       setDeposito({ id: null, qta: "1" });
     });
@@ -120,6 +122,18 @@ export default function PannelloTesoro({ partyId, master, scambi }: Props) {
   if (!tesoro) return <div className="flex justify-center py-8"><LoaderCircle className="w-5 h-5 text-indigo-400 animate-spin" /></div>;
 
   const puoPrendere = !!scambi || master;
+  // I propri oggetti del party si leggono dalla scheda (subito aggiornata), gli altri dal server.
+  const portati: PortatiDa[] = scambi
+    ? [
+      ...(() => {
+        const miei = scambi.char.inventario.filter(i => i.delParty);
+        return miei.length > 0 ? [{ personaggioId: scambi.personaggioId, nome: scambi.char.info.nome || "Tu", oggetti: miei }] : [];
+      })(),
+      ...tesoro.portati.filter(g => g.personaggioId !== scambi.personaggioId),
+    ]
+    : tesoro.portati;
+  const peso = (oggetti: OggettoTesoro[]) => Number(oggetti.reduce((t, o) => t + o.peso * o.qta, 0).toFixed(2));
+  const pesoParty = peso(portati.flatMap(g => g.oggetti));
   const movimenti = tuttiMovimenti ? tesoro.movimenti : tesoro.movimenti.slice(0, 8);
   const depositabili = scambi?.char.inventario.filter(i => i.qta > 0) ?? [];
 
@@ -157,8 +171,46 @@ export default function PannelloTesoro({ partyId, master, scambi }: Props) {
       </section>
 
       <section className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
-        <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2"><Gem className="w-4 h-4 text-violet-400" /> Oggetti del gruppo</h3>
-        {tesoro.oggetti.length === 0 && <p className="text-sm text-slate-500">Il tesoro non contiene oggetti.</p>}
+        <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+          <UsersRound className="w-4 h-4 text-indigo-400" /> Oggetti del party
+          {pesoParty > 0 && <span className="text-xs font-normal text-slate-500">• {pesoParty} kg in tutto</span>}
+        </h3>
+        {portati.length === 0 && (
+          <p className="text-sm text-slate-500">
+            Nessun oggetto del party. Ognuno lo porta un personaggio nel suo Zaino: si segna con l'icona del gruppo accanto all'oggetto.
+          </p>
+        )}
+        {portati.map(g => {
+          const mio = g.personaggioId === scambi?.personaggioId;
+          return (
+            <div key={g.personaggioId} className="space-y-1">
+              <div className="text-xs font-semibold text-slate-400 flex items-center gap-1">
+                <UserRound className="w-3 h-3" /> Li porta {g.nome}{mio && " (tu)"} <span className="font-normal text-slate-500">• {peso(g.oggetti)} kg</span>
+              </div>
+              <ul className="space-y-1 pl-4">
+                {g.oggetti.map(o => (
+                  <li key={o.id} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="flex-1 min-w-0 text-slate-200 truncate">
+                      {o.nome} <span className="text-slate-500">×{o.qta}</span>
+                      {o.peso > 0 && <span className="text-xs text-slate-500"> • {Number((o.peso * o.qta).toFixed(2))} kg</span>}
+                    </span>
+                    {mio && scambi && (
+                      <button onClick={() => scambi.setChar(prev => impostaDelParty(prev, o.id, false))} title="Non è più del party: diventa tuo"
+                        className={pulsanteNeutro}>
+                        Rendi mio
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+        <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2"><Gem className="w-4 h-4 text-violet-400" /> Bottino da assegnare</h3>
+        {tesoro.oggetti.length === 0 && <p className="text-sm text-slate-500">Nessun oggetto in attesa di qualcuno che lo prenda.</p>}
         <ul className="space-y-1.5">
           {tesoro.oggetti.map(o => (
             <li key={o.id} className="flex flex-wrap items-center gap-2 text-sm">
@@ -172,11 +224,17 @@ export default function PannelloTesoro({ partyId, master, scambi }: Props) {
                     <input type="number" min={1} max={o.qta} value={prelievo[o.id] ?? "1"}
                       onChange={e => setPrelievo(p => ({ ...p, [o.id]: e.target.value }))} className={`${campo} w-16 py-1`} />
                   )}
-                  <button onClick={() => prendiOggetto(o.id, o.qta)} disabled={inCorso} className={pulsanteNeutro}>Prendi</button>
+                  <button onClick={() => prendiOggetto(o.id, o.qta, false)} disabled={inCorso} title="Lo prendi e diventa tuo" className={pulsanteNeutro}>
+                    Prendi per me
+                  </button>
+                  <button onClick={() => prendiOggetto(o.id, o.qta, true)} disabled={inCorso}
+                    title="Lo porti tu nello Zaino, ma resta del party" className={pulsanteNeutro}>
+                    <UsersRound className="w-3.5 h-3.5" /> Per il party
+                  </button>
                 </>
               )}
               {master && (
-                <button onClick={() => togliOggetto(o.id, o.nome)} disabled={inCorso} title="Togli dal tesoro" className="p-1 text-slate-500 hover:text-rose-300">
+                <button onClick={() => togliOggetto(o.id, o.nome)} disabled={inCorso} title="Togli dal bottino" className="p-1 text-slate-500 hover:text-rose-300">
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}
@@ -188,14 +246,14 @@ export default function PannelloTesoro({ partyId, master, scambi }: Props) {
           <form onSubmit={deposita} className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800">
             <select value={deposito.id ?? ""} onChange={e => setDeposito({ id: e.target.value ? Number(e.target.value) : null, qta: "1" })}
               className={`${campo} flex-1 min-w-40`}>
-              <option value="">Metti un oggetto dello Zaino…</option>
-              {depositabili.map(i => <option key={i.id} value={i.id}>{i.nome} (×{i.qta})</option>)}
+              <option value="">Lascia un oggetto dello Zaino nel bottino…</option>
+              {depositabili.map(i => <option key={i.id} value={i.id}>{i.nome} (×{i.qta}){i.delParty ? " — del party" : ""}</option>)}
             </select>
             {mioOggetto && mioOggetto.qta > 1 && (
               <input type="number" min={1} max={mioOggetto.qta} value={deposito.qta} onChange={e => setDeposito(d => ({ ...d, qta: e.target.value }))}
                 className={`${campo} w-16`} />
             )}
-            <button type="submit" disabled={inCorso || !mioOggetto} className={pulsanteNeutro}><PackagePlus className="w-3.5 h-3.5" /> Metti</button>
+            <button type="submit" disabled={inCorso || !mioOggetto} className={pulsanteNeutro}><PackagePlus className="w-3.5 h-3.5" /> Lascia</button>
           </form>
         )}
 

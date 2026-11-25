@@ -57,6 +57,7 @@ export interface InventoryItem {
   peso: number; // kg per unità
   consumabile?: boolean; // provvista (razioni, olio, torce…): la quantità può arrivare a 0
   consumoGiornaliero?: number; // unità consumate da "Passa un giorno" (0 o assente = nessuno)
+  delParty?: boolean; // lo porta il personaggio ma è del party: compare nel tesoro comune
 }
 
 export interface XPRecord {

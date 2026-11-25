@@ -265,9 +265,11 @@ export async function rotteParty(app: FastifyInstance) {
 
   app.post<ConOggetto>("/party/:id/tesoro/oggetti/:oggetto/prendi", async richiesta => {
     const { id, io } = await membroDelParty(richiesta);
-    const { qta } = corpoOggetto(richiesta.body);
+    const { qta, delParty } = corpoOggetto(richiesta.body);
     if (!Number.isInteger(qta) || (qta as number) < 1) throw new ErroreRichiesta(400, "Quantità non valida");
-    return prendiOggetto(app.db, id, io, idDa(richiesta.params.oggetto, "Oggetto inesistente"), qta as number);
+    // Chi prende decide se l'oggetto è suo o resta del party (lo porta lui, ma compare nel tesoro).
+    return prendiOggetto(app.db, id, io, idDa(richiesta.params.oggetto, "Oggetto inesistente"), qta as number, "ha preso",
+      delParty === true ? " per il party" : " per sé");
   });
 
   app.delete<ConOggetto>("/party/:id/tesoro/oggetti/:oggetto", async (richiesta, risposta) => {

@@ -13,7 +13,7 @@ import {
   PROVVISTE_COMUNI, cambiaQuantita, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, dotazioneScomponibile, scomponiDotazione,
   applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
   applicaSalita, aumentiDa, xpDelLivello, esitoTiroCondiviso, ordineIniziativa, avanzaTurno,
-  mettiNelloZaino, togliDalloZaino, cambiaMonete,
+  mettiNelloZaino, togliDalloZaino, cambiaMonete, impostaDelParty,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { calcolaDanno, difeseDelPersonaggio, haSchivataProdigiosa, tipoDanno, type Difesa } from "./dati/danni";
@@ -1544,6 +1544,23 @@ describe("scambi con il tesoro del party", () => {
     const nuovo = mettiNelloZaino(c, { nome: "Gemma", qta: 1, peso: 0 }, 99);
     expect(nuovo.inventario[0]).toEqual({ id: 99, nome: "Gemma", qta: 1, peso: 0 });
     expect(c.inventario).toHaveLength(2); // l'originale non cambia
+  });
+
+  it("preso per il party resta separato da quello proprio con lo stesso nome", () => {
+    const c = conZaino();
+    const delParty = mettiNelloZaino(c, { nome: "Pozione di guarigione", qta: 1, peso: 0.25, delParty: true }, 99);
+    expect(delParty.inventario[0]).toEqual({ id: 99, nome: "Pozione di guarigione", qta: 1, peso: 0.25, delParty: true });
+    expect(delParty.inventario.find(i => i.id === 1)?.qta).toBe(3);
+    const ancora = mettiNelloZaino(delParty, { nome: "Pozione di guarigione", qta: 2, peso: 0.25, delParty: true }, 100);
+    expect(ancora.inventario.find(i => i.id === 99)?.qta).toBe(3);
+    expect(mettiNelloZaino(c, { nome: "Gemma", qta: 1, peso: 0, delParty: false }, 99).inventario[0]).not.toHaveProperty("delParty");
+  });
+
+  it("chi porta l'oggetto decide se è suo o del party", () => {
+    const c = conZaino();
+    const delParty = impostaDelParty(c, 1, true);
+    expect(delParty.inventario[0]).toMatchObject({ id: 1, delParty: true });
+    expect(impostaDelParty(delParty, 1, false).inventario[0]).toEqual(c.inventario[0]);
   });
 
   it("un oggetto depositato cala; finito sparisce, una provvista resta a 0", () => {

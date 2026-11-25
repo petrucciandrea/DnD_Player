@@ -85,7 +85,7 @@ Nella schermata del party ci sono cinque sezioni:
 - **Chat**: messaggi a tutto il gruppo oppure privati a un membro, con il numero dei non letti. Il numero compare anche sul pulsante del party nell'intestazione della scheda.
 - **Iniziativa**: il Master avvia lo scontro, aggiunge mostri e PNG (anche nascosti ai giocatori) e fa avanzare turni e round. Ogni giocatore tira l'iniziativa del suo personaggio o la inserisce a mano. Quando tocca a te, il pulsante del party nella scheda mostra **Tocca a te!**.
 - **Diario**: le note di campagna del gruppo (sessioni, PNG, luoghi, missioni), scritte da tutti, con ricerca e filtri. Il Master può fissare in alto le voci importanti.
-- **Tesoro**: monete e oggetti del gruppo, con lo storico di chi ha preso o messo cosa. I giocatori prendono e mettono dallo **Zaino** della loro scheda; il Master aggiunge il bottino trovato.
+- **Tesoro**: il quadro completo di ciò che il gruppo possiede. Ogni oggetto del party lo porta un personaggio: sta nel suo **Zaino**, pesa su di lui e lo gestisce lui, ma è segnato *del party* (icona del gruppo accanto all'oggetto) e compare nel tesoro con il nome di chi lo porta. Il Master aggiunge il **bottino** trovato; chi lo prende sceglie se tenerlo per sé o portarlo per il party. Le monete stanno in una cassa comune. Lo storico dice chi ha preso o lasciato cosa.
 
 Con il personaggio in un party, la finestra di ogni tiro chiede anche se **condividerlo**: con tutto il gruppo, solo con il Master (tiro segreto) o con nessuno. Il tiro compare nella chat con dadi, modificatore e totale.
 

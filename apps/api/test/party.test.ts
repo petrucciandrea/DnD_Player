@@ -506,7 +506,30 @@ describe("party: tesoro", () => {
     expect((await chiama("uno", "DELETE", `${url}/oggetti/${gemma}`)).statusCode).toBe(403);
     expect((await chiama("master", "DELETE", `${url}/oggetti/${gemma}`)).statusCode).toBe(204);
     expect((await tesoro()).movimenti.map(m => `${m.chi} ${m.descrizione}`)).toEqual([
-      "Master ha tolto 1× Gemma", "Bruenor ha messo 20 mo", "Master ha messo 1× Gemma",
+      "Master ha tolto 1× Gemma", "Bruenor ha messo 20 mo", "Master ha messo nel bottino 1× Gemma",
+    ]);
+  });
+
+  it("gli oggetti del party stanno negli Zaini: il tesoro li mostra per chi li porta; prendere dice per chi", async () => {
+    const { chiama, url, tesoro } = await conTesoro();
+    const corda = (await chiama("master", "POST", `${url}/oggetti`, { nome: "Corda", qta: 1, peso: 5 })).json().id;
+    await chiama("master", "POST", `${url}/oggetti`, { nome: "Gemma", qta: 2, peso: 0 });
+    const gemma = (await tesoro()).oggetti.find(o => o.nome === "Gemma")!.id;
+    expect((await chiama("uno", "POST", `${url}/oggetti/${corda}/prendi`, { qta: 1, delParty: true })).statusCode).toBe(200);
+    expect((await chiama("due", "POST", `${url}/oggetti/${gemma}/prendi`, { qta: 1 })).statusCode).toBe(200);
+
+    // Il client mette l'oggetto nello Zaino (con delParty) e salva la scheda.
+    const elenco = (await chiama("uno", "GET", "/api/personaggi")).json();
+    const pid = elenco[0].id as number;
+    const { dati, revisione } = (await chiama("uno", "GET", `/api/personaggi/${pid}`)).json();
+    dati.inventario = [{ id: 501, nome: "Corda", qta: 1, peso: 5, delParty: true }, { id: 502, nome: "Mappa", qta: 1, peso: 0 }];
+    expect((await chiama("uno", "PUT", `/api/personaggi/${pid}`, { dati, revisione })).statusCode).toBe(200);
+
+    const t = await tesoro("due");
+    expect(t.portati).toEqual([{ personaggioId: pid, nome: "Bruenor", oggetti: [{ id: 501, nome: "Corda", qta: 1, peso: 5 }] }]);
+    expect(t.oggetti.map(o => [o.nome, o.qta])).toEqual([["Gemma", 1]]);
+    expect(t.movimenti.slice(0, 2).map(m => `${m.chi} ${m.descrizione}`)).toEqual([
+      "Drizzt ha preso 1× Gemma per sé", "Bruenor ha preso 1× Corda per il party",
     ]);
   });
 });
