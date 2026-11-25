@@ -70,6 +70,12 @@ export interface DatiVoceIniziativa {
   valore?: number;
   bonus?: number;
   nascosto?: boolean;
+  // Solo per mostri e PNG; null toglie il valore.
+  ca?: number | null;
+  pf?: number | null;
+  pfMassimi?: number | null;
+  condizioni?: string[];
+  note?: string;
 }
 
 export const leggiCombattimento = (id: number) => chiamata<Combattimento>("GET", `/${id}/combattimento`);

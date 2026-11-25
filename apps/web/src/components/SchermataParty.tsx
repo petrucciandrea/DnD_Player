@@ -208,7 +208,7 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
         </nav>
 
         {sezione === "chat" && <PartyChat io={party.io.utenteId} membri={party.membri} chat={chat} />}
-        {sezione === "iniziativa" && <PartyIniziativa partyId={partyId} ruolo={party.io.ruolo} mio={mio} riuscito={riuscito} />}
+        {sezione === "iniziativa" && <PartyIniziativa partyId={partyId} ruolo={party.io.ruolo} mio={mio} membri={party.membri} riuscito={riuscito} />}
         {sezione === "tesoro" && (
           <div className="space-y-3">
             {!master && mio && (

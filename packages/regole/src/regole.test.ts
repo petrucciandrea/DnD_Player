@@ -12,7 +12,7 @@ import {
   sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot, incantesimiSottoclasseMancanti, aggiungiIncantesimi,
   PROVVISTE_COMUNI, cambiaQuantita, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, dotazioneScomponibile, scomponiDotazione,
   applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
-  applicaSalita, aumentiDa, xpDelLivello, esitoTiroCondiviso, ordineIniziativa, avanzaTurno,
+  applicaSalita, aumentiDa, xpDelLivello, esitoTiroCondiviso, ordineIniziativa, avanzaTurno, statoSalute,
   mettiNelloZaino, togliDalloZaino, cambiaMonete, impostaDelParty,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
@@ -1522,6 +1522,26 @@ describe("iniziativa", () => {
     expect(avanzaTurno(ordine, 2, 1, -1)).toEqual({ diTurno: 2, round: 1 });
     expect(avanzaTurno(ordine, 99, 3, 1)).toEqual({ diTurno: 2, round: 3 });
     expect(avanzaTurno([], 2, 1, 1)).toEqual({ diTurno: null, round: 1 });
+  });
+
+  it("i mostri sconfitti non prendono il turno, anche passando al round successivo", () => {
+    const ordine = ordineIniziativa(voci); // Bruenor 2, Alston 3, Bugbear 4, Goblin 1
+    const sconfitti = new Set([3, 1]);
+    const salta = (v: { id: number }) => sconfitti.has(v.id);
+    expect(avanzaTurno(ordine, 2, 1, 1, salta)).toEqual({ diTurno: 4, round: 1 });
+    expect(avanzaTurno(ordine, 4, 1, 1, salta)).toEqual({ diTurno: 2, round: 2 });
+    expect(avanzaTurno(ordine, 2, 2, -1, salta)).toEqual({ diTurno: 4, round: 1 });
+    expect(avanzaTurno(ordine, null, 1, 1, v => v.id === 2)).toEqual({ diTurno: 3, round: 1 });
+    expect(avanzaTurno(ordine, 2, 1, 1, v => v.id !== 2)).toEqual({ diTurno: 2, round: 2 }); // resta solo lui
+  });
+
+  it("lo stato di salute di un mostro, senza numeri", () => {
+    expect(statoSalute(20, 20)).toBe("illeso");
+    expect(statoSalute(11, 20)).toBe("ferito");
+    expect(statoSalute(10, 20)).toBe("gravemente ferito");
+    expect(statoSalute(0, 20)).toBe("sconfitto");
+    expect(statoSalute(null, 20)).toBeNull();
+    expect(statoSalute(5, null)).toBeNull();
   });
 });
 

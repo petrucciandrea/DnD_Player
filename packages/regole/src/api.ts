@@ -1,4 +1,4 @@
-import type { Modalita } from "./regole.ts";
+import type { Modalita, StatoSalute } from "./regole.ts";
 import type { CharacterData, DettagliIncantesimo, InventoryItem } from "./tipi.ts";
 
 // Contratto tra client e server: forme delle risposte dell'API che non sono già in tipi.ts.
@@ -129,6 +129,13 @@ export interface VoceIniziativa {
   valore: number;
   bonus: number; // modificatore d'iniziativa: spareggia
   nascosto: boolean; // i giocatori non la vedono
+  // Solo mostri e PNG, solo per il Master (ai giocatori arrivano null e vuoti):
+  ca: number | null;
+  pf: number | null;
+  pfMassimi: number | null;
+  condizioni: string[]; // id delle condizioni (CONDIZIONI in dati/condizioni.ts)
+  note: string;
+  stato: StatoSalute | null; // per tutti: come appare il mostro, senza numeri (null senza PF)
 }
 
 // GET /api/party/:id/combattimento. Le voci sono già nell'ordine dei turni.

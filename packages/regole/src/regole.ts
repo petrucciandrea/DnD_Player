@@ -496,17 +496,37 @@ export const ordineIniziativa = <T extends { id: number; nome: string; valore: n
   [...voci].sort((a, b) => b.valore - a.valore || b.bonus - a.bonus || a.nome.localeCompare(b.nome, "it") || a.id - b.id);
 
 // Il turno dopo (o prima, con direzione -1) di `diTurno`; passando dall'ultimo al primo cambia il round.
-// Prima del primo turno (diTurno null o voce sparita) si parte dal primo.
-export function avanzaTurno(
-  ordine: { id: number }[], diTurno: number | null, round: number, direzione: 1 | -1,
+// Prima del primo turno (diTurno null o voce sparita) si parte dal primo. Le voci per cui `salta` è vero
+// (mostri sconfitti) non prendono il turno; indietro non si va prima del primo turno del round 1.
+export function avanzaTurno<T extends { id: number }>(
+  ordine: T[], diTurno: number | null, round: number, direzione: 1 | -1, salta: (voce: T) => boolean = () => false,
 ): { diTurno: number | null; round: number } {
-  if (ordine.length === 0) return { diTurno: null, round };
-  const indice = ordine.findIndex(v => v.id === diTurno);
-  if (indice < 0) return { diTurno: ordine[0].id, round };
-  const prossimo = indice + direzione;
-  if (prossimo >= ordine.length) return { diTurno: ordine[0].id, round: round + 1 };
-  if (prossimo < 0) return round > 1 ? { diTurno: ordine[ordine.length - 1].id, round: round - 1 } : { diTurno: ordine[0].id, round };
-  return { diTurno: ordine[prossimo].id, round };
+  let indice = ordine.findIndex(v => v.id === diTurno);
+  if (indice < 0) return { diTurno: ordine.find(v => !salta(v))?.id ?? null, round };
+  let r = round;
+  for (let passi = 0; passi < ordine.length; passi++) {
+    indice += direzione;
+    if (indice >= ordine.length) {
+      indice = 0;
+      r += 1;
+    } else if (indice < 0) {
+      if (r <= 1) return { diTurno, round };
+      indice = ordine.length - 1;
+      r -= 1;
+    }
+    if (!salta(ordine[indice])) return { diTurno: ordine[indice].id, round: r };
+  }
+  return { diTurno, round }; // tutti gli altri sono da saltare
+}
+
+export type StatoSalute = "illeso" | "ferito" | "gravemente ferito" | "sconfitto";
+
+// Come appare un mostro ai giocatori, senza numeri: sopra metà dei PF è ferito, fino a metà gravemente ferito.
+export function statoSalute(pf: number | null, pfMassimi: number | null): StatoSalute | null {
+  if (pf === null || pfMassimi === null || pfMassimi <= 0) return null;
+  if (pf <= 0) return "sconfitto";
+  if (pf >= pfMassimi) return "illeso";
+  return pf > pfMassimi / 2 ? "ferito" : "gravemente ferito";
 }
 
 // Tiro da pubblicare nella chat del party, dalla richiesta del dialogo e dai risultati.

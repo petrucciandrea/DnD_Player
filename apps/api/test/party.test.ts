@@ -311,6 +311,69 @@ describe("party: chat", () => {
   });
 });
 
+describe("party: mostri nell'iniziativa", () => {
+  it("CA, PF, condizioni e note li vede solo il Master; i giocatori vedono nome e stato di salute", async () => {
+    const t = await tavolo("master", "uno");
+    const { id: partyId, codice } = await t.party("master");
+    const bruenor = await t.personaggio("uno", "Bruenor");
+    await t.chiama("uno", "POST", "/api/party/entra", { codice, personaggioId: bruenor });
+    const url = `/api/party/${partyId}/combattimento`;
+    await t.chiama("master", "POST", url);
+    await t.chiama("uno", "PUT", `${url}/mio`, { valore: 10 });
+    const goblin = (await t.chiama("master", "POST", `${url}/voci`, {
+      nome: "Goblin", valore: 15, bonus: 2, ca: 15, pfMassimi: 7, condizioni: ["prono"], note: "Scimitarra +4, 1d6+2",
+    })).json().id;
+    const stato = async (utente: string) => (await t.chiama(utente, "GET", url)).json() as Combattimento;
+
+    expect((await stato("master")).voci[0]).toMatchObject({
+      nome: "Goblin", ca: 15, pf: 7, pfMassimi: 7, condizioni: ["prono"], note: "Scimitarra +4, 1d6+2", stato: "illeso",
+    });
+    expect((await stato("uno")).voci[0]).toEqual({
+      id: goblin, personaggioId: null, nome: "Goblin", valore: 15, bonus: 2, nascosto: false,
+      ca: null, pf: null, pfMassimi: null, condizioni: [], note: "", stato: "illeso",
+    });
+
+    // Danno e cura: i PF restano tra 0 e i massimi.
+    await t.chiama("master", "PUT", `${url}/voci/${goblin}`, { pf: 3 });
+    expect((await stato("uno")).voci[0].stato).toBe("gravemente ferito");
+    await t.chiama("master", "PUT", `${url}/voci/${goblin}`, { pf: 50 });
+    expect((await stato("master")).voci[0].pf).toBe(7);
+    await t.chiama("master", "PUT", `${url}/voci/${goblin}`, { condizioni: ["prono", "avvelenato", "prono"] });
+    expect((await stato("master")).voci[0].condizioni).toEqual(["prono", "avvelenato"]);
+
+    expect((await t.chiama("master", "PUT", `${url}/voci/${goblin}`, { condizioni: ["felice"] })).statusCode).toBe(400);
+    expect((await t.chiama("master", "PUT", `${url}/voci/${goblin}`, { ca: 99 })).statusCode).toBe(400);
+    expect((await t.chiama("uno", "PUT", `${url}/voci/${goblin}`, { pf: 0 })).statusCode).toBe(403);
+    const mia = (await stato("master")).voci.find(v => v.personaggioId === bruenor)!;
+    expect((await t.chiama("master", "PUT", `${url}/voci/${mia.id}`, { pf: 1 })).statusCode).toBe(400);
+    expect((await t.chiama("master", "PUT", `${url}/voci/${mia.id}`, { valore: 12 })).statusCode).toBe(204);
+  });
+
+  it("un mostro a 0 PF è sconfitto e il turno lo salta", async () => {
+    const t = await tavolo("master", "uno");
+    const { id: partyId, codice } = await t.party("master");
+    await t.chiama("uno", "POST", "/api/party/entra", { codice, personaggioId: await t.personaggio("uno", "Bruenor") });
+    const url = `/api/party/${partyId}/combattimento`;
+    await t.chiama("master", "POST", url);
+    await t.chiama("uno", "PUT", `${url}/mio`, { valore: 10 });
+    const orco = (await t.chiama("master", "POST", `${url}/voci`, { nome: "Orco", valore: 20, pfMassimi: 15 })).json().id;
+    await t.chiama("master", "POST", `${url}/voci`, { nome: "Lupo", valore: 5, pfMassimi: 11 });
+    const turno = async () => {
+      const c = (await t.chiama("uno", "GET", url)).json() as Combattimento;
+      return [c.voci.find(v => v.id === c.diTurno)?.nome, c.round];
+    };
+    await t.chiama("master", "POST", `${url}/avanza`, { direzione: 1 });
+    expect(await turno()).toEqual(["Orco", 1]);
+    await t.chiama("master", "PUT", `${url}/voci/${orco}`, { pf: 0 });
+    expect((await t.chiama("uno", "GET", url)).json().voci[0].stato).toBe("sconfitto");
+    await t.chiama("master", "POST", `${url}/avanza`, { direzione: 1 });
+    await t.chiama("master", "POST", `${url}/avanza`, { direzione: 1 });
+    expect(await turno()).toEqual(["Lupo", 1]);
+    await t.chiama("master", "POST", `${url}/avanza`, { direzione: 1 });
+    expect(await turno()).toEqual(["Bruenor", 2]); // l'Orco sconfitto non torna di turno
+  });
+});
+
 describe("party: diario", () => {
   async function partyConDiario() {
     const t = await tavolo("master", "uno", "due");
