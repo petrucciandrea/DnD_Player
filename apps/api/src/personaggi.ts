@@ -134,11 +134,12 @@ export async function scomponi(db: Esecutore, id: number, c: CharacterData, uten
     await inserisci("personaggio_note_campi", ["personaggio_id", "nota_ordine", "campo", "valore"],
       c.note.flatMap((n, i) => Object.entries(n.campi ?? {}).flatMap(([campo, valore]) =>
         testo(valore).trim() ? [[id, i, campo, testo(valore)]] : [])));
-    await inserisci("personaggio_oggetti", ["personaggio_id", "ordine", "id_locale", "nome", "qta", "peso", "consumabile", "consumo_giornaliero"],
+    await inserisci("personaggio_oggetti",
+      ["personaggio_id", "ordine", "id_locale", "nome", "qta", "peso", "consumabile", "consumo_giornaliero", "del_party"],
       c.inventario.map((o, i) => {
         const consumabile = flag(o.consumabile);
         return [id, i, intero(o.id, i + 1), testo(o.nome), intero(o.qta, 1), numero(o.peso),
-          consumabile, consumabile ? Math.max(0, numero(o.consumoGiornaliero)) : 0];
+          consumabile, consumabile ? Math.max(0, numero(o.consumoGiornaliero)) : 0, flag(o.delParty)];
       }));
   });
 }
@@ -245,6 +246,7 @@ function schedaDaRiga(p: Riga): CharacterData {
   c.inventario = l("oggetti").map((r): InventoryItem => ({
     id: Number(r.id_locale), nome: testo(r.nome), qta: Number(r.qta), peso: Number(r.peso),
     ...(flag(r.consumabile) && { consumabile: true, consumoGiornaliero: Number(r.consumo_giornaliero) }),
+    ...(flag(r.del_party) && { delParty: true }),
   }));
   c.privilegi = l("privilegi").map(privilegioDaRiga);
   c.lore = {
@@ -257,6 +259,13 @@ function schedaDaRiga(p: Riga): CharacterData {
 export async function componi(db: Esecutore, id: number): Promise<CharacterData | null> {
   const p = await riga(db, `${SQL_SCHEDA} WHERE p.id = $1`, [id]);
   return p ? schedaDaRiga(p) : null;
+}
+
+// Più schede con una sola query, per id.
+export async function componiMolti(db: Esecutore, ids: number[]): Promise<Map<number, CharacterData>> {
+  if (ids.length === 0) return new Map();
+  const r = await righe(db, `${SQL_SCHEDA} WHERE p.id = ANY($1::int[])`, [ids]);
+  return new Map(r.map(p => [Number(p.id), schedaDaRiga(p)]));
 }
 
 // Scheda e revisione, solo se il personaggio è dell'utente.
@@ -281,8 +290,12 @@ export async function creaPersonaggio(
 }
 
 export const elencoPersonaggi = async (db: Esecutore, utenteId: number): Promise<RiassuntoPersonaggio[]> =>
-  (await righe(db, "SELECT id, nome, classe, sottoclasse, livello, razza, avatar FROM personaggi WHERE utente_id = $1 ORDER BY id", [utenteId]))
+  (await righe(db, `
+    SELECT p.id, p.nome, p.classe, p.sottoclasse, p.livello, p.razza, p.avatar, pa.id AS party_id, pa.nome AS party_nome
+    FROM personaggi p LEFT JOIN party_membri m ON m.personaggio_id = p.id LEFT JOIN party pa ON pa.id = m.party_id
+    WHERE p.utente_id = $1 ORDER BY p.id`, [utenteId]))
     .map(r => ({
       id: Number(r.id), nome: testo(r.nome), classe: testo(r.classe), sottoclasse: testo(r.sottoclasse),
       livello: Number(r.livello), razza: testo(r.razza), avatar: testo(r.avatar),
+      party: r.party_id === null ? null : { id: Number(r.party_id), nome: testo(r.party_nome) },
     }));

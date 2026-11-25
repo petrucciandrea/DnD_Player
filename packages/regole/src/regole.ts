@@ -1,4 +1,5 @@
 // Regole D&D 5e (edizione 2014). Le regole delle singole classi stanno in dati/classi.ts.
+import type { TiroCondiviso } from "./api.ts";
 import type {
   Arma, ArmaPersonaggio, Caratteristica, CharacterData, DettagliIncantesimo, EsitoRiposoBreve, IncantesimoCatalogo, InventoryItem, Privilegio, PrivilegioClasse, Spell,
 } from "./tipi.ts";
@@ -126,6 +127,52 @@ export function cambiaQuantita(c: CharacterData, id: number, delta: number): Cha
     inventario: c.inventario.map(it =>
       it.id === id ? { ...it, qta: Math.max(it.consumabile ? 0 : 1, it.qta + delta) } : it),
   };
+}
+
+// Oggetto scambiato con il tesoro del party: i campi dello Zaino senza l'id locale.
+export type OggettoScambiato = Omit<InventoryItem, "id">;
+
+// Aggiunge allo Zaino un oggetto preso dal bottino del party, come proprio o come "del party" (`delParty`).
+// Si somma a uno uguale (nome senza maiuscole, peso, provvista e stessa appartenenza), altrimenti è nuovo con `id`.
+export function mettiNelloZaino(c: CharacterData, o: OggettoScambiato, id: number): CharacterData {
+  const uguale = c.inventario.find(it => it.nome.toLowerCase() === o.nome.toLowerCase() && it.peso === o.peso
+    && !!it.consumabile === !!o.consumabile && !!it.delParty === !!o.delParty);
+  if (uguale) return { ...c, inventario: c.inventario.map(it => (it === uguale ? { ...it, qta: it.qta + o.qta } : it)) };
+  const { delParty, ...resto } = o;
+  return { ...c, inventario: [{ ...resto, id, ...(delParty ? { delParty: true } : {}) }, ...c.inventario] };
+}
+
+// Chi porta un oggetto decide se è suo o del party: un oggetto del party compare nel tesoro comune.
+export function impostaDelParty(c: CharacterData, id: number, delParty: boolean): CharacterData {
+  return {
+    ...c,
+    inventario: c.inventario.map(it => {
+      if (it.id !== id) return it;
+      const copia = { ...it };
+      if (delParty) copia.delParty = true;
+      else delete copia.delParty;
+      return copia;
+    }),
+  };
+}
+
+// Toglie `qta` unità di un oggetto dello Zaino (depositato nel tesoro). Un oggetto finito sparisce; una provvista resta a 0.
+export function togliDalloZaino(c: CharacterData, id: number, qta: number): CharacterData {
+  return {
+    ...c,
+    inventario: c.inventario.flatMap(it => {
+      if (it.id !== id) return [it];
+      const resto = Math.max(0, it.qta - qta);
+      return resto > 0 || it.consumabile ? [{ ...it, qta: resto }] : [];
+    }),
+  };
+}
+
+// Aggiunge (o toglie, con valori negativi) monete alla borsa; nessun taglio scende sotto zero.
+export function cambiaMonete(c: CharacterData, delta: Partial<CharacterData["monete"]>): CharacterData {
+  const monete = { ...c.monete };
+  for (const k of Object.keys(monete) as (keyof typeof monete)[]) monete[k] = Math.max(0, monete[k] + (delta[k] ?? 0));
+  return { ...c, monete };
 }
 
 export function impostaConsumabile(c: CharacterData, id: number, consumabile: boolean): CharacterData {
@@ -443,6 +490,64 @@ export function esitoTsMorte(c: CharacterData, d20: number): CharacterData {
 
 // Il danno non scende mai sotto 0.
 export const totaleDanni = (tiri: number[], mod: number) => Math.max(0, tiri.reduce((a, b) => a + b, 0) + mod);
+
+// Ordine dei turni: iniziativa più alta prima; a parità vince il modificatore più alto, poi il nome.
+export const ordineIniziativa = <T extends { id: number; nome: string; valore: number; bonus: number | null }>(voci: T[]): T[] =>
+  [...voci].sort((a, b) => b.valore - a.valore || (b.bonus ?? 0) - (a.bonus ?? 0) || a.nome.localeCompare(b.nome, "it") || a.id - b.id);
+
+// Il turno dopo (o prima, con direzione -1) di `diTurno`; passando dall'ultimo al primo cambia il round.
+// Prima del primo turno (diTurno null o voce sparita) si parte dal primo. Le voci per cui `salta` è vero
+// (mostri sconfitti) non prendono il turno; indietro non si va prima del primo turno del round 1.
+export function avanzaTurno<T extends { id: number }>(
+  ordine: T[], diTurno: number | null, round: number, direzione: 1 | -1, salta: (voce: T) => boolean = () => false,
+): { diTurno: number | null; round: number } {
+  let indice = ordine.findIndex(v => v.id === diTurno);
+  if (indice < 0) return { diTurno: ordine.find(v => !salta(v))?.id ?? null, round };
+  let r = round;
+  for (let passi = 0; passi < ordine.length; passi++) {
+    indice += direzione;
+    if (indice >= ordine.length) {
+      indice = 0;
+      r += 1;
+    } else if (indice < 0) {
+      if (r <= 1) return { diTurno, round };
+      indice = ordine.length - 1;
+      r -= 1;
+    }
+    if (!salta(ordine[indice])) return { diTurno: ordine[indice].id, round: r };
+  }
+  return { diTurno, round }; // tutti gli altri sono da saltare
+}
+
+export type StatoSalute = "illeso" | "ferito" | "gravemente ferito" | "sconfitto";
+
+// Come appare un mostro ai giocatori, senza numeri: sopra metà dei PF è ferito, fino a metà gravemente ferito.
+export function statoSalute(pf: number | null, pfMassimi: number | null): StatoSalute | null {
+  if (pf === null || pfMassimi === null || pfMassimi <= 0) return null;
+  if (pf <= 0) return "sconfitto";
+  if (pf >= pfMassimi) return "illeso";
+  return pf > pfMassimi / 2 ? "ferito" : "gravemente ferito";
+}
+
+// Tiro da pubblicare nella chat del party, dalla richiesta del dialogo e dai risultati.
+// Un d20 con vantaggio o svantaggio ha due dadi; se è stata inserita solo la somma resta un solo valore.
+export function esitoTiroCondiviso(
+  r: { titolo: string; descrizione?: string; dadi: { etichetta: string; facce: number }[]; bonus?: number; d20?: boolean },
+  risposta: { tiri: number[]; modalita: Modalita; presagio?: number },
+): TiroCondiviso {
+  const bonus = r.bonus ?? 0;
+  const presagio = risposta.presagio !== undefined;
+  const base = { titolo: r.titolo, ...(r.descrizione ? { descrizione: r.descrizione } : {}), tiri: risposta.tiri, bonus };
+  if (r.d20) {
+    const modalita = presagio ? "normale" : risposta.modalita;
+    const dadi = risposta.tiri.map((_, i) => ({ etichetta: risposta.tiri.length > 1 ? `${i + 1}° d20` : "d20", facce: 20 }));
+    return { ...base, dadi, modalita, totale: risultatoD20(risposta.tiri, modalita) + bonus, ...(presagio ? { presagio: true } : {}) };
+  }
+  const dadi = risposta.tiri.length === r.dadi.length
+    ? r.dadi
+    : [{ etichetta: "Totale", facce: r.dadi.reduce((acc, d) => acc + d.facce, 0) }];
+  return { ...base, dadi, modalita: "normale", totale: totaleDanni(risposta.tiri, bonus) };
+}
 
 // PF a ogni livello dal 2° in poi: il tiro del Dado Vita oppure la sua media (arrotondata per eccesso), + COS, almeno 1.
 // Un tiro fuori da 1–dadoVita vale come la media. Robustezza Nanica e Resilienza Draconica aggiungono 1 PF per livello.

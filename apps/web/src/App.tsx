@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState, useRef, type ChangeEvent } f
 import {
   Sparkles, RefreshCw, BookOpen, Backpack, Scroll, Award,
   Download, Upload, Users, Heart, Star, X, Coffee, Brain, Cloud, CloudCheck, CloudOff, CloudUpload, LoaderCircle, LogOut, UserCog,
-  NotebookPen,
+  NotebookPen, Swords, UsersRound,
 } from "lucide-react";
+import type { RiassuntoParty } from "@dnd/regole/api.ts";
 import type { CharacterData, EsitoRiposoBreve } from "@dnd/regole/tipi.ts";
 import {
-  applicaCura, applicaDanno, cdConcentrazione, derivate, riposoBreve, riposoLungo, segno, usaPresagio,
+  applicaCura, applicaDanno, cdConcentrazione, derivate, esitoTiroCondiviso, riposoBreve, riposoLungo, segno, usaPresagio,
 } from "@dnd/regole/regole.ts";
 import {
   carica, ricordaUltimoPersonaggio, salva, salvaRiferimento, scaricaDalServer, ultimoPersonaggio,
@@ -18,7 +19,12 @@ import SchermataAccesso from "./components/SchermataAccesso";
 import SchermataPersonaggi from "./components/SchermataPersonaggi";
 import SchermataCreazione from "./components/SchermataCreazione";
 import FinestraAccount from "./components/FinestraAccount";
-import { conSuggerimento, useRichiestaTiro, type RispostaTiro } from "./tiroDadi";
+import SchermataParty from "./components/SchermataParty";
+import { elencoParty, inviaTiro } from "./party";
+import { usePolling } from "./usePolling";
+import {
+  condivisioneSalvata, conSuggerimento, salvaCondivisione, useRichiestaTiro, type Condivisione, type RispostaTiro,
+} from "./tiroDadi";
 import { condizione, effetto } from "@dnd/regole/dati/condizioni.ts";
 import DialogoTiro from "./components/DialogoTiro";
 import Avatar from "./components/Avatar";
@@ -50,6 +56,7 @@ export default function App() {
   const [avviso, setAvviso] = useState<string | null>(null);
   const [accountAperto, setAccountAperto] = useState(false);
   const [inCreazione, setInCreazione] = useState(false);
+  const [partyAperto, setPartyAperto] = useState<number | null>(null);
   const [risveglio, setRisveglio] = useState(false); // la verifica della sessione sta durando: il server si sta avviando
 
   const entra = useCallback((u: Utente) => {
@@ -82,6 +89,7 @@ export default function App() {
     setAccountAperto(false);
     setSessione(null);
     setPersonaggio(null);
+    setPartyAperto(null);
     setAvviso(SESSIONE_SCADUTA);
   }, []);
 
@@ -120,7 +128,19 @@ export default function App() {
     setAccountAperto(false);
     setAvviso(null);
     setPersonaggio(null);
+    setPartyAperto(null);
     setSessione(null);
+  };
+
+  const chiudiParty = (messaggio: string | null) => {
+    setPartyAperto(null);
+    setAvviso(messaggio);
+  };
+
+  // Dal party si apre la propria scheda: se è già quella aperta basta chiudere il party.
+  const apriDalParty = async (id: number) => {
+    setPartyAperto(null);
+    if (id !== personaggio) await apriPersonaggio(id);
   };
 
   if (sessione === "verifica") {
@@ -155,33 +175,51 @@ export default function App() {
       />
     );
   }
+  const schermataParty = partyAperto !== null && (
+    <SchermataParty
+      key={partyAperto}
+      partyId={partyAperto}
+      utente={sessione}
+      onTorna={chiudiParty}
+      onApriPersonaggio={apriDalParty}
+      onAccount={() => setAccountAperto(true)}
+      onEsci={uscita}
+      onSessioneScaduta={sessioneScaduta}
+    />
+  );
   if (personaggio === null) {
     return (
       <>
-        <SchermataPersonaggi
+        {schermataParty || <SchermataPersonaggi
           utente={sessione}
           avviso={avviso}
           onScegli={apriPersonaggio}
           onCrea={() => setInCreazione(true)}
+          onApriParty={id => { setAvviso(null); setPartyAperto(id); }}
           onAccount={() => setAccountAperto(true)}
           onEsci={uscita}
           onSessioneScaduta={sessioneScaduta}
-        />
+        />}
         {account}
       </>
     );
   }
   return (
     <>
-      <Scheda
-        key={personaggio}
-        personaggio={personaggio}
-        utente={sessione}
-        avvisi={avvisi}
-        onCambiaPersonaggio={() => chiudiPersonaggio(null)}
-        onAccount={() => setAccountAperto(true)}
-        onEsci={uscita}
-      />
+      {/* Con il party aperto la scheda resta montata (nascosta): la sincronizzazione continua. */}
+      <div hidden={partyAperto !== null}>
+        <Scheda
+          key={personaggio}
+          personaggio={personaggio}
+          utente={sessione}
+          avvisi={avvisi}
+          onCambiaPersonaggio={() => chiudiPersonaggio(null)}
+          onApriParty={setPartyAperto}
+          onAccount={() => setAccountAperto(true)}
+          onEsci={uscita}
+        />
+      </div>
+      {schermataParty}
       {account}
     </>
   );
@@ -192,11 +230,23 @@ interface PropsScheda {
   utente: Utente;
   avvisi: AvvisiSincronizzazione;
   onCambiaPersonaggio: () => void;
+  onApriParty: (id: number) => void;
   onAccount: () => void;
   onEsci: () => void;
 }
 
-function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, onEsci }: PropsScheda) {
+const CONTROLLO_PARTY = 15_000; // ms
+
+function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty, onAccount, onEsci }: PropsScheda) {
+  // Il party del personaggio, per il pulsante nell'intestazione. Il 401 lo gestisce già la sincronizzazione.
+  const [mioParty, setMioParty] = useState<RiassuntoParty | null>(null);
+  const controllaParty = useCallback(async () => {
+    const esito = await elencoParty();
+    if (esito === "sessione scaduta" || "errore" in esito) return;
+    setMioParty(esito.dati.find(p => p.personaggio?.id === personaggio) ?? null);
+  }, [personaggio]);
+  usePolling(controllaParty, CONTROLLO_PARTY);
+
   const [activeTab, setActiveTab] = useState<Tab>("statistiche");
   const [char, setChar] = useState<CharacterData>(() => carica(personaggio) ?? personaggioVuoto());
   const [quantitaPF, setQuantitaPF] = useState("");
@@ -211,10 +261,23 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
   const d = derivate(char);
   const { combattimento: pf } = char;
 
+  // Dove pubblicare i tiri nella chat del party (se il personaggio è in un party).
+  const [condivisione, setCondivisione] = useState<Condivisione>(condivisioneSalvata);
+  const scegliCondivisione = (c: Condivisione) => {
+    setCondivisione(c);
+    salvaCondivisione(c);
+  };
+
   // Un dado del Presagio scelto nel dialogo del tiro risulta usato.
   const rispondiTiro = (risposta: RispostaTiro | null) => {
     const indice = risposta?.presagio;
     if (indice !== undefined) setChar(prev => usaPresagio(prev, indice));
+    if (risposta && richiesta && mioParty && condivisione !== "no") {
+      const tiro = esitoTiroCondiviso(richiesta, risposta);
+      void inviaTiro(mioParty.id, tiro, condivisione === "master").then(esito => {
+        if (esito !== "sessione scaduta" && "errore" in esito) setMessaggio(`Tiro non condiviso: ${esito.errore}`);
+      });
+    }
     rispondi(risposta);
   };
 
@@ -395,6 +458,20 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
                 <Upload className="w-3.5 h-3.5" /> Importa JSON
               </button>
               <input ref={fileInput} type="file" accept="application/json,.json" onChange={importa} className="hidden" />
+              {mioParty && (
+                <button onClick={() => onApriParty(mioParty.id)} title="Apri il party" className={`${pulsante} bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border-indigo-500/40`}>
+                  <UsersRound className="w-3.5 h-3.5" /> <span className="max-w-32 truncate">{mioParty.nome}</span>
+                  {mioParty.combattimento && (
+                    <span title={`Combattimento in corso, round ${mioParty.combattimento.round}`}
+                      className={`px-1.5 rounded-full text-[10px] leading-4 font-bold ${mioParty.combattimento.tuoTurno ? "bg-amber-400 text-slate-950 animate-pulse" : "bg-rose-600/40 text-rose-100"}`}>
+                      {mioParty.combattimento.tuoTurno ? "Tocca a te!" : <Swords className="w-3 h-3 inline" />}
+                    </span>
+                  )}
+                  {mioParty.nonLetti > 0 && (
+                    <span title="Messaggi non letti" className="min-w-4 px-1 rounded-full bg-rose-500 text-white text-[10px] leading-4 text-center">{mioParty.nonLetti}</span>
+                  )}
+                </button>
+              )}
               <button onClick={onCambiaPersonaggio} title="Torna all'elenco dei personaggi" className={pulsanteNeutro}>
                 <Users className="w-3.5 h-3.5" /> Personaggi
               </button>
@@ -517,7 +594,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
 
         {activeTab === "statistiche" && <TabStatistiche char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
         {activeTab === "grimorio" && d.haIncantesimi && <TabGrimorio char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} chiediD20={chiediD20} />}
-        {activeTab === "zaino" && <TabZaino char={char} d={d} setChar={setChar} />}
+        {activeTab === "zaino" && <TabZaino char={char} d={d} setChar={setChar} party={mioParty} />}
         {activeTab === "xp" && <TabProgresso char={char} d={d} setChar={setChar} chiediTiro={chiediTiro} />}
         {activeTab === "note" && <TabNote char={char} setChar={setChar} />}
         {activeTab === "lore" && <TabLore char={char} setChar={setChar} />}
@@ -536,7 +613,15 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onAccount, o
           onAnnulla={() => setRiposoBreveAperto(false)}
         />
       )}
-      {richiesta && <DialogoTiro key={richiesta.id} richiesta={richiesta} presagio={d.presagioDisponibile} onRisposta={rispondiTiro} />}
+      {richiesta && (
+        <DialogoTiro
+          key={richiesta.id}
+          richiesta={richiesta}
+          presagio={d.presagioDisponibile}
+          onRisposta={rispondiTiro}
+          condivisione={mioParty ? { scelta: condivisione, onScelta: scegliCondivisione } : undefined}
+        />
+      )}
     </div>
   );
 }

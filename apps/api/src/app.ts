@@ -7,6 +7,7 @@ import type pg from "pg";
 import { ErroreRichiesta } from "./errori.ts";
 import { rotteAccesso } from "./rotte/accesso.ts";
 import { rotteCatalogo } from "./rotte/catalogo.ts";
+import { rotteParty } from "./rotte/party.ts";
 import { rottePersonaggi } from "./rotte/personaggi.ts";
 import { rotteSalute } from "./rotte/salute.ts";
 
@@ -26,6 +27,34 @@ import { rotteSalute } from "./rotte/salute.ts";
 //   GET  /incantesimi                          → catalogo degli incantesimi
 //   GET  /creazione                            → cataloghi per creare un personaggio (razze, background, armi...)
 //   GET  /classi/:classe/privilegi?livello=n&sottoclasse=… → privilegi di classe di quel livello (con fino=n: fino a quel livello)
+// Party (404 se l'utente non ne fa parte, 403 se un giocatore chiede un'azione del Master):
+//   GET  /party                                → party dell'utente (riassunto)
+//   POST /party { nome }                       → crea un party di cui l'utente è il Master → { id, codice }
+//   POST /party/entra { codice, personaggioId } → { id }; 404 se il codice non vale, 409 se il personaggio è già in un party
+//   GET  /party/:id                            → { nome, codice (solo al Master), membri con il riepilogo dei personaggi, io }
+//   PUT  /party/:id { nome }                   → 204 (Master)
+//   POST /party/:id/codice                     → { codice } nuovo; il vecchio non vale più (Master)
+//   DELETE /party/:id                          → 204, scioglie il party (Master)
+//   DELETE /party/:id/membri/:utente           → 204; un giocatore esce, il Master espelle
+//   GET  /party/:id/personaggi/:personaggio    → scheda completa di un personaggio del party (Master)
+//   GET  /party/:id/messaggi?dopo=n | prima=n  → { messaggi (gruppo e privati dell'utente), letture }
+//   POST /party/:id/messaggi { testo, destinatarioId? } → { id }; destinatario: un altro membro (privato)
+//   POST /party/:id/messaggi { tiro, segreto? } → { id }; un tiro di dadi, segreto = solo al Master
+//   PUT  /party/:id/letto { con, fino }        → 204; segna letta la conversazione (con 0 = gruppo)
+//   GET  /party/:id/diario                     → voci del diario (prima le fissate)
+//   POST /party/:id/diario { titolo, testo, categoria, fissata? } → la voce; fissata solo dal Master (403)
+//   PUT  /party/:id/diario/:voce { …, revisione } → la voce, 409 con la versione attuale
+//   DELETE /party/:id/diario/:voce             → 204; solo l'autore o il Master (403)
+//   GET  /party/:id/combattimento              → { attivo, round, diTurno, voci in ordine } (le nascoste solo al Master)
+//   POST /party/:id/combattimento · DELETE …   → 204; avvia o termina lo scontro (Master)
+//   POST /party/:id/combattimento/avanza { direzione: 1 | -1 } → 204; turno successivo o precedente (Master)
+//   PUT  /party/:id/combattimento/mio { valore } → 204; iniziativa del proprio personaggio (bonus dalla scheda)
+//   POST /party/:id/combattimento/voci { nome, valore, bonus?, nascosto? } → { id }; PUT e DELETE …/voci/:voce (Master)
+//   GET  /party/:id/tesoro                     → { monete, oggetti (bottino da assegnare), portati (oggetti del party negli Zaini), movimenti }
+//   POST /party/:id/tesoro/monete { delta }    → monete del tesoro; 409 se non bastano
+//   POST /party/:id/tesoro/oggetti { nome, qta, peso, … } → { id }; si somma a un oggetto uguale
+//   POST /party/:id/tesoro/oggetti/:oggetto/prendi { qta, delParty? } → l'oggetto preso; 404 se non c'è più, 409 se non basta
+//   DELETE /party/:id/tesoro/oggetti/:oggetto  → 204; il Master toglie l'oggetto dal tesoro
 // Gli errori hanno sempre la forma { errore: "messaggio per l'utente" }.
 
 export interface OpzioniApp {
@@ -92,6 +121,7 @@ export async function costruisciApp(opzioni: OpzioniApp): Promise<FastifyInstanc
     await api.register(rotteAccesso);
     await api.register(rottePersonaggi);
     await api.register(rotteCatalogo);
+    await api.register(rotteParty);
   }, { prefix: "/api" });
 
   return app;

@@ -72,6 +72,23 @@ Dopo l'accesso compare l'elenco dei **tuoi personaggi**: ogni utente vede solo i
 
 Le password sono salvate nel database solo come hash (scrypt), e la sessione è un cookie che la pagina non può leggere. I tentativi con una password sbagliata vengono rallentati.
 
+## Party
+
+Un **party** è il gruppo con cui giochi. Si crea e ci si entra dall'elenco dei personaggi, nella sezione *Party*:
+
+- **Crea un party**: chi lo crea è il **Master**, non ha un personaggio e riceve un **codice d'invito** (per esempio `UYCK-E7ZF`) da dare ai giocatori. Il Master può rinominare il party, generare un nuovo codice (il vecchio smette di funzionare), espellere un giocatore e sciogliere il party.
+- **Entra con un codice**: scegli con quale dei tuoi personaggi giocare. Ogni personaggio sta in un solo party, ma puoi avere personaggi in party diversi.
+
+Nella schermata del party ci sono cinque sezioni:
+
+- **Compagni**: avatar, classe, livello, punti ferita, CA e condizioni di ogni personaggio, aggiornati ogni pochi secondi. Gli altri giocatori vedono solo questo riepilogo, mentre il Master può aprire la scheda completa di ognuno, in sola lettura.
+- **Chat**: messaggi a tutto il gruppo oppure privati a un membro, con il numero dei non letti. Il numero compare anche sul pulsante del party nell'intestazione della scheda.
+- **Iniziativa**: il Master avvia lo scontro, aggiunge mostri e PNG (anche nascosti ai giocatori) e fa avanzare turni e round. Di ogni mostro tiene CA, punti ferita (con i pulsanti *Danno* e *Cura*), condizioni e note; a 0 PF il mostro è sconfitto e il turno lo salta. I giocatori dei mostri vedono solo il nome e uno stato: Illeso, Ferito, Gravemente ferito o Sconfitto. Il Master vede anche CA, PF e condizioni dei personaggi, presi dalle loro schede. Ogni giocatore tira l'iniziativa del suo personaggio o la inserisce a mano. Quando tocca a te, il pulsante del party nella scheda mostra **Tocca a te!**.
+- **Diario**: le note di campagna del gruppo (sessioni, PNG, luoghi, missioni), scritte da tutti, con ricerca e filtri. Il Master può fissare in alto le voci importanti.
+- **Tesoro**: il quadro completo di ciò che il gruppo possiede. Ogni oggetto del party lo porta un personaggio: sta nel suo **Zaino**, pesa su di lui e lo gestisce lui, ma è segnato *del party* (icona del gruppo accanto all'oggetto) e compare nel tesoro con il nome di chi lo porta. Il Master aggiunge il **bottino** trovato; chi lo prende sceglie se tenerlo per sé o portarlo per il party. Le monete stanno in una cassa comune. Lo storico dice chi ha preso o lasciato cosa.
+
+Con il personaggio in un party, la finestra di ogni tiro chiede anche se **condividerlo**: con tutto il gruppo, solo con il Master (tiro segreto) o con nessuno. Il tiro compare nella chat con dadi, modificatore e totale.
+
 ## Creare un personaggio
 
 **Crea personaggio**, nell'elenco, apre una procedura guidata di sette passi (otto se il personaggio parte oltre il 1° livello). A destra un riepilogo mostra punteggi, PF e CA mentre scegli:
@@ -105,6 +122,7 @@ I dati stanno in un database **PostgreSQL**: in produzione su [Neon](https://neo
 - Suppliche Occulte e Manovre sono solo descritte; le risorse di classe contano gli usi ma non applicano l'effetto.
 - Non si possono eliminare account e personaggi e non c'è il recupero della password dimenticata.
 - Chiunque può aggiungere voci ai cataloghi condivisi (incantesimi, armi, privilegi), visibili a tutti gli utenti.
+- Nel party i messaggi arrivano ogni pochi secondi, non all'istante. Il Master non ha schede per i mostri, e il tesoro non si divide in parti uguali da solo.
 
 ## Sviluppo
 

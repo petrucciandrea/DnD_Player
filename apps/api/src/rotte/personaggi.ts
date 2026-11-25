@@ -3,10 +3,9 @@ import { completaConEsistente, daJSON } from "@dnd/regole/scheda.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
 import { leggi, scrivi } from "../archivio.ts";
 import { corpoOggetto, ErroreRichiesta } from "../errori.ts";
+import { idDa, interoValido } from "../parametri.ts";
 import { creaPersonaggio, elencoPersonaggi } from "../personaggi.ts";
 import { richiediUtente, utenteDi } from "../sessione.ts";
-
-const MASSIMO_INTERO = 2_147_483_647; // integer di PostgreSQL
 
 // Una scheda di una versione precedente (pesi in libbre) arriva solo da una pagina aperta prima
 // dell'aggiornamento e va ricaricata: non si può sapere se i suoi pesi sono ancora in libbre.
@@ -26,12 +25,7 @@ function schedaDa(dati: unknown): CharacterData {
   }
 }
 
-// Id dal percorso; uno che non può esistere vale come personaggio inesistente.
-function idDa(parametro: string): number {
-  const id = /^\d{1,10}$/.test(parametro) ? Number(parametro) : NaN;
-  if (!(id >= 1 && id <= MASSIMO_INTERO)) throw new ErroreRichiesta(404, "Personaggio inesistente");
-  return id;
-}
+const idPersonaggio = (parametro: string) => idDa(parametro, "Personaggio inesistente");
 
 export async function rottePersonaggi(app: FastifyInstance) {
   app.addHook("preHandler", richiediUtente);
@@ -46,17 +40,17 @@ export async function rottePersonaggi(app: FastifyInstance) {
   });
 
   app.get<{ Params: { id: string } }>("/personaggi/:id", async richiesta => {
-    const versione = await leggi(app.db, idDa(richiesta.params.id), utenteDi(richiesta).id);
+    const versione = await leggi(app.db, idPersonaggio(richiesta.params.id), utenteDi(richiesta).id);
     if (!versione) throw new ErroreRichiesta(404, "Personaggio inesistente");
     return versione;
   });
 
   app.put<{ Params: { id: string } }>("/personaggi/:id", async (richiesta, risposta) => {
     const utente = utenteDi(richiesta);
-    const id = idDa(richiesta.params.id);
+    const id = idPersonaggio(richiesta.params.id);
     const corpo = corpoOggetto(richiesta.body);
     const { revisione } = corpo;
-    if (typeof revisione !== "number" || !Number.isInteger(revisione) || revisione < 0 || revisione > MASSIMO_INTERO) {
+    if (!interoValido(revisione)) {
       throw new ErroreRichiesta(400, "Servono dati e revisione");
     }
     controllaVersione(corpo.dati);

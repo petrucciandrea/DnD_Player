@@ -12,7 +12,8 @@ import {
   sceltePendenti, costoMetamagia, usaMetamagia, slotInPunti, puntiInSlot, incantesimiSottoclasseMancanti, aggiungiIncantesimi,
   PROVVISTE_COMUNI, cambiaQuantita, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, dotazioneScomponibile, scomponiDotazione,
   applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
-  applicaSalita, aumentiDa, xpDelLivello,
+  applicaSalita, aumentiDa, xpDelLivello, esitoTiroCondiviso, ordineIniziativa, avanzaTurno, statoSalute,
+  mettiNelloZaino, togliDalloZaino, cambiaMonete, impostaDelParty,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { calcolaDanno, difeseDelPersonaggio, haSchivataProdigiosa, tipoDanno, type Difesa } from "./dati/danni";
@@ -1466,5 +1467,132 @@ describe("danni subiti: resistenze, immunità e vulnerabilità", () => {
       { tipo: "resistenza", danno: "fuoco", nota: "Anello" },
       { tipo: "immunita", danno: "veleno", nota: "" },
     ]);
+  });
+});
+
+describe("tiri condivisi nel party", () => {
+  const d20 = { titolo: "Attacco: Pugnale", dadi: [{ etichetta: "Risultato", facce: 20 }], bonus: 5, d20: true };
+
+  it("d20 normale, con vantaggio e con svantaggio: conta il dado giusto più il bonus", () => {
+    expect(esitoTiroCondiviso(d20, { tiri: [12], modalita: "normale" })).toEqual({
+      titolo: "Attacco: Pugnale", dadi: [{ etichetta: "d20", facce: 20 }], tiri: [12], modalita: "normale", bonus: 5, totale: 17,
+    });
+    const vantaggio = esitoTiroCondiviso(d20, { tiri: [4, 15], modalita: "vantaggio" });
+    expect(vantaggio.dadi).toEqual([{ etichetta: "1° d20", facce: 20 }, { etichetta: "2° d20", facce: 20 }]);
+    expect(vantaggio.totale).toBe(20);
+    expect(esitoTiroCondiviso(d20, { tiri: [4, 15], modalita: "svantaggio" }).totale).toBe(9);
+  });
+
+  it("il Presagio sostituisce il d20: modalità normale e segnato", () => {
+    const t = esitoTiroCondiviso(d20, { tiri: [18], modalita: "vantaggio", presagio: 0 });
+    expect(t).toMatchObject({ tiri: [18], modalita: "normale", totale: 23, presagio: true });
+  });
+
+  it("danni: somma dei dadi più il modificatore, mai sotto zero; con la sola somma un dado 'Totale'", () => {
+    const danni = { titolo: "Danni", descrizione: "2d6 + 3 danni taglienti", dadi: [{ etichetta: "1° dado", facce: 6 }, { etichetta: "2° dado", facce: 6 }], bonus: 3 };
+    expect(esitoTiroCondiviso(danni, { tiri: [2, 5], modalita: "normale" })).toMatchObject({
+      descrizione: "2d6 + 3 danni taglienti", dadi: danni.dadi, totale: 10,
+    });
+    expect(esitoTiroCondiviso(danni, { tiri: [9], modalita: "normale" })).toMatchObject({
+      dadi: [{ etichetta: "Totale", facce: 12 }], tiri: [9], totale: 12,
+    });
+    expect(esitoTiroCondiviso({ ...danni, bonus: -5 }, { tiri: [1, 1], modalita: "normale" }).totale).toBe(0);
+  });
+});
+
+describe("iniziativa", () => {
+  const voci = [
+    { id: 1, nome: "Goblin", valore: 12, bonus: 2 },
+    { id: 2, nome: "Bruenor", valore: 15, bonus: 0 },
+    { id: 3, nome: "Alston", valore: 12, bonus: 3 },
+    { id: 4, nome: "Bugbear", valore: 12, bonus: 2 },
+  ];
+
+  it("ordina per iniziativa, poi per modificatore, poi per nome", () => {
+    expect(ordineIniziativa(voci).map(v => v.nome)).toEqual(["Bruenor", "Alston", "Bugbear", "Goblin"]);
+    expect(voci[0].nome).toBe("Goblin"); // non modifica l'originale
+  });
+
+  it("avanza il turno e cambia round passando dall'ultimo al primo; indietro non va sotto il round 1", () => {
+    const ordine = ordineIniziativa(voci);
+    expect(avanzaTurno(ordine, null, 1, 1)).toEqual({ diTurno: 2, round: 1 });
+    expect(avanzaTurno(ordine, 2, 1, 1)).toEqual({ diTurno: 3, round: 1 });
+    expect(avanzaTurno(ordine, 1, 1, 1)).toEqual({ diTurno: 2, round: 2 });
+    expect(avanzaTurno(ordine, 2, 2, -1)).toEqual({ diTurno: 1, round: 1 });
+    expect(avanzaTurno(ordine, 2, 1, -1)).toEqual({ diTurno: 2, round: 1 });
+    expect(avanzaTurno(ordine, 99, 3, 1)).toEqual({ diTurno: 2, round: 3 });
+    expect(avanzaTurno([], 2, 1, 1)).toEqual({ diTurno: null, round: 1 });
+  });
+
+  it("i mostri sconfitti non prendono il turno, anche passando al round successivo", () => {
+    const ordine = ordineIniziativa(voci); // Bruenor 2, Alston 3, Bugbear 4, Goblin 1
+    const sconfitti = new Set([3, 1]);
+    const salta = (v: { id: number }) => sconfitti.has(v.id);
+    expect(avanzaTurno(ordine, 2, 1, 1, salta)).toEqual({ diTurno: 4, round: 1 });
+    expect(avanzaTurno(ordine, 4, 1, 1, salta)).toEqual({ diTurno: 2, round: 2 });
+    expect(avanzaTurno(ordine, 2, 2, -1, salta)).toEqual({ diTurno: 4, round: 1 });
+    expect(avanzaTurno(ordine, null, 1, 1, v => v.id === 2)).toEqual({ diTurno: 3, round: 1 });
+    expect(avanzaTurno(ordine, 2, 1, 1, v => v.id !== 2)).toEqual({ diTurno: 2, round: 2 }); // resta solo lui
+  });
+
+  it("lo stato di salute di un mostro, senza numeri", () => {
+    expect(statoSalute(20, 20)).toBe("illeso");
+    expect(statoSalute(11, 20)).toBe("ferito");
+    expect(statoSalute(10, 20)).toBe("gravemente ferito");
+    expect(statoSalute(0, 20)).toBe("sconfitto");
+    expect(statoSalute(null, 20)).toBeNull();
+    expect(statoSalute(5, null)).toBeNull();
+  });
+});
+
+describe("scambi con il tesoro del party", () => {
+  const conZaino = () => {
+    const c = structuredClone(INITIAL_CHARACTER);
+    c.inventario = [
+      { id: 1, nome: "Pozione di guarigione", qta: 3, peso: 0.25 },
+      { id: 2, nome: "Razioni (1 giorno)", qta: 2, peso: 1, consumabile: true, consumoGiornaliero: 1 },
+    ];
+    c.monete = { mr: 0, ma: 5, me: 0, mo: 20, mp: 0 };
+    return c;
+  };
+
+  it("un oggetto preso si somma a uno uguale, altrimenti diventa una voce nuova", () => {
+    const c = conZaino();
+    const somma = mettiNelloZaino(c, { nome: "pozione di guarigione", qta: 2, peso: 0.25 }, 99);
+    expect(somma.inventario.find(i => i.id === 1)?.qta).toBe(5);
+    expect(somma.inventario).toHaveLength(2);
+    const nuovo = mettiNelloZaino(c, { nome: "Gemma", qta: 1, peso: 0 }, 99);
+    expect(nuovo.inventario[0]).toEqual({ id: 99, nome: "Gemma", qta: 1, peso: 0 });
+    expect(c.inventario).toHaveLength(2); // l'originale non cambia
+  });
+
+  it("preso per il party resta separato da quello proprio con lo stesso nome", () => {
+    const c = conZaino();
+    const delParty = mettiNelloZaino(c, { nome: "Pozione di guarigione", qta: 1, peso: 0.25, delParty: true }, 99);
+    expect(delParty.inventario[0]).toEqual({ id: 99, nome: "Pozione di guarigione", qta: 1, peso: 0.25, delParty: true });
+    expect(delParty.inventario.find(i => i.id === 1)?.qta).toBe(3);
+    const ancora = mettiNelloZaino(delParty, { nome: "Pozione di guarigione", qta: 2, peso: 0.25, delParty: true }, 100);
+    expect(ancora.inventario.find(i => i.id === 99)?.qta).toBe(3);
+    expect(mettiNelloZaino(c, { nome: "Gemma", qta: 1, peso: 0, delParty: false }, 99).inventario[0]).not.toHaveProperty("delParty");
+  });
+
+  it("chi porta l'oggetto decide se è suo o del party", () => {
+    const c = conZaino();
+    const delParty = impostaDelParty(c, 1, true);
+    expect(delParty.inventario[0]).toMatchObject({ id: 1, delParty: true });
+    expect(impostaDelParty(delParty, 1, false).inventario[0]).toEqual(c.inventario[0]);
+  });
+
+  it("un oggetto depositato cala; finito sparisce, una provvista resta a 0", () => {
+    const c = conZaino();
+    expect(togliDalloZaino(c, 1, 2).inventario.find(i => i.id === 1)?.qta).toBe(1);
+    expect(togliDalloZaino(c, 1, 3).inventario.some(i => i.id === 1)).toBe(false);
+    expect(togliDalloZaino(c, 2, 5).inventario.find(i => i.id === 2)?.qta).toBe(0);
+  });
+
+  it("le monete si aggiungono e si tolgono senza scendere sotto zero", () => {
+    const c = conZaino();
+    expect(cambiaMonete(c, { mo: -10, ma: 3 }).monete).toEqual({ mr: 0, ma: 8, me: 0, mo: 10, mp: 0 });
+    expect(cambiaMonete(c, { mo: -50 }).monete.mo).toBe(0);
   });
 });
