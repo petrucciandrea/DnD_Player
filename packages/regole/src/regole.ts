@@ -492,8 +492,8 @@ export function esitoTsMorte(c: CharacterData, d20: number): CharacterData {
 export const totaleDanni = (tiri: number[], mod: number) => Math.max(0, tiri.reduce((a, b) => a + b, 0) + mod);
 
 // Ordine dei turni: iniziativa più alta prima; a parità vince il modificatore più alto, poi il nome.
-export const ordineIniziativa = <T extends { id: number; nome: string; valore: number; bonus: number }>(voci: T[]): T[] =>
-  [...voci].sort((a, b) => b.valore - a.valore || b.bonus - a.bonus || a.nome.localeCompare(b.nome, "it") || a.id - b.id);
+export const ordineIniziativa = <T extends { id: number; nome: string; valore: number; bonus: number | null }>(voci: T[]): T[] =>
+  [...voci].sort((a, b) => b.valore - a.valore || (b.bonus ?? 0) - (a.bonus ?? 0) || a.nome.localeCompare(b.nome, "it") || a.id - b.id);
 
 // Il turno dopo (o prima, con direzione -1) di `diTurno`; passando dall'ultimo al primo cambia il round.
 // Prima del primo turno (diTurno null o voce sparita) si parte dal primo. Le voci per cui `salta` è vero

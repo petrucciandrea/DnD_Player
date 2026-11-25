@@ -296,7 +296,9 @@ function RigaIniziativa({ voce, posizione, diTurno, mia, master, inCorso, scheda
             {master && scheda && <BarraPf pf={scheda.pf} massimi={scheda.pfMassimi} temporanei={scheda.pfTemporanei} />}
           </div>
         </div>
-        <span className="text-[11px] text-slate-500" title="Modificatore d'iniziativa">{segno(voce.bonus)}</span>
+        {master && voce.bonus !== null && (
+          <span className="text-[11px] text-slate-500" title="Modificatore d'iniziativa">{segno(voce.bonus)}</span>
+        )}
         {master && (
           <>
             <button onClick={() => onModifica({ nascosto: !voce.nascosto })} disabled={inCorso}

@@ -329,7 +329,7 @@ describe("party: mostri nell'iniziativa", () => {
       nome: "Goblin", ca: 15, pf: 7, pfMassimi: 7, condizioni: ["prono"], note: "Scimitarra +4, 1d6+2", stato: "illeso",
     });
     expect((await stato("uno")).voci[0]).toEqual({
-      id: goblin, personaggioId: null, nome: "Goblin", valore: 15, bonus: 2, nascosto: false,
+      id: goblin, personaggioId: null, nome: "Goblin", valore: 15, bonus: null, nascosto: false,
       ca: null, pf: null, pfMassimi: null, condizioni: [], note: "", stato: "illeso",
     });
 
@@ -473,6 +473,8 @@ describe("party: iniziativa", () => {
     const desDiAlston = Math.floor((INITIAL_CHARACTER.caratteristiche.DES.valore - 10) / 2);
     expect(master.voci[1]).toMatchObject({ personaggioId: bruenor, bonus: desDiAlston });
     expect((await stato("due")).voci.map(v => v.nome)).toEqual(["Bruenor", "Goblin", "Drizzt"]);
+    // Ai giocatori arriva solo il risultato, non il modificatore (neanche dei personaggi).
+    expect((await stato("due")).voci.every(v => v.bonus === null)).toBe(true);
   });
 
   it("il Master avanza i turni e i round; tuoTurno compare nell'elenco dei party; termina cancella tutto", async () => {

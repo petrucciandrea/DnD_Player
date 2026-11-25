@@ -127,7 +127,7 @@ export interface VoceIniziativa {
   personaggioId: number | null;
   nome: string;
   valore: number;
-  bonus: number; // modificatore d'iniziativa: spareggia
+  bonus: number | null; // modificatore d'iniziativa, spareggia: solo per il Master (null ai giocatori)
   nascosto: boolean; // i giocatori non la vedono
   // Solo mostri e PNG, solo per il Master (ai giocatori arrivano null e vuoti):
   ca: number | null;

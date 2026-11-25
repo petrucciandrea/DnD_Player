@@ -23,8 +23,9 @@ const voceDaRiga = (r: Riga): VoceIniziativa => {
   };
 };
 
-// Ai giocatori di un mostro arrivano solo nome, iniziativa e stato di salute.
-const perGiocatori = (v: VoceIniziativa): VoceIniziativa => ({ ...v, ca: null, pf: null, pfMassimi: null, condizioni: [], note: "" });
+// Ai giocatori arrivano solo nome, risultato dell'iniziativa e (per i mostri) stato di salute: niente modificatore.
+const perGiocatori = (v: VoceIniziativa): VoceIniziativa =>
+  ({ ...v, bonus: null, ca: null, pf: null, pfMassimi: null, condizioni: [], note: "" });
 
 // Un mostro a 0 PF è sconfitto: non prende più il turno.
 const sconfitto = (v: VoceIniziativa) => v.stato === "sconfitto";
