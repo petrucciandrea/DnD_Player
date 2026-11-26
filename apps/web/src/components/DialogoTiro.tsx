@@ -9,7 +9,8 @@ interface Props {
   presagio?: { indice: number; valore: number }[]; // dadi del Presagio ancora disponibili
   onRisposta: (risposta: RispostaTiro | null) => void;
   // Solo con il personaggio in un party: dove pubblicare il risultato nella chat.
-  condivisione?: { scelta: Condivisione; onScelta: (c: Condivisione) => void };
+  // `opzioni`: le scelte possibili (il Master non ha "Solo Master"); senza, tutte.
+  condivisione?: { scelta: Condivisione; onScelta: (c: Condivisione) => void; opzioni?: Condivisione[] };
 }
 
 const CONDIVISIONI: { id: Condivisione; label: string }[] = [
@@ -140,8 +141,8 @@ export default function DialogoTiro({ richiesta, presagio = [], onRisposta, cond
             <span className="text-xs text-slate-400 flex items-center gap-1 shrink-0">
               <MessagesSquare className="w-3.5 h-3.5" /> Condividi
             </span>
-            <div className="flex-1 grid grid-cols-3 gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800">
-              {CONDIVISIONI.map(c => (
+            <div className={`flex-1 grid ${condivisione.opzioni?.length === 2 ? "grid-cols-2" : "grid-cols-3"} gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800`}>
+              {CONDIVISIONI.filter(c => !condivisione.opzioni || condivisione.opzioni.includes(c.id)).map(c => (
                 <button
                   key={c.id}
                   type="button"

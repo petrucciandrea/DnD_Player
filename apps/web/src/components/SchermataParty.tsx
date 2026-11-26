@@ -1,13 +1,15 @@
 import { useCallback, useState, type FormEvent } from "react";
 import {
-  ArrowLeft, BookOpen, Check, Copy, Crown, Eye, Gem, LoaderCircle, LogOut, MessagesSquare, Pencil, RefreshCw, Shield, Swords, Trash2, UserCog, UserMinus, Users, X,
+  ArrowLeft, Bell, BellOff, BookOpen, Check, Copy, Crown, Eye, Gem, LoaderCircle, LogOut, MessagesSquare, Pencil, RefreshCw, Shield, Swords, Trash2, UserCog, UserMinus, Users, X,
 } from "lucide-react";
 import type { DettaglioParty, MembroParty } from "@dnd/regole/api.ts";
 import { condizione } from "@dnd/regole/dati/condizioni.ts";
 import type { Utente } from "../accesso";
-import { dettaglioParty, type EsitoParty, rigeneraCodice, rinominaParty, sciogliParty, togliMembro } from "../party";
+import { dettaglioParty, type EsitoParty, rigeneraCodice, rinominaParty, sciogliParty, testoProposta, togliMembro } from "../party";
+import { notificheSupportate } from "../notifiche";
 import { usePolling } from "../usePolling";
 import { nonLettiPer, useMessaggi } from "../messaggi";
+import AzioniMaster from "./AzioniMaster";
 import Avatar from "./Avatar";
 import PartyChat from "./PartyChat";
 import PartyDiario from "./PartyDiario";
@@ -23,6 +25,8 @@ interface Props {
   onAccount: () => void;
   onEsci: () => void;
   onSessioneScaduta: () => void;
+  notifiche: boolean; // notifiche del browser attive su questo dispositivo
+  onNotifiche: (attive: boolean) => void;
 }
 
 type Sezione = "compagni" | "chat" | "diario" | "iniziativa" | "tesoro";
@@ -32,7 +36,9 @@ const NON_PIU_MEMBRO = "Il party non esiste più oppure non ne fai più parte.";
 
 const pulsanteNeutro = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700 disabled:opacity-50";
 
-export default function SchermataParty({ partyId, utente, onTorna, onApriPersonaggio, onAccount, onEsci, onSessioneScaduta }: Props) {
+export default function SchermataParty({
+  partyId, utente, onTorna, onApriPersonaggio, onAccount, onEsci, onSessioneScaduta, notifiche, onNotifiche,
+}: Props) {
   const [party, setParty] = useState<DettaglioParty | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
   const [nome, setNome] = useState<string | null>(null); // nome in modifica (solo Master)
@@ -141,6 +147,15 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button onClick={() => onTorna(null)} className={pulsanteNeutro}><ArrowLeft className="w-3.5 h-3.5" /> Indietro</button>
             <div className="flex items-center gap-2">
+              {notificheSupportate() && (
+                <button onClick={() => onNotifiche(!notifiche)} className={pulsanteNeutro}
+                  title={notifiche
+                    ? "Notifiche attive: \"Tocca a te!\", messaggi e proposte del Master quando l'app è in secondo piano. Tocca per disattivarle."
+                    : "Ricevi una notifica per \"Tocca a te!\", i messaggi e le proposte del Master quando l'app è in secondo piano"}>
+                  {notifiche ? <Bell className="w-3.5 h-3.5 text-amber-300" /> : <BellOff className="w-3.5 h-3.5" />}
+                  <span className="hidden sm:inline">Notifiche</span>
+                </button>
+              )}
               <button onClick={onAccount} title="Account: username e password" className={pulsanteNeutro}>
                 <UserCog className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{utente.username}</span>
               </button>
@@ -186,6 +201,14 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
           )}
         </header>
 
+        {!master && mio && (party.proposte ?? []).length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-amber-100 bg-amber-500/10 border border-amber-500/40 rounded-xl px-3 py-2">
+            <Crown className="w-4 h-4 text-amber-300" />
+            <span>Il Master propone {party.proposte.map(p => testoProposta(p)).join(", ")}: applicalo dalla tua scheda.</span>
+            <button onClick={() => onApriPersonaggio(mio.id)} className={`${pulsanteNeutro} ml-auto`}><Eye className="w-3.5 h-3.5" /> Apri la mia scheda</button>
+          </div>
+        )}
+
         {errore && (
           <p role="alert" className="text-sm text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded-lg px-3 py-2">{errore}</p>
         )}
@@ -207,7 +230,7 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
           ))}
         </nav>
 
-        {sezione === "chat" && <PartyChat io={party.io.utenteId} membri={party.membri} chat={chat} />}
+        {sezione === "chat" && <PartyChat partyId={partyId} io={party.io.utenteId} master={master} membri={party.membri} chat={chat} riuscito={riuscito} />}
         {sezione === "iniziativa" && <PartyIniziativa partyId={partyId} ruolo={party.io.ruolo} mio={mio} membri={party.membri} riuscito={riuscito} />}
         {sezione === "tesoro" && (
           <div className="space-y-3">
@@ -223,7 +246,7 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
         {sezione === "diario" && <PartyDiario partyId={partyId} io={party.io} versione={party.diarioVersione} riuscito={riuscito} />}
 
         {sezione === "compagni" && <section className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {party.membri.map(m => (
               <CartaMembro
                 key={m.utenteId}
@@ -239,6 +262,9 @@ export default function SchermataParty({ partyId, utente, onTorna, onApriPersona
           </div>
           {party.membri.length === 1 && master && (
             <p className="text-sm text-slate-400">Nessun giocatore per ora: condividi il codice d'invito.</p>
+          )}
+          {master && party.membri.length > 1 && (
+            <AzioniMaster partyId={partyId} membri={party.membri} proposte={party.proposte ?? []} riuscito={riuscito} onFatto={carica} />
           )}
         </section>}
 

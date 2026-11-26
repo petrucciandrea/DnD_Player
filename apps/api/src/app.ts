@@ -55,6 +55,8 @@ import { rotteSalute } from "./rotte/salute.ts";
 //   POST /party/:id/tesoro/oggetti { nome, qta, peso, … } → { id }; si somma a un oggetto uguale
 //   POST /party/:id/tesoro/oggetti/:oggetto/prendi { qta, delParty? } → l'oggetto preso; 404 se non c'è più, 409 se non basta
 //   DELETE /party/:id/tesoro/oggetti/:oggetto  → 204; il Master toglie l'oggetto dal tesoro
+//   POST /party/:id/proposte { tipo, personaggi, pe?, motivo? } → { quota }; PE (divisi), riposi o un giorno (Master)
+//   DELETE /party/:id/proposte/:proposta       → la proposta chiusa; il giocatore la accetta o rifiuta, il Master la ritira
 // Gli errori hanno sempre la forma { errore: "messaggio per l'utente" }.
 
 export interface OpzioniApp {

@@ -13,7 +13,7 @@ import {
   PROVVISTE_COMUNI, cambiaQuantita, giorniRimasti, impostaConsumabile, impostaConsumoGiornaliero, passaGiorni, dotazioneScomponibile, scomponiDotazione,
   applicaAumento, haAumentoCaratteristiche, incantesimiDaImparare, livelloMassimoIncantesimi, raggruppaIncantesimi,
   applicaSalita, aumentiDa, xpDelLivello, esitoTiroCondiviso, ordineIniziativa, avanzaTurno, statoSalute,
-  mettiNelloZaino, togliDalloZaino, cambiaMonete, impostaDelParty,
+  mettiNelloZaino, togliDalloZaino, cambiaMonete, impostaDelParty, nomeCopia, formulaTiro, aggiungiPE,
 } from "./regole";
 import { effettoDaIncantesimo, suggerimentoTiro } from "./dati/condizioni";
 import { calcolaDanno, difeseDelPersonaggio, haSchivataProdigiosa, tipoDanno, type Difesa } from "./dati/danni";
@@ -1542,6 +1542,35 @@ describe("iniziativa", () => {
     expect(statoSalute(0, 20)).toBe("sconfitto");
     expect(statoSalute(null, 20)).toBeNull();
     expect(statoSalute(5, null)).toBeNull();
+  });
+
+  it("la copia di un mostro prende il numero dopo il più alto", () => {
+    expect(nomeCopia("Goblin", ["Goblin", "Alston"])).toBe("Goblin 2");
+    expect(nomeCopia("Goblin 2", ["Goblin", "goblin 3", "Goblin 2"])).toBe("Goblin 4");
+    expect(nomeCopia("Orco", [])).toBe("Orco 2");
+    expect(nomeCopia("Lupo crudele", ["Lupo", "Lupo crudele 5"])).toBe("Lupo crudele 6");
+    expect(nomeCopia("x".repeat(60), ["x".repeat(60)])).toBe(`${"x".repeat(58)} 2`);
+  });
+});
+
+describe("tiri liberi e PE dal Master", () => {
+  it("legge la formula di un tiro", () => {
+    expect(formulaTiro("2d6+3")).toEqual({ dadi: [{ numero: 2, facce: 6 }], bonus: 3 });
+    expect(formulaTiro(" d20 ")).toEqual({ dadi: [{ numero: 1, facce: 20 }], bonus: 0 });
+    expect(formulaTiro("1d8 + 2D6 - 1")).toEqual({ dadi: [{ numero: 1, facce: 8 }, { numero: 2, facce: 6 }], bonus: -1 });
+    expect(formulaTiro("3+1d4+2")).toEqual({ dadi: [{ numero: 1, facce: 4 }], bonus: 5 });
+    for (const errata of ["", "5", "2d", "d1", "-1d6", "2d6+-3", "41d6", "1d6+101", "2x6", "1d20 vantaggio"]) {
+      expect(formulaTiro(errata), errata).toBeNull();
+    }
+  });
+
+  it("i PE si sommano e finiscono in cima allo storico", () => {
+    const c = alston();
+    const dopo = aggiungiPE(c, 150, " Imboscata dei goblin ", 7, "26/11/2026");
+    expect(dopo.xp.totale).toBe(c.xp.totale + 150);
+    expect(dopo.xp.storico[0]).toEqual({ id: 7, data: "26/11/2026", valore: 150, motivo: "Imboscata dei goblin" });
+    expect(aggiungiPE(c, 10, "", 8, "oggi").xp.storico[0].motivo).toBe("Guadagno generico");
+    expect(aggiungiPE(c, 0, "niente", 9, "oggi")).toBe(c);
   });
 });
 

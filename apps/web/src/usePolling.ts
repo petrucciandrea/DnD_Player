@@ -2,8 +2,9 @@ import { useEffect, useRef } from "react";
 
 // Esegue `controlla` subito e poi ogni `intervallo` ms, solo con la pagina visibile; ricontrolla
 // quando la pagina torna visibile, al focus e al ritorno della rete. Un controllo ancora in corso
-// non viene sovrapposto. Con `attivo` false non fa nulla.
-export function usePolling(controlla: () => Promise<void>, intervallo: number, attivo = true) {
+// non viene sovrapposto. Con `attivo` false non fa nulla. Con `inSecondoPiano` continua anche a pagina
+// nascosta (per le notifiche): il browser allora rallenta il timer, fino a circa un controllo al minuto.
+export function usePolling(controlla: () => Promise<void>, intervallo: number, attivo = true, inSecondoPiano = false) {
   const funzione = useRef(controlla);
   useEffect(() => {
     funzione.current = controlla;
@@ -13,7 +14,7 @@ export function usePolling(controlla: () => Promise<void>, intervallo: number, a
     if (!attivo) return;
     let inCorso = false;
     const esegui = () => {
-      if (document.visibilityState !== "visible" || inCorso) return;
+      if ((!inSecondoPiano && document.visibilityState !== "visible") || inCorso) return;
       inCorso = true;
       funzione.current()
         .catch(errore => console.error("Aggiornamento non riuscito", errore))
@@ -30,5 +31,5 @@ export function usePolling(controlla: () => Promise<void>, intervallo: number, a
       window.removeEventListener("online", esegui);
       document.removeEventListener("visibilitychange", esegui);
     };
-  }, [intervallo, attivo]);
+  }, [intervallo, attivo, inSecondoPiano]);
 }

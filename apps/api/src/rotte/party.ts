@@ -12,6 +12,7 @@ import {
   rigeneraCodice, rinominaParty, sciogliParty, togliMembro,
 } from "../party.ts";
 import { componi } from "../personaggi.ts";
+import { chiudiProposta, creaProposte, datiPropostaDa } from "../proposte.ts";
 import { richiediUtente, tokenDa, utenteDi } from "../sessione.ts";
 import { cambiaMoneteTesoro, deltaMoneteDa, leggiTesoro, mettiOggetto, oggettoDa, prendiOggetto } from "../tesoro.ts";
 
@@ -281,6 +282,22 @@ export async function rotteParty(app: FastifyInstance) {
     if (!voce) throw new ErroreRichiesta(404, "Questo oggetto non è più nel tesoro");
     await prendiOggetto(app.db, id, io, oggetto, voce.qta, "ha tolto");
     return risposta.status(204).send();
+  });
+
+  // Proposte del Master (PE, riposi, un giorno che passa): le crea il Master, le chiude il giocatore
+  // del personaggio (accettandole o rifiutandole) oppure il Master (ritirandole).
+  app.post<ConId>("/party/:id/proposte", async (richiesta, risposta) => {
+    const id = await conMaster(richiesta);
+    return risposta.status(201).send(await creaProposte(app.db, id, datiPropostaDa(corpoOggetto(richiesta.body))));
+  });
+
+  app.delete<{ Params: { id: string; proposta: string } }>("/party/:id/proposte/:proposta", async richiesta => {
+    const id = idParty(richiesta.params.id);
+    const membro = await membroDi(app.db, id, utenteDi(richiesta).id);
+    const proposta = await chiudiProposta(app.db, id, idDa(richiesta.params.proposta, "Proposta inesistente"),
+      membro.ruolo === "master" ? null : membro.personaggioId);
+    if (!proposta) throw new ErroreRichiesta(404, "Questa proposta non c'è più");
+    return proposta;
   });
 
   // Scheda completa di un personaggio del party, in sola lettura: solo per il Master.

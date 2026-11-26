@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { INITIAL_CHARACTER } from "@dnd/regole/dati/alston.ts";
-import type { Combattimento, DettaglioParty, MessaggiParty, Tesoro, VoceDiario } from "@dnd/regole/api.ts";
+import type { Combattimento, DettaglioParty, MessaggiParty, RiassuntoParty, Tesoro, VoceDiario } from "@dnd/regole/api.ts";
 import { costruisciApp } from "../src/app.ts";
 import { creaUtente } from "../src/accesso.ts";
 import { normalizzaCodice, nuovoCodice } from "../src/party.ts";
@@ -80,7 +80,7 @@ describe("party: creazione e ingresso", () => {
     expect(dalMaster.codice).toBe(codice);
 
     expect((await chiama("giocatore", "GET", "/api/party")).json()).toEqual([
-      { id: partyId, nome: "La Compagnia", ruolo: "giocatore", personaggio: { id: pg, nome: "Bruenor" }, membri: 2, nonLetti: 0, combattimento: null },
+      { id: partyId, nome: "La Compagnia", ruolo: "giocatore", personaggio: { id: pg, nome: "Bruenor" }, membri: 2, nonLetti: 0, combattimento: null, proposte: [] },
     ]);
     const elenco = (await chiama("giocatore", "GET", "/api/personaggi")).json();
     expect(elenco[0].party).toEqual({ id: partyId, nome: "La Compagnia" });
@@ -596,6 +596,76 @@ describe("party: tesoro", () => {
     expect(t.movimenti.slice(0, 2).map(m => `${m.chi} ${m.descrizione}`)).toEqual([
       "Drizzt ha preso 1× Gemma per sé", "Bruenor ha preso 1× Corda per il party",
     ]);
+  });
+});
+
+describe("party: proposte del Master", () => {
+  async function conProposte() {
+    const t = await tavolo("master", "uno", "due", "fuori");
+    const { id: partyId, codice } = await t.party("master");
+    const bruenor = await t.personaggio("uno", "Bruenor");
+    const drizzt = await t.personaggio("due", "Drizzt");
+    await t.chiama("uno", "POST", "/api/party/entra", { codice, personaggioId: bruenor });
+    await t.chiama("due", "POST", "/api/party/entra", { codice, personaggioId: drizzt });
+    const url = `/api/party/${partyId}/proposte`;
+    const elenco = async (utente: string) => ((await t.chiama(utente, "GET", "/api/party")).json() as RiassuntoParty[])[0];
+    return { ...t, partyId, bruenor, drizzt, url, elenco };
+  }
+
+  it("il Master divide i PE tra i personaggi scelti; ogni giocatore vede solo le sue proposte", async () => {
+    const { chiama, partyId, bruenor, drizzt, url, elenco } = await conProposte();
+    const pe = await chiama("master", "POST", url, { tipo: "pe", personaggi: [bruenor, drizzt], pe: 301, motivo: " Goblin " });
+    expect(pe.statusCode).toBe(201);
+    expect(pe.json()).toEqual({ quota: 150 });
+    expect((await chiama("master", "POST", url, { tipo: "riposo_lungo", personaggi: [bruenor] })).json()).toEqual({ quota: null });
+
+    const mie = (await elenco("uno")).proposte;
+    expect(mie.map(p => [p.tipo, p.pe, p.motivo, p.personaggio])).toEqual([["pe", 150, "Goblin", "Bruenor"], ["riposo_lungo", null, "", "Bruenor"]]);
+    expect((await elenco("due")).proposte.map(p => p.tipo)).toEqual(["pe"]);
+    expect((await elenco("master")).proposte).toEqual([]);
+    const dalMaster = (await chiama("master", "GET", `/api/party/${partyId}`)).json() as DettaglioParty;
+    expect(dalMaster.proposte.map(p => p.personaggioId).sort()).toEqual([bruenor, bruenor, drizzt].sort());
+    const dalGiocatore = (await chiama("due", "GET", `/api/party/${partyId}`)).json() as DettaglioParty;
+    expect(dalGiocatore.proposte.map(p => p.personaggioId)).toEqual([drizzt]);
+  });
+
+  it("solo il Master propone, per personaggi del party; proposte non valide: 400", async () => {
+    const { chiama, personaggio, bruenor, url } = await conProposte();
+    expect((await chiama("uno", "POST", url, { tipo: "giorno", personaggi: [bruenor] })).statusCode).toBe(403);
+    expect((await chiama("fuori", "POST", url, { tipo: "giorno", personaggi: [bruenor] })).statusCode).toBe(404);
+    const estraneo = await personaggio("fuori", "Estraneo");
+    for (const corpo of [
+      { tipo: "giorno", personaggi: [bruenor, estraneo] },
+      { tipo: "festa", personaggi: [bruenor] },
+      { tipo: "giorno", personaggi: [] },
+      { tipo: "pe", personaggi: [bruenor] },
+      { tipo: "pe", personaggi: [bruenor], pe: 0 },
+      { tipo: "giorno", personaggi: [bruenor], motivo: "x".repeat(201) },
+    ]) {
+      expect((await chiama("master", "POST", url, corpo)).statusCode, JSON.stringify(corpo)).toBe(400);
+    }
+  });
+
+  it("il giocatore chiude solo le sue (una volta sola), il Master le ritira; chi esce perde le sue", async () => {
+    const { chiama, id, bruenor, drizzt, url, elenco } = await conProposte();
+    await chiama("master", "POST", url, { tipo: "riposo_breve", personaggi: [bruenor, drizzt] });
+    const [mia] = (await elenco("uno")).proposte;
+    const [sua] = (await elenco("due")).proposte;
+
+    expect((await chiama("due", "DELETE", `${url}/${mia.id}`)).statusCode).toBe(404); // non è sua
+    const chiusa = await chiama("uno", "DELETE", `${url}/${mia.id}`);
+    expect(chiusa.statusCode).toBe(200);
+    expect(chiusa.json()).toMatchObject({ id: mia.id, tipo: "riposo_breve", personaggioId: bruenor });
+    expect((await chiama("uno", "DELETE", `${url}/${mia.id}`)).statusCode).toBe(404); // già chiusa: non si applica due volte
+    expect((await elenco("uno")).proposte).toEqual([]);
+
+    await chiama("master", "POST", url, { tipo: "giorno", personaggi: [bruenor] });
+    const [ritirata] = (await elenco("uno")).proposte;
+    expect((await chiama("master", "DELETE", `${url}/${ritirata.id}`)).statusCode).toBe(200);
+    expect((await elenco("uno")).proposte).toEqual([]);
+
+    expect((await chiama("due", "DELETE", `/api/party/${(await elenco("due")).id}/membri/${id.due}`)).statusCode).toBe(204);
+    expect((await chiama("master", "DELETE", `${url}/${sua.id}`)).statusCode).toBe(404);
   });
 });
 
