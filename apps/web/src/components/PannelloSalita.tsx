@@ -20,6 +20,8 @@ interface Props {
   incantesimiCatalogo: IncantesimoCatalogo[];
   onConferma: (salita: SceltaSalita) => void;
   onAnnulla?: () => void;
+  // Creazione con i punteggi inseriti a mano: l'aumento è già compreso, si chiede solo se è stato preso un talento.
+  aumentiInclusi?: boolean;
 }
 
 // Stato del pannello di salita di livello.
@@ -98,7 +100,7 @@ export function SceltaPrivilegio({ scelta, mancano, catalogo, posseduti, valori,
 // Salita al livello successivo: PF, sottoclasse, privilegi dal catalogo, aumento o talento, incantesimi e scelte
 // di privilegio. Non modifica la scheda: consegna le scelte a onConferma (che le applica con applicaSalita).
 // Si usa nella tab Progresso e nella creazione di un personaggio oltre il 1° livello.
-export default function PannelloSalita({ char, chiediTiro, opzioni, incantesimiCatalogo, onConferma, onAnnulla }: Props) {
+export default function PannelloSalita({ char, chiediTiro, opzioni, incantesimiCatalogo, onConferma, onAnnulla, aumentiInclusi = false }: Props) {
   const d = derivate(char);
   const livello = char.info.livello;
   const nuovo = livello + 1;
@@ -144,7 +146,7 @@ export default function PannelloSalita({ char, chiediTiro, opzioni, incantesimiC
   const serveAumento = haAumentoCaratteristiche(char.info.classe, nuovo);
   const aumentoValido = !serveAumento || (salita.aumento.tipo === "talento"
     ? salita.aumento.talento.nome.trim() !== ""
-    : applicaAumento(char, aumentiDa(salita.aumento.car)) !== char);
+    : aumentiInclusi || applicaAumento(char, aumentiDa(salita.aumento.car)) !== char);
   const cambiaAumento = (parziale: Partial<Salita["aumento"]>) =>
     setSalita(prev => ({ ...prev, aumento: { ...prev.aumento, ...parziale } }));
 
@@ -201,7 +203,7 @@ export default function PannelloSalita({ char, chiediTiro, opzioni, incantesimiC
     const talento = serveAumento && salita.aumento.tipo === "talento"
       ? { nome: salita.aumento.talento.nome.trim(), fonte: "Talento", descrizione: salita.aumento.talento.descrizione.trim() }
       : undefined;
-    const aumenti = serveAumento && salita.aumento.tipo === "aumento" ? aumentiDa(salita.aumento.car) : undefined;
+    const aumenti = serveAumento && salita.aumento.tipo === "aumento" && !aumentiInclusi ? aumentiDa(salita.aumento.car) : undefined;
     onConferma({
       privilegi: [...(Array.isArray(privilegi) ? privilegi : []), ...privilegiSceltiSalita],
       sottoclasse: serveSottoclasse ? salita.sottoclasse : undefined,
@@ -292,11 +294,13 @@ export default function PannelloSalita({ char, chiediTiro, opzioni, incantesimiC
             {(["aumento", "talento"] as const).map(t => (
               <label key={t} className="flex items-center gap-1.5 text-xs text-slate-300">
                 <input type="radio" checked={salita.aumento.tipo === t} onChange={() => cambiaAumento({ tipo: t })} className="accent-indigo-500" />
-                {t === "aumento" ? "+2 a una o +1 a due" : "Talento"}
+                {t === "talento" ? "Talento" : aumentiInclusi ? "Aumento" : "+2 a una o +1 a due"}
               </label>
             ))}
           </div>
-          {salita.aumento.tipo === "aumento" ? (
+          {salita.aumento.tipo === "aumento" && aumentiInclusi ? (
+            <p className="text-xs text-slate-400">Già compreso nei punteggi inseriti: non si somma di nuovo.</p>
+          ) : salita.aumento.tipo === "aumento" ? (
             <div className="grid grid-cols-2 gap-2">
               {[0, 1].map(i => (
                 <select
