@@ -81,13 +81,15 @@ Un **party** è il gruppo con cui giochi. Si crea e ci si entra dall'elenco dei 
 
 Nella schermata del party ci sono cinque sezioni:
 
-- **Compagni**: avatar, classe, livello, punti ferita, CA e condizioni di ogni personaggio, aggiornati ogni pochi secondi. Gli altri giocatori vedono solo questo riepilogo, mentre il Master può aprire la scheda completa di ognuno, in sola lettura.
-- **Chat**: messaggi a tutto il gruppo oppure privati a un membro, con il numero dei non letti. Il numero compare anche sul pulsante del party nell'intestazione della scheda.
-- **Iniziativa**: il Master avvia lo scontro, aggiunge mostri e PNG (anche nascosti ai giocatori) e fa avanzare turni e round. Di ogni mostro tiene CA, punti ferita (con i pulsanti *Danno* e *Cura*), condizioni e note; a 0 PF il mostro è sconfitto e il turno lo salta. I giocatori dei mostri vedono solo il nome e uno stato: Illeso, Ferito, Gravemente ferito o Sconfitto. Il Master vede anche CA, PF e condizioni dei personaggi, presi dalle loro schede. Ogni giocatore tira l'iniziativa del suo personaggio o la inserisce a mano. Quando tocca a te, il pulsante del party nella scheda mostra **Tocca a te!**.
+- **Compagni**: avatar, classe, livello, punti ferita, CA e condizioni di ogni personaggio, aggiornati ogni pochi secondi. Gli altri giocatori vedono solo questo riepilogo, mentre il Master può aprire la scheda completa di ognuno, in sola lettura. Qui il Master ha anche le **azioni del Master**: sceglie i personaggi e propone loro dei **PE** (il totale si divide in parti uguali), un **riposo breve**, un **riposo lungo** o un **giorno che passa** (consuma le provviste). Ogni giocatore trova la proposta nella sua scheda e la applica, con i suoi tiri (Dadi Vita, Presagio), oppure la rifiuta; finché non risponde, il Master la vede in attesa e può ritirarla.
+- **Chat**: messaggi a tutto il gruppo oppure privati a un membro, con il numero dei non letti. Il numero compare anche sul pulsante del party nell'intestazione della scheda. Con il pulsante dei dadi si fa un **tiro libero** (d4…d100 o una formula come `2d6+3`): serve soprattutto al Master, che non ha una scheda, e si pubblica nella chat oppure resta privato.
+- **Iniziativa**: il Master avvia lo scontro, aggiunge mostri e PNG (anche nascosti ai giocatori) e fa avanzare turni e round. Di ogni mostro tiene CA, punti ferita (con i pulsanti *Danno* e *Cura*), condizioni e note; a 0 PF il mostro è sconfitto e il turno lo salta. I giocatori dei mostri vedono solo il nome e uno stato: Illeso, Ferito, Gravemente ferito o Sconfitto. Il Master vede anche CA, PF e condizioni dei personaggi, presi dalle loro schede. Un mostro si duplica con un clic (*Goblin* → *Goblin 2*, con la stessa iniziativa, CA e PF pieni). Ogni giocatore tira l'iniziativa del suo personaggio o la inserisce a mano. Quando tocca a te, il pulsante del party nella scheda mostra **Tocca a te!**.
 - **Diario**: le note di campagna del gruppo (sessioni, PNG, luoghi, missioni), scritte da tutti, con ricerca e filtri. Il Master può fissare in alto le voci importanti.
 - **Tesoro**: il quadro completo di ciò che il gruppo possiede. Ogni oggetto del party lo porta un personaggio: sta nel suo **Zaino**, pesa su di lui e lo gestisce lui, ma è segnato *del party* (icona del gruppo accanto all'oggetto) e compare nel tesoro con il nome di chi lo porta. Il Master aggiunge il **bottino** trovato; chi lo prende sceglie se tenerlo per sé o portarlo per il party. Le monete stanno in una cassa comune. Lo storico dice chi ha preso o lasciato cosa.
 
 Con il personaggio in un party, la finestra di ogni tiro chiede anche se **condividerlo**: con tutto il gruppo, solo con il Master (tiro segreto) o con nessuno. Il tiro compare nella chat con dadi, modificatore e totale.
+
+Con il pulsante **Notifiche** nella schermata del party il browser avvisa di *Tocca a te!*, dei messaggi nuovi e delle proposte del Master quando l'app è in secondo piano. Con la pagina nascosta il browser rallenta i controlli, quindi l'avviso può arrivare fino a un minuto dopo. Su Chrome per Android e su Safari per iPhone (se l'app non è installata sulla schermata Home) le notifiche non arrivano.
 
 ## Creare un personaggio
 
@@ -122,7 +124,7 @@ I dati stanno in un database **PostgreSQL**: in produzione su [Neon](https://neo
 - Suppliche Occulte e Manovre sono solo descritte; le risorse di classe contano gli usi ma non applicano l'effetto.
 - Non si possono eliminare account e personaggi e non c'è il recupero della password dimenticata.
 - Chiunque può aggiungere voci ai cataloghi condivisi (incantesimi, armi, privilegi), visibili a tutti gli utenti.
-- Nel party i messaggi arrivano ogni pochi secondi, non all'istante. Il Master non ha schede per i mostri, e il tesoro non si divide in parti uguali da solo.
+- Nel party i messaggi arrivano ogni pochi secondi, non all'istante. Il Master non ha schede per i mostri, e il tesoro non si divide in parti uguali da solo. Le notifiche richiedono la pagina aperta (anche in secondo piano): non ci sono notifiche push.
 
 ## Sviluppo
 

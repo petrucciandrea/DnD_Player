@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Crown, Dices, Eye, Lock, LoaderCircle, MessagesSquare, Send } from "lucide-react";
-import { segno } from "@dnd/regole/regole.ts";
+import { esitoTiroCondiviso, formulaTiro, segno } from "@dnd/regole/regole.ts";
 import type { MembroParty, MessaggioParty } from "@dnd/regole/api.ts";
 import { conversazioneDi, nonLettiPer, type Chat } from "../messaggi";
+import { inviaTiro, type ControllaEsito } from "../party";
+import {
+  condivisioneSalvata, salvaCondivisione, useRichiestaTiro, type Condivisione, type Dado, type RispostaTiro,
+} from "../tiroDadi";
+import DialogoTiro from "./DialogoTiro";
 
 interface Props {
+  partyId: number;
   io: number;
+  master: boolean;
   membri: MembroParty[];
   chat: Chat;
+  riuscito: ControllaEsito;
 }
 
 const LUNGHEZZA_MASSIMA = 2000;
@@ -23,8 +31,9 @@ function orario(iso: string) {
 }
 
 // Chat del party: la conversazione di gruppo e una privata con ogni altro membro.
-export default function PartyChat({ io, membri, chat }: Props) {
+export default function PartyChat({ partyId, io, master, membri, chat, riuscito }: Props) {
   const [conversazione, setConversazione] = useState(0);
+  const [dadi, setDadi] = useState(false); // barra dei tiri liberi aperta
   const [testo, setTesto] = useState("");
   const [inInvio, setInInvio] = useState(false);
   const [inCaricamento, setInCaricamento] = useState(false);
@@ -115,7 +124,13 @@ export default function PartyChat({ io, membri, chat }: Props) {
         {visibili.map((m, i) => <Fumetto key={m.id} m={m} mio={m.autoreId === io} conNome={visibili[i - 1]?.autoreId !== m.autoreId} />)}
       </div>
 
+      {dadi && <TiroLibero partyId={partyId} master={master} riuscito={riuscito} onInviato={chat.aggiorna} />}
+
       <form onSubmit={invia} className="flex items-end gap-2 p-2 border-t border-slate-800 bg-slate-950/40">
+        <button type="button" onClick={() => setDadi(a => !a)} aria-pressed={dadi} title={dadi ? "Chiudi i dadi" : "Tira dei dadi"}
+          className={`p-2.5 rounded-lg border transition ${dadi ? "bg-amber-500/20 border-amber-500/40 text-amber-300" : "bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200"}`}>
+          <Dices className="w-4 h-4" />
+        </button>
         <textarea
           value={testo}
           onChange={e => setTesto(e.target.value)}
@@ -130,6 +145,89 @@ export default function PartyChat({ io, membri, chat }: Props) {
           {inInvio ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </button>
       </form>
+    </div>
+  );
+}
+
+const DADI_RAPIDI = [4, 6, 8, 10, 12, 20, 100];
+
+// Tiro libero (dadi rapidi o una formula come "2d6+3"), soprattutto per il Master, che non ha una scheda.
+// Passa dal dialogo di tutti i tiri; il risultato si pubblica nella chat (al gruppo o, per un giocatore, solo al Master).
+function TiroLibero({ partyId, master, riuscito, onInviato }: {
+  partyId: number; master: boolean; riuscito: ControllaEsito; onInviato: () => Promise<void>;
+}) {
+  const [formula, setFormula] = useState("");
+  const [titolo, setTitolo] = useState("");
+  const [ultimo, setUltimo] = useState<string | null>(null);
+  const [condivisione, setCondivisione] = useState<Condivisione>(() => {
+    const c = condivisioneSalvata();
+    return master && c === "master" ? "gruppo" : c;
+  });
+  const { richiesta, chiediTiro, chiediD20, rispondi } = useRichiestaTiro();
+  const letta = formulaTiro(formula);
+
+  const tira = (testo: string) => {
+    const f = formulaTiro(testo);
+    if (!f) return;
+    const nome = titolo.trim() || `Tiro ${testo.replace(/\s+/g, "")}`;
+    // Un solo d20: con vantaggio o svantaggio.
+    if (f.dadi.length === 1 && f.dadi[0].numero === 1 && f.dadi[0].facce === 20) {
+      void chiediD20({ titolo: nome, bonus: f.bonus });
+      return;
+    }
+    const quanti = f.dadi.reduce((acc, d) => acc + d.numero, 0);
+    let n = 0;
+    const elenco: Dado[] = f.dadi.flatMap(d => Array.from({ length: d.numero }, () => {
+      n += 1;
+      return { etichetta: quanti === 1 ? "Risultato" : `${n}° dado`, facce: d.facce };
+    }));
+    void chiediTiro({ titolo: nome, dadi: elenco, bonus: f.bonus, ammettiTotale: true });
+  };
+
+  const rispondiTiro = (risposta: RispostaTiro | null) => {
+    if (risposta && richiesta) {
+      const tiro = esitoTiroCondiviso(richiesta, risposta);
+      setUltimo(`${tiro.titolo}: ${tiro.totale}${tiro.tiri.length > 1 || tiro.bonus !== 0 ? ` (${tiro.tiri.join(" + ")}${tiro.bonus !== 0 ? ` ${segno(tiro.bonus)}` : ""})` : ""}`);
+      if (condivisione !== "no") {
+        void inviaTiro(partyId, tiro, condivisione === "master").then(async esito => {
+          if (riuscito(esito)) await onInviato();
+        });
+      }
+    }
+    rispondi(risposta);
+  };
+
+  const scegli = (c: Condivisione) => {
+    setCondivisione(c);
+    salvaCondivisione(c);
+  };
+
+  const campo = "bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-indigo-500";
+  return (
+    <div className="p-2 border-t border-slate-800 bg-slate-950/60 space-y-2">
+      <div className="flex flex-wrap gap-1">
+        {DADI_RAPIDI.map(f => (
+          <button key={f} type="button" onClick={() => tira(`1d${f}`)}
+            className="px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-mono font-semibold text-slate-200">
+            d{f}
+          </button>
+        ))}
+      </div>
+      <form onSubmit={e => { e.preventDefault(); tira(formula); }} className="flex flex-wrap gap-2">
+        <input value={formula} onChange={e => setFormula(e.target.value)} placeholder="2d6+3" aria-label="Formula del tiro"
+          className={`${campo} w-28 font-mono ${formula && !letta ? "border-rose-700" : ""}`} />
+        <input value={titolo} onChange={e => setTitolo(e.target.value)} maxLength={100} placeholder="Per cosa? (facoltativo)"
+          className={`${campo} flex-1 min-w-32`} />
+        <button type="submit" disabled={!letta}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold">
+          <Dices className="w-4 h-4" /> Tira
+        </button>
+      </form>
+      {ultimo && <p className="text-xs text-slate-400">Ultimo tiro: <span className="text-slate-200 font-semibold">{ultimo}</span></p>}
+      {richiesta && (
+        <DialogoTiro key={richiesta.id} richiesta={richiesta} onRisposta={rispondiTiro}
+          condivisione={{ scelta: condivisione, onScelta: scegli, ...(master ? { opzioni: ["no", "gruppo"] as Condivisione[] } : {}) }} />
+      )}
     </div>
   );
 }

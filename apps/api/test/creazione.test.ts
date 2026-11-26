@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   abilitaDoppie, bonusRazziali, cambiaScelte, equipaggiamentoIniziale, mancaNelPasso, passiDi, personaggioCreato,
-  personaggioIniziale, preparabiliAllaCreazione, primoLivelloIncantesimi, razzaCompleta, scelteVuote, sommaMigliori3, type SceltePersonaggio,
+  personaggioIniziale, preparabiliAllaCreazione, primoLivelloIncantesimi, punteggiFinali, razzaCompleta, scelteVuote, sommaMigliori3,
+  type SceltePersonaggio,
 } from "@dnd/regole/creazione.ts";
 import { CLASSI } from "@dnd/regole/dati/classi.ts";
 import { incantesimiDiSottoclasse } from "@dnd/regole/dati/incantesimiSottoclasse.ts";
@@ -286,6 +287,43 @@ describe("creazione oltre il 1° livello", () => {
     expect(c.incantesimi.filter(i => i.livello === 0)).toHaveLength(3 + 1 + 1); // con il trucchetto razziale
     expect(c.xp.totale).toBe(2700);
     expect(derivate(c).cdMagia).toBe(8 + 2 + 4);
+  });
+
+  // Punteggi di una scheda cartacea: già con la razza (Mezzorco: FOR +2, COS +1) e l'aumento del 4°.
+  const PUNTEGGI = { FOR: 18, DES: 12, COS: 16, INT: 8, SAG: 10, CAR: 10 };
+
+  it("punteggi inseriti a mano: restano come sono, senza bonus razziale", () => {
+    const s = guerriero({ metodo: "manuale", punteggi: PUNTEGGI, tiri: [] });
+    expect(punteggiFinali(s, razzaCompleta(catalogo, "Mezzorco", ""))).toEqual(PUNTEGGI);
+    expect(mancaNelPasso("caratteristiche", s, catalogo)).toBeNull();
+    expect(personaggioIniziale(s, catalogo).caratteristiche.FOR.valore).toBe(18);
+    // I tiri non servono, ma restano se si torna al 4d6.
+    expect(mancaNelPasso("caratteristiche", guerriero({ metodo: "4d6", punteggi: PUNTEGGI, tiri: [] }), catalogo)).toMatch(/4d6/);
+  });
+
+  it("punteggi inseriti a mano: tutti e sei, interi da 1 a 30", () => {
+    const manca = (punteggi: Partial<Record<keyof typeof PUNTEGGI, number>>) =>
+      mancaNelPasso("caratteristiche", guerriero({ metodo: "manuale", punteggi }), catalogo);
+    expect(manca({ ...PUNTEGGI, CAR: undefined })).toBe("Inserisci il punteggio di ogni caratteristica.");
+    expect(manca({ ...PUNTEGGI, CAR: 0 })).toBe("I punteggi vanno da 1 a 30.");
+    expect(manca({ ...PUNTEGGI, CAR: 31 })).toBe("I punteggi vanno da 1 a 30.");
+    expect(manca({ ...PUNTEGGI, CAR: 12.5 })).toBe("I punteggi vanno da 1 a 30.");
+    expect(manca({ ...PUNTEGGI, FOR: 24, CAR: 1 })).toBeNull();
+  });
+
+  it("punteggi inseriti a mano al 4°: l'aumento è già compreso e i PF usano la COS inserita", () => {
+    const salite: SceltaSalita[] = [{ tiroPf: 7 }, {}, { tiroPf: 5, aumenti: { FOR: 2 } }];
+    const c = personaggioCreato(guerriero({ metodo: "manuale", punteggi: PUNTEGGI, livello: 4, salite }), catalogo);
+    for (const [k, v] of Object.entries(PUNTEGGI)) expect(c.caratteristiche[k as keyof typeof PUNTEGGI].valore, k).toBe(v);
+    expect(c.combattimento.pfMassimi).toBe((10 + 3) + (7 + 3) + (6 + 3) + (5 + 3));
+    // Con il 4d6 lo stesso aumento si somma al tiro e alla razza: 15 + 2 + 2.
+    expect(personaggioCreato(guerriero({ livello: 4, salite }), catalogo).caratteristiche.FOR.valore).toBe(19);
+  });
+
+  it("cambiare metodo o punteggi azzera le salite", () => {
+    const s = guerriero({ livello: 3, salite: [{}, {}] });
+    expect(cambiaScelte(s, { metodo: "manuale" }).salite).toEqual([]);
+    expect(cambiaScelte(s, { punteggi: PUNTEGGI }).salite).toEqual([]);
   });
 
   const paladino = (s: Partial<SceltePersonaggio> = {}) => scelte({

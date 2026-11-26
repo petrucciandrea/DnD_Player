@@ -24,6 +24,8 @@ export interface SceltaEquipaggiamento {
   armi: string[]; // un'arma per ogni voce "armaAScelta" dell'opzione, nell'ordine
 }
 
+export type MetodoCaratteristiche = "4d6" | "manuale";
+
 export interface SceltePersonaggio {
   razza: string;
   sottorazza: string; // "" se la razza non ne ha
@@ -39,8 +41,12 @@ export interface SceltePersonaggio {
   strumentiClasse: string[]; // Bardo (3 strumenti musicali), Monaco (1)
   scelteClasse: Record<string, string[]>; // scelte di privilegio del 1° livello per id (Stile di Combattimento del Guerriero)
 
+  // "4d6": sei tiri assegnati, più i bonus razziali e gli aumenti delle salite. "manuale": i punteggi attuali
+  // (per esempio da una scheda cartacea), già comprensivi di razza e aumenti, che quindi non si sommano.
+  metodo: MetodoCaratteristiche;
   tiri: number[][]; // sei tiri di 4d6
   assegnazione: Partial<Record<Caratteristica, number>>; // caratteristica → indice del tiro
+  punteggi: Partial<Record<Caratteristica, number>>; // metodo "manuale": il punteggio inserito
 
   background: string;
   abilitaSostitutive: string[]; // se un'abilità del background è già presa
@@ -73,7 +79,7 @@ export interface SceltePersonaggio {
 export const scelteVuote = (): SceltePersonaggio => ({
   razza: "", sottorazza: "", bonusAScelta: [], abilitaRazza: [], lingueRazza: [], strumentoRazza: "", trucchettoRazza: "",
   classe: "", sottoclasse: "", abilitaClasse: [], strumentiClasse: [], scelteClasse: {},
-  tiri: [], assegnazione: {},
+  metodo: "4d6", tiri: [], assegnazione: {}, punteggi: {},
   background: "", abilitaSostitutive: [], lingueBackground: [], strumentoBackground: "",
   equipaggiamento: [],
   livello: 1, salite: [],
@@ -125,8 +131,24 @@ export function bonusRazziali(razza: RazzaCatalogo | null, aScelta: Caratteristi
   return bonus;
 }
 
-// Punteggi finali: tiro assegnato + bonus razziale (null se manca un'assegnazione).
+// Limiti di un punteggio inserito a mano (oltre il 20 solo con privilegi o oggetti magici).
+export const PUNTEGGIO_MINIMO = 1;
+export const PUNTEGGIO_MASSIMO = 30;
+export const punteggioValido = (v: number | undefined): v is number =>
+  v !== undefined && Number.isInteger(v) && v >= PUNTEGGIO_MINIMO && v <= PUNTEGGIO_MASSIMO;
+
+// Punteggi finali: tiro assegnato + bonus razziale (null se manca un'assegnazione). Con il metodo "manuale"
+// sono i punteggi inseriti, senza bonus razziale (null se uno manca o è fuori dai limiti).
 export function punteggiFinali(s: SceltePersonaggio, razza: RazzaCatalogo | null): Record<Caratteristica, number> | null {
+  if (s.metodo === "manuale") {
+    const punteggi = {} as Record<Caratteristica, number>;
+    for (const k of CARATTERISTICHE) {
+      const v = s.punteggi[k];
+      if (!punteggioValido(v)) return null;
+      punteggi[k] = v;
+    }
+    return punteggi;
+  }
   const bonus = bonusRazziali(razza, s.bonusAScelta);
   const punteggi = {} as Record<Caratteristica, number>;
   for (const k of CARATTERISTICHE) {
@@ -301,6 +323,11 @@ export function mancaNelPasso(passo: Passo, s: SceltePersonaggio, catalogo: Cata
       }
       return null;
     case "caratteristiche":
+      if (s.metodo === "manuale") {
+        if (CARATTERISTICHE.some(k => s.punteggi[k] === undefined)) return "Inserisci il punteggio di ogni caratteristica.";
+        if (!punteggiFinali(s, razza)) return `I punteggi vanno da ${PUNTEGGIO_MINIMO} a ${PUNTEGGIO_MASSIMO}.`;
+        return null;
+      }
       if (s.tiri.length < 6) return "Tira sei volte 4d6.";
       if (!punteggiFinali(s, razza)) return "Assegna un tiro a ogni caratteristica.";
       return null;
@@ -416,9 +443,11 @@ export function personaggioIniziale(s: SceltePersonaggio, catalogo: CatalogoCrea
 // La scheda al livello iniziale: il 1° livello più le salite confermate, in ordine. Chi prepara dall'intera lista
 // (Chierico, Druido, Paladino) riceve tutti gli incantesimi della classe fino al livello di slot più alto, come al
 // 1° livello; sono preparati quelli scelti in `preparati`. Gli XP partono dalla soglia del livello raggiunto.
+// Con i punteggi inseriti a mano gli aumenti delle salite sono già compresi: non si applicano di nuovo.
 export function personaggioCreato(s: SceltePersonaggio, catalogo: CatalogoCreazione): CharacterData {
   const salito = s.salite
     .slice(0, Math.max(0, s.livello - 1))
+    .map(x => (s.metodo === "manuale" ? { ...x, aumenti: undefined } : x))
     .reduce((c, salita) => applicaSalita(c, salita, catalogo.incantesimi), personaggioIniziale(s, catalogo));
   const inc = incantatoreDi(salito.info.classe, salito.info.sottoclasse);
   const massimo = livelloMassimoIncantesimi(inc, salito.info.livello);

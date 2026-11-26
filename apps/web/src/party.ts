@@ -1,5 +1,6 @@
 import type {
-  CategoriaDiario, Combattimento, DettaglioParty, MessaggiParty, Monete, OggettoTesoro, RiassuntoParty, Tesoro, TiroCondiviso, VoceDiario,
+  CategoriaDiario, Combattimento, DettaglioParty, MessaggiParty, Monete, OggettoTesoro, PropostaParty, RiassuntoParty, Tesoro, TipoProposta,
+  TiroCondiviso, VoceDiario,
 } from "@dnd/regole/api.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
 import { erroreDa, IRRAGGIUNGIBILE } from "./accesso";
@@ -97,3 +98,15 @@ export const mettiNelTesoro = (id: number, oggetto: Omit<OggettoTesoro, "id">) =
 export const prendiDalTesoro = (id: number, oggettoId: number, qta: number, delParty: boolean) =>
   chiamata<Omit<OggettoTesoro, "id">>("POST", `/${id}/tesoro/oggetti/${oggettoId}/prendi`, { qta, delParty });
 export const togliDalTesoro = (id: number, oggettoId: number) => chiamata<null>("DELETE", `/${id}/tesoro/oggetti/${oggettoId}`);
+
+// Proposte del Master: PE (totali, divisi in parti uguali), riposi o un giorno che passa.
+export const proponi = (id: number, proposta: { tipo: TipoProposta; personaggi: number[]; pe?: number; motivo?: string }) =>
+  chiamata<{ quota: number | null }>("POST", `/${id}/proposte`, proposta);
+// Chiude una proposta: il giocatore la accetta o la rifiuta, il Master la ritira. 404 se è già chiusa.
+export const chiudiProposta = (id: number, propostaId: number) => chiamata<PropostaParty>("DELETE", `/${id}/proposte/${propostaId}`);
+
+// "150 PE (Goblin)", "un riposo lungo"…
+export function testoProposta(p: Pick<PropostaParty, "tipo" | "pe" | "motivo">): string {
+  const testo = { pe: `${p.pe ?? 0} PE`, riposo_breve: "un riposo breve", riposo_lungo: "un riposo lungo", giorno: "un giorno che passa" }[p.tipo];
+  return p.motivo ? `${testo} (${p.motivo})` : testo;
+}

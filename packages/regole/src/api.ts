@@ -41,6 +41,20 @@ export interface RiassuntoParty {
   membri: number;
   nonLetti: number; // messaggi degli altri non ancora letti (gruppo e privati)
   combattimento: { round: number; tuoTurno: boolean } | null; // null: nessuno scontro in corso
+  proposte: PropostaParty[]; // proposte del Master al personaggio dell'utente, ancora da accettare o rifiutare
+}
+
+// Proposta del Master a un personaggio: PE, un riposo o un giorno che passa. La applica la scheda del giocatore.
+export type TipoProposta = "pe" | "riposo_breve" | "riposo_lungo" | "giorno";
+
+export interface PropostaParty {
+  id: number;
+  personaggioId: number;
+  personaggio: string; // nome del personaggio
+  tipo: TipoProposta;
+  pe: number | null; // solo per i PE: la quota di questo personaggio
+  motivo: string;
+  creato: string; // ISO 8601
 }
 
 // Quello che i compagni vedono di un personaggio: niente scheda completa, solo lo stato in gioco.
@@ -71,6 +85,7 @@ export interface DettaglioParty {
   io: { utenteId: number; ruolo: RuoloParty; personaggioId: number | null };
   diarioVersione: string; // cambia a ogni voce aggiunta, modificata o tolta: il client ricarica il diario
   combattimento: { round: number } | null;
+  proposte: PropostaParty[]; // in sospeso: tutte per il Master, quelle del proprio personaggio per un giocatore
 }
 
 // Tiro di dadi pubblicato nella chat del party.

@@ -529,6 +529,59 @@ export function statoSalute(pf: number | null, pfMassimi: number | null): StatoS
   return pf > pfMassimi / 2 ? "ferito" : "gravemente ferito";
 }
 
+// Nome per la copia di un mostro: "Goblin" → "Goblin 2", oppure il numero dopo il più alto già presente
+// ("Goblin", "Goblin 3" → "Goblin 4"), contando anche l'originale. Il nome senza numero conta come il primo. Al massimo `lunghezza` caratteri.
+export function nomeCopia(nome: string, presenti: string[], lunghezza = 60): string {
+  const separa = (n: string) => {
+    const m = /^(.*?)(?:\s+(\d{1,6}))?$/.exec(n.trim()) as RegExpExecArray;
+    return { base: m[1], numero: m[2] === undefined ? 1 : Number(m[2]) };
+  };
+  const { base } = separa(nome);
+  const chiave = base.toLocaleLowerCase("it");
+  const massimo = Math.max(0, ...[nome, ...presenti].map(separa).filter(p => p.base.toLocaleLowerCase("it") === chiave).map(p => p.numero));
+  const suffisso = ` ${massimo + 1}`;
+  return `${base.slice(0, lunghezza - suffisso.length).trimEnd()}${suffisso}`;
+}
+
+// Formula di un tiro libero: "2d6+3", "d20", "1d8 + 2d6 - 1". Al massimo 40 dadi (da 2 a 1000 facce)
+// e un bonus tra -100 e +100, come accetta la chat del party; null se la formula non è valida.
+export interface FormulaTiro {
+  dadi: { numero: number; facce: number }[];
+  bonus: number;
+}
+
+export function formulaTiro(testo: string): FormulaTiro | null {
+  const pulito = testo.replace(/\s+/g, "").toLowerCase();
+  const parti = pulito.match(/[+-]?[^+-]+/g);
+  if (!parti || parti.join("") !== pulito) return null;
+  const dadi: FormulaTiro["dadi"] = [];
+  let bonus = 0;
+  for (const parte of parti) {
+    const negativo = parte.startsWith("-");
+    const corpo = parte.replace(/^[+-]/, "");
+    const dado = /^(\d{0,3})d(\d{1,4})$/.exec(corpo);
+    if (dado) {
+      const numero = dado[1] === "" ? 1 : Number(dado[1]);
+      const facce = Number(dado[2]);
+      if (negativo || numero < 1 || facce < 2 || facce > 1000) return null;
+      dadi.push({ numero, facce });
+    } else if (/^\d{1,3}$/.test(corpo)) {
+      bonus += negativo ? -Number(corpo) : Number(corpo);
+    } else {
+      return null;
+    }
+  }
+  const quanti = dadi.reduce((acc, d) => acc + d.numero, 0);
+  return quanti >= 1 && quanti <= 40 && Math.abs(bonus) <= 100 ? { dadi, bonus } : null;
+}
+
+// PE guadagnati: si sommano al totale e vanno in cima allo storico. `id` e `data` li sceglie chi chiama.
+export function aggiungiPE(c: CharacterData, valore: number, motivo: string, id: number, data: string): CharacterData {
+  if (!Number.isInteger(valore) || valore <= 0) return c;
+  const voce = { id, data, valore, motivo: motivo.trim() || "Guadagno generico" };
+  return { ...c, xp: { totale: c.xp.totale + valore, storico: [voce, ...c.xp.storico] } };
+}
+
 // Tiro da pubblicare nella chat del party, dalla richiesta del dialogo e dai risultati.
 // Un d20 con vantaggio o svantaggio ha due dadi; se è stata inserita solo la somma resta un solo valore.
 export function esitoTiroCondiviso(

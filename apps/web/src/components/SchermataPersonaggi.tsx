@@ -100,7 +100,7 @@ export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, 
         )}
 
         {Array.isArray(elenco) && (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {elenco.map(p => (
               <button
                 key={p.id}
@@ -163,7 +163,7 @@ export default function SchermataPersonaggi({ utente, avviso, onScegli, onCrea, 
               <Users className="w-5 h-5 text-indigo-400" /> Party
             </h2>
             {party.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {party.map(p => (
                   <button
                     key={p.id}

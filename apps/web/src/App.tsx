@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useState, useRef, type ChangeEvent } f
 import {
   Sparkles, RefreshCw, BookOpen, Backpack, Scroll, Award,
   Download, Upload, Users, Heart, Star, X, Coffee, Brain, Cloud, CloudCheck, CloudOff, CloudUpload, LoaderCircle, LogOut, UserCog,
-  NotebookPen, Swords, UsersRound,
+  NotebookPen, Swords, UsersRound, Crown,
 } from "lucide-react";
-import type { RiassuntoParty } from "@dnd/regole/api.ts";
+import type { PropostaParty, RiassuntoParty } from "@dnd/regole/api.ts";
 import type { CharacterData, EsitoRiposoBreve } from "@dnd/regole/tipi.ts";
 import {
-  applicaCura, applicaDanno, cdConcentrazione, derivate, esitoTiroCondiviso, riposoBreve, riposoLungo, segno, usaPresagio,
+  aggiungiPE, applicaCura, applicaDanno, cdConcentrazione, derivate, esitoTiroCondiviso, passaGiorni, riposoBreve, riposoLungo, segno,
+  usaPresagio,
 } from "@dnd/regole/regole.ts";
 import {
   carica, ricordaUltimoPersonaggio, salva, salvaRiferimento, scaricaDalServer, ultimoPersonaggio,
@@ -20,7 +21,8 @@ import SchermataPersonaggi from "./components/SchermataPersonaggi";
 import SchermataCreazione from "./components/SchermataCreazione";
 import FinestraAccount from "./components/FinestraAccount";
 import SchermataParty from "./components/SchermataParty";
-import { elencoParty, inviaTiro } from "./party";
+import { chiudiProposta, elencoParty, inviaTiro, testoProposta } from "./party";
+import { attivaNotifiche, disattivaNotifiche, notifica, notificheAttive, novitaParty } from "./notifiche";
 import { usePolling } from "./usePolling";
 import {
   condivisioneSalvata, conSuggerimento, salvaCondivisione, useRichiestaTiro, type Condivisione, type RispostaTiro,
@@ -47,6 +49,11 @@ const SYNC: Record<StatoSincronizzazione, { icona: typeof Cloud; etichetta: stri
   offline: { icona: CloudOff, etichetta: "Offline", descrizione: "Archivio non raggiungibile: la scheda è salvata solo su questo dispositivo e verrà inviata appena possibile", colore: "text-amber-400" },
 };
 
+const CONTROLLO_PARTY = 15_000; // ms
+
+// Id e data di una nuova voce dello storico dei PE.
+const nuovaVoceXp = () => ({ id: Date.now(), data: new Date().toLocaleDateString("it-IT") });
+
 const SESSIONE_SCADUTA = "Sessione scaduta: accedi di nuovo. Le modifiche non salvate verranno inviate dopo l'accesso.";
 
 // Accesso → scelta del personaggio → scheda. L'ultimo personaggio aperto si riapre da solo.
@@ -58,6 +65,8 @@ export default function App() {
   const [inCreazione, setInCreazione] = useState(false);
   const [partyAperto, setPartyAperto] = useState<number | null>(null);
   const [risveglio, setRisveglio] = useState(false); // la verifica della sessione sta durando: il server si sta avviando
+  const [elenco, setElenco] = useState<RiassuntoParty[] | null>(null); // party dell'utente, per la scheda e le notifiche
+  const [notifiche, setNotifiche] = useState(notificheAttive);
 
   const entra = useCallback((u: Utente) => {
     setSessione(u);
@@ -95,6 +104,32 @@ export default function App() {
 
   const utenteId = sessione && sessione !== "verifica" ? sessione.id : null;
 
+  // I party dell'utente: con una scheda aperta (pulsante del party, "Tocca a te!", proposte del Master) e,
+  // con le notifiche attive, anche a pagina nascosta. Il 401 lo gestiscono la sincronizzazione e le schermate.
+  const precedente = useRef<{ utente: number; elenco: RiassuntoParty[] } | null>(null);
+  const controllaParty = useCallback(async () => {
+    const esito = await elencoParty();
+    if (esito === "sessione scaduta" || "errore" in esito || utenteId === null) return;
+    const prima = precedente.current?.utente === utenteId ? precedente.current.elenco : null;
+    if (prima) novitaParty(prima, esito.dati).forEach(notifica);
+    precedente.current = { utente: utenteId, elenco: esito.dati };
+    setElenco(esito.dati);
+  }, [utenteId]);
+  usePolling(controllaParty, CONTROLLO_PARTY, utenteId !== null && (personaggio !== null || notifiche), notifiche);
+
+  const cambiaNotifiche = async (attiva: boolean) => {
+    if (!attiva) {
+      disattivaNotifiche();
+      setNotifiche(false);
+      return;
+    }
+    const esito = await attivaNotifiche();
+    if (esito === "attive") setNotifiche(true);
+    else alert(esito === "negate"
+      ? "Il browser non permette le notifiche a questo sito: puoi consentirle dalle impostazioni del sito."
+      : "Questo browser non supporta le notifiche.");
+  };
+
   const chiudiPersonaggio = useCallback((messaggio: string | null) => {
     if (utenteId !== null) ricordaUltimoPersonaggio(utenteId, null);
     setPersonaggio(null);
@@ -123,7 +158,9 @@ export default function App() {
     setPersonaggio(id);
   };
 
+  // Il pulsante di uscita sta accanto ad altri nell'intestazione: si chiede conferma per un tocco sbagliato.
   const uscita = async () => {
+    if (!confirm("Vuoi uscire dall'account? Per rientrare serviranno username e password.")) return;
     await esci();
     setAccountAperto(false);
     setAvviso(null);
@@ -185,6 +222,8 @@ export default function App() {
       onAccount={() => setAccountAperto(true)}
       onEsci={uscita}
       onSessioneScaduta={sessioneScaduta}
+      notifiche={notifiche}
+      onNotifiche={cambiaNotifiche}
     />
   );
   if (personaggio === null) {
@@ -213,6 +252,8 @@ export default function App() {
           personaggio={personaggio}
           utente={sessione}
           avvisi={avvisi}
+          mioParty={elenco?.find(p => p.personaggio?.id === personaggio) ?? null}
+          aggiornaParty={controllaParty}
           onCambiaPersonaggio={() => chiudiPersonaggio(null)}
           onApriParty={setPartyAperto}
           onAccount={() => setAccountAperto(true)}
@@ -229,29 +270,23 @@ interface PropsScheda {
   personaggio: number;
   utente: Utente;
   avvisi: AvvisiSincronizzazione;
+  mioParty: RiassuntoParty | null; // il party del personaggio, per il pulsante nell'intestazione e le proposte del Master
+  aggiornaParty: () => Promise<void>;
   onCambiaPersonaggio: () => void;
   onApriParty: (id: number) => void;
   onAccount: () => void;
   onEsci: () => void;
 }
 
-const CONTROLLO_PARTY = 15_000; // ms
 
-function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty, onAccount, onEsci }: PropsScheda) {
-  // Il party del personaggio, per il pulsante nell'intestazione. Il 401 lo gestisce già la sincronizzazione.
-  const [mioParty, setMioParty] = useState<RiassuntoParty | null>(null);
-  const controllaParty = useCallback(async () => {
-    const esito = await elencoParty();
-    if (esito === "sessione scaduta" || "errore" in esito) return;
-    setMioParty(esito.dati.find(p => p.personaggio?.id === personaggio) ?? null);
-  }, [personaggio]);
-  usePolling(controllaParty, CONTROLLO_PARTY);
-
+function Scheda({ personaggio, utente, avvisi, mioParty, aggiornaParty, onCambiaPersonaggio, onApriParty, onAccount, onEsci }: PropsScheda) {
   const [activeTab, setActiveTab] = useState<Tab>("statistiche");
   const [char, setChar] = useState<CharacterData>(() => carica(personaggio) ?? personaggioVuoto());
   const [quantitaPF, setQuantitaPF] = useState("");
   const [messaggio, setMessaggio] = useState<string | null>(null);
   const [riposoBreveAperto, setRiposoBreveAperto] = useState(false);
+  const [riposoBreveDa, setRiposoBreveDa] = useState<PropostaParty | null>(null); // riposo breve proposto dal Master
+  const [chiuse, setChiuse] = useState<number[]>([]); // proposte già chiuse, nascoste finché l'elenco non si aggiorna
   const [dannoAperto, setDannoAperto] = useState<number | null>(null); // quantità scritta prima di aprire la finestra
   const fileInput = useRef<HTMLInputElement>(null);
   const { richiesta, chiediTiro, chiediD20, rispondi } = useRichiestaTiro();
@@ -260,6 +295,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty,
 
   const d = derivate(char);
   const { combattimento: pf } = char;
+  const proposte = (mioParty?.proposte ?? []).filter(p => !chiuse.includes(p.id));
 
   // Dove pubblicare i tiri nella chat del party (se il personaggio è in un party).
   const [condivisione, setCondivisione] = useState<Condivisione>(condivisioneSalvata);
@@ -330,20 +366,67 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty,
     }
   };
 
-  const completaRiposoBreve = (esito: EsitoRiposoBreve, riepilogo: string) => {
+  // Proposte del Master: prima si chiude la proposta sul server, poi si cambia la scheda (come per il tesoro),
+  // così una proposta non si applica due volte. false se non è andata (l'errore è già nel messaggio).
+  const chiudi = async (p: PropostaParty): Promise<boolean> => {
+    if (!mioParty) return false;
+    const esito = await chiudiProposta(mioParty.id, p.id);
+    if (esito === "sessione scaduta") {
+      avvisi.onSessioneScaduta();
+      return false;
+    }
+    if ("errore" in esito) setMessaggio(esito.stato === 404 ? "Il Master ha già ritirato questa proposta." : `Proposta non applicata: ${esito.errore}`);
+    else setChiuse(prev => [...prev, p.id]);
+    void aggiornaParty();
+    return !("errore" in esito);
+  };
+
+  const accetta = async (p: PropostaParty) => {
+    if (p.tipo === "riposo_breve") {
+      setRiposoBreveDa(p);
+      setRiposoBreveAperto(true);
+    } else if (p.tipo === "riposo_lungo") {
+      await eseguiRiposoLungo(() => chiudi(p));
+    } else if (p.tipo === "pe" && p.pe !== null) {
+      if (!(await chiudi(p))) return;
+      const quanti = p.pe;
+      const { id, data } = nuovaVoceXp();
+      setChar(prev => aggiungiPE(prev, quanti, p.motivo || "Dal Master", id, data));
+      setMessaggio(`+${quanti} PE dal Master.`);
+    } else if (p.tipo === "giorno") {
+      if (!(await chiudi(p))) return;
+      const { esaurite } = passaGiorni(char);
+      setChar(prev => passaGiorni(prev).personaggio);
+      setMessaggio(esaurite.length > 0 ? `È passato un giorno. Provviste finite: ${esaurite.join(", ")}.` : "È passato un giorno: provviste consumate.");
+    }
+  };
+
+  const rifiuta = async (p: PropostaParty) => {
+    if (confirm(`Rifiutare ${testoProposta(p)}? La scheda non cambia.`)) await chiudi(p);
+  };
+
+  const completaRiposoBreve = async (esito: EsitoRiposoBreve, riepilogo: string) => {
+    if (riposoBreveDa && !(await chiudi(riposoBreveDa))) {
+      setRiposoBreveAperto(false);
+      setRiposoBreveDa(null);
+      return;
+    }
     setChar(prev => riposoBreve(prev, esito));
     setRiposoBreveAperto(false);
+    setRiposoBreveDa(null);
     setMessaggio(riepilogo);
   };
 
   // Con il Presagio il dialogo del tiro fa anche da conferma: annullarlo annulla il riposo.
-  const eseguiRiposoLungo = async () => {
+  // `prima` (riposo proposto dal Master) chiude la proposta: se non riesce il riposo non avviene.
+  const eseguiRiposoLungo = async (prima?: () => Promise<boolean>) => {
     if (pf.pfAttuali === 0) {
       alert("Serve almeno 1 PF per iniziare un riposo lungo.");
       return;
     }
     if (!d.haPresagio) {
       if (!confirm("Completare un riposo lungo? PF, Dadi Vita e slot tornano disponibili.")) return;
+      if (prima && !(await prima())) return;
       setChar(prev => riposoLungo(prev));
       setMessaggio("Riposo lungo completato.");
       return;
@@ -354,6 +437,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty,
       dadi: Array.from({ length: d.dadiPresagio }, (_, i) => ({ etichetta: `Presagio ${i + 1}`, facce: 20 })),
     });
     if (!presagio) return;
+    if (prima && !(await prima())) return;
     setChar(prev => riposoLungo(prev, presagio));
     setMessaggio(`Riposo lungo completato. Nuovo Presagio: ${presagio.join(" e ")}.`);
   };
@@ -445,10 +529,10 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty,
                 <sync.icona className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{sync.etichetta}</span>
               </span>
-              <button onClick={eseguiRiposoLungo} className={`${pulsante} bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border-emerald-500/30`}>
+              <button onClick={() => eseguiRiposoLungo()} className={`${pulsante} bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border-emerald-500/30`}>
                 <RefreshCw className="w-3.5 h-3.5" /> Riposo Lungo
               </button>
-              <button onClick={() => setRiposoBreveAperto(true)} className={`${pulsante} bg-amber-600/15 hover:bg-amber-600/25 text-amber-300 border-amber-500/30`}>
+              <button onClick={() => { setRiposoBreveDa(null); setRiposoBreveAperto(true); }} className={`${pulsante} bg-amber-600/15 hover:bg-amber-600/25 text-amber-300 border-amber-500/30`}>
                 <Coffee className="w-3.5 h-3.5" /> Riposo Breve
               </button>
               <button onClick={esporta} className={pulsanteNeutro}>
@@ -557,6 +641,13 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty,
             <span className="px-3 py-1.5 rounded-lg bg-slate-800/60 text-slate-400 border border-slate-800">
               Percezione passiva <strong className="text-slate-200">{d.percezionePassiva}</strong>
             </span>
+            {proposte.map(p => (
+              <span key={p.id} className="flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-100 border border-amber-500/40">
+                <Crown className="w-3.5 h-3.5 text-amber-300" /> Il Master propone <strong>{testoProposta(p)}</strong>
+                <button onClick={() => accetta(p)} className="px-2 py-0.5 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold">Applica</button>
+                <button onClick={() => rifiuta(p)} className="px-2 py-0.5 rounded-md text-amber-300 hover:text-white">Rifiuta</button>
+              </span>
+            ))}
             {messaggio && (
               <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-950/60 text-indigo-200 border border-indigo-800/60">
                 {messaggio}
@@ -610,7 +701,7 @@ function Scheda({ personaggio, utente, avvisi, onCambiaPersonaggio, onApriParty,
           d={d}
           chiediTiro={chiediTiro}
           onConferma={completaRiposoBreve}
-          onAnnulla={() => setRiposoBreveAperto(false)}
+          onAnnulla={() => { setRiposoBreveAperto(false); setRiposoBreveDa(null); }}
         />
       )}
       {richiesta && (

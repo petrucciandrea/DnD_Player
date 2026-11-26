@@ -4,7 +4,7 @@ import type { CharacterData, IncantesimoCatalogo, Privilegio, XPRecord } from "@
 import type { SetChar } from "../stato.ts";
 import type { ChiediTiro } from "../tiroDadi.ts";
 import type { Derivate } from "@dnd/regole/regole.ts";
-import { applicaSalita, privilegiMancanti, sceltePendenti } from "@dnd/regole/regole.ts";
+import { aggiungiPE, applicaSalita, privilegiMancanti, sceltePendenti } from "@dnd/regole/regole.ts";
 import { regoleClasse } from "@dnd/regole/dati/classi.ts";
 import { opzioniScelta, type DefinizioneScelta } from "@dnd/regole/dati/scelte.ts";
 import { catalogoCreazione, privilegiFinoAlLivello } from "../accesso";
@@ -47,16 +47,9 @@ export default function TabProgresso({ char, d, setChar, chiediTiro }: Props) {
     e.preventDefault();
     const val = parseInt(newXpInput.valore);
     if (!val || val <= 0) return;
-    const record: XPRecord = {
-      id: Date.now(),
-      data: new Date().toLocaleDateString("it-IT"),
-      valore: val,
-      motivo: newXpInput.motivo.trim() || "Guadagno generico",
-    };
-    setChar(prev => ({
-      ...prev,
-      xp: { totale: prev.xp.totale + val, storico: [record, ...prev.xp.storico] },
-    }));
+    const id = Date.now();
+    const data = new Date().toLocaleDateString("it-IT");
+    setChar(prev => aggiungiPE(prev, val, newXpInput.motivo, id, data));
     setNewXpInput({ valore: "", motivo: "" });
   };
 

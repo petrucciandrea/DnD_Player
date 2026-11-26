@@ -1,10 +1,10 @@
 import { useCallback, useState, type FormEvent } from "react";
 import {
-  ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Dices, Eye, EyeOff, Heart, LoaderCircle, Plus, Shield, Skull, Square, Swords, Trash2,
+  ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CopyPlus, Dices, Eye, EyeOff, Heart, LoaderCircle, Plus, Shield, Skull, Square, Swords, Trash2,
 } from "lucide-react";
 import type { Combattimento, MembroParty, RiepilogoPersonaggioParty, RuoloParty, VoceIniziativa } from "@dnd/regole/api.ts";
 import { CONDIZIONI, condizione } from "@dnd/regole/dati/condizioni.ts";
-import { segno, type StatoSalute } from "@dnd/regole/regole.ts";
+import { nomeCopia, segno, type StatoSalute } from "@dnd/regole/regole.ts";
 import {
   aggiungiVoceIniziativa, avanzaTurno, avviaCombattimento, leggiCombattimento, mandaIniziativa, modificaVoceIniziativa,
   terminaCombattimento, togliVoceIniziativa, type ControllaEsito, type DatiVoceIniziativa, type EsitoParty,
@@ -96,6 +96,16 @@ export default function PartyIniziativa({ partyId, ruolo, mio, membri, riuscito 
     if (r) await aggiungiMostro(r.risultato + bonusMostro);
   };
 
+  // Un altro mostro uguale ("Goblin" → "Goblin 2"): stessa iniziativa, CA, PF pieni e note; niente condizioni.
+  const duplica = (v: VoceIniziativa) => {
+    if (!comb) return;
+    void esegui(() => aggiungiVoceIniziativa(partyId, {
+      nome: nomeCopia(v.nome, comb.voci.map(x => x.nome)), valore: v.valore, bonus: v.bonus ?? 0, nascosto: v.nascosto, note: v.note,
+      ...(v.ca !== null ? { ca: v.ca } : {}),
+      ...(v.pfMassimi !== null ? { pfMassimi: v.pfMassimi } : {}),
+    }));
+  };
+
   const termina = () => {
     if (confirm("Terminare lo scontro? L'ordine d'iniziativa verrà cancellato.")) void esegui(() => terminaCombattimento(partyId));
   };
@@ -176,6 +186,7 @@ export default function PartyIniziativa({ partyId, ruolo, mio, membri, riuscito 
           <RigaIniziativa key={v.id} voce={v} posizione={i + 1} diTurno={v.id === comb.diTurno} mia={v.id === mia?.id}
             master={master} inCorso={inCorso} scheda={schedaDi(v)}
             onModifica={dati => esegui(() => modificaVoceIniziativa(partyId, v.id, dati))}
+            onDuplica={() => duplica(v)}
             onTogli={() => { if (confirm(`Togliere ${v.nome} dall'iniziativa?`)) void esegui(() => togliVoceIniziativa(partyId, v.id)); }}
           />
         ))}
@@ -237,10 +248,10 @@ function BarraPf({ pf, massimi, temporanei = 0 }: { pf: number; massimi: number;
   );
 }
 
-function RigaIniziativa({ voce, posizione, diTurno, mia, master, inCorso, scheda, onModifica, onTogli }: {
+function RigaIniziativa({ voce, posizione, diTurno, mia, master, inCorso, scheda, onModifica, onDuplica, onTogli }: {
   voce: VoceIniziativa; posizione: number; diTurno: boolean; mia: boolean; master: boolean; inCorso: boolean;
   scheda: RiepilogoPersonaggioParty | null; // la voce è di un personaggio del party
-  onModifica: (dati: DatiVoceIniziativa) => void; onTogli: () => void;
+  onModifica: (dati: DatiVoceIniziativa) => void; onDuplica: () => void; onTogli: () => void;
 }) {
   const [valore, setValore] = useState(String(voce.valore));
   const [ultimo, setUltimo] = useState(voce.valore);
@@ -305,6 +316,11 @@ function RigaIniziativa({ voce, posizione, diTurno, mia, master, inCorso, scheda
               title={voce.nascosto ? "Mostra ai giocatori" : "Nascondi ai giocatori"} className="p-1 text-slate-500 hover:text-slate-200">
               {voce.nascosto ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
+            {mostro && (
+              <button onClick={onDuplica} disabled={inCorso} title="Aggiungi un altro mostro uguale" className="p-1 text-slate-500 hover:text-slate-200">
+                <CopyPlus className="w-4 h-4" />
+              </button>
+            )}
             {mostro && (
               <button onClick={() => setAperta(a => !a)} title={aperta ? "Chiudi i dettagli" : "Dettagli del mostro"} className="p-1 text-slate-500 hover:text-slate-200">
                 {aperta ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}

@@ -6,8 +6,8 @@ import { CLASSI, incantesimiIniziali, LINGUE, NOMI_CLASSI, type NomeClasse } fro
 import {
   abilitaDoppie, abilitaPrimaDelBackground, ALLINEAMENTI, armiDisponibili, bonusRazziali, incantesimiDellaClasse,
   cambiaScelte, listaAbilitaClasse, mancaNelPasso, numeroTrucchettiIniziali, passiDi, personaggioCreato, preparabiliAllaCreazione,
-  primoLivelloIncantesimi, punteggiFinali, razzaCompleta,
-  scelteIniziali, scelteVuote, sommaMigliori3, sottorazzeDi, strumentiTra, type SceltePersonaggio,
+  primoLivelloIncantesimi, PUNTEGGIO_MASSIMO, PUNTEGGIO_MINIMO, punteggiFinali, punteggioValido, razzaCompleta,
+  scelteIniziali, scelteVuote, sommaMigliori3, sottorazzeDi, strumentiTra, type MetodoCaratteristiche, type SceltePersonaggio,
 } from "@dnd/regole/creazione.ts";
 import { catalogoCreazione, importaPersonaggio } from "../accesso";
 import { useRichiestaTiro } from "../tiroDadi";
@@ -334,8 +334,72 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
     const bonus = bonusRazziali(razza, s.bonusAScelta);
     const usati = new Set(Object.values(s.assegnazione));
     const finali = punteggiFinali(s, razza);
+    const metodi: { id: MetodoCaratteristiche; titolo: string }[] = [
+      { id: "4d6", titolo: "Tira 4d6" },
+      { id: "manuale", titolo: "Inserisci i punteggi" },
+    ];
+    const sceltaMetodo = (
+      <div className="flex flex-wrap gap-2">
+        {metodi.map(m => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => s.metodo !== m.id && cambia({ metodo: m.id })}
+            className={`px-3 py-1.5 rounded-lg border text-sm font-semibold ${s.metodo === m.id
+              ? "bg-indigo-950/50 border-indigo-500 text-indigo-200"
+              : "bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-600"}`}
+          >
+            {m.titolo}
+          </button>
+        ))}
+      </div>
+    );
+    if (s.metodo === "manuale") {
+      const conBonus = CARATTERISTICHE.filter(k => bonus[k] !== 0);
+      return (
+        <div className="space-y-4">
+          {sceltaMetodo}
+          <div className={`${card} space-y-3`}>
+            <p className="text-sm text-slate-300">
+              Scrivi i punteggi attuali, come sulla tua scheda: già con il bonus della razza
+              {s.livello > 1 && " e gli aumenti presi salendo di livello"}. L'app non li somma di nuovo.
+            </p>
+            {conBonus.length > 0 && (
+              <p className="text-xs text-slate-500">
+                Bonus di {razza?.nome}: {conBonus.map(k => `${k} ${segno(bonus[k])}`).join(", ")} (da comprendere nei punteggi).
+              </p>
+            )}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {CARATTERISTICHE.map(k => {
+                const v = s.punteggi[k];
+                return (
+                  <label key={k} className="bg-slate-950/60 border border-slate-800 rounded-lg p-2 space-y-1">
+                    <span className="text-xs font-bold text-slate-300">{k}</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={PUNTEGGIO_MINIMO}
+                      max={PUNTEGGIO_MASSIMO}
+                      value={v ?? ""}
+                      onChange={e => cambia({ punteggi: { ...s.punteggi, [k]: e.target.value === "" ? undefined : Number(e.target.value) } })}
+                      className={campo}
+                    />
+                    <span className="block text-xs text-slate-400">
+                      {v === undefined ? " " : punteggioValido(v)
+                        ? <>modificatore <strong className="text-slate-100">{segno(modificatore(v))}</strong>{v > 20 && <span className="text-amber-300"> · oltre 20</span>}</>
+                        : <span className="text-rose-300">da {PUNTEGGIO_MINIMO} a {PUNTEGGIO_MASSIMO}</span>}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="space-y-4">
+        {sceltaMetodo}
         <div className={`${card} space-y-3`}>
           <p className="text-sm text-slate-300">Tira 4d6 sei volte: per ogni tiro si scarta il dado più basso. Puoi usare i tuoi dadi o far tirare l'app.</p>
           <div className="flex flex-wrap gap-2">
@@ -633,6 +697,7 @@ export default function SchermataCreazione({ giocatore, onCreato, onAnnulla }: P
             opzioni={cat.opzioniPrivilegio}
             incantesimiCatalogo={cat.incantesimi}
             onConferma={x => cambia({ salite: [...s.salite.slice(0, fatti), x] })}
+            aumentiInclusi={s.metodo === "manuale"}
           />
         ) : (
           <>

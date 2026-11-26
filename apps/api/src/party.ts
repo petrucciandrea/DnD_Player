@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import type { DettaglioParty, MembroParty, RiassuntoParty, RiepilogoPersonaggioParty, RuoloParty } from "@dnd/regole/api.ts";
+import type { DettaglioParty, MembroParty, PropostaParty, RiassuntoParty, RiepilogoPersonaggioParty, RuoloParty } from "@dnd/regole/api.ts";
 import { suggerimentoTiro } from "@dnd/regole/dati/condizioni.ts";
 import { derivate } from "@dnd/regole/regole.ts";
 import type { CharacterData } from "@dnd/regole/tipi.ts";
@@ -9,6 +9,7 @@ import { SQL_COMBATTIMENTO_ELENCO } from "./combattimento.ts";
 import { SQL_VERSIONE_DIARIO } from "./diario.ts";
 import { SQL_NON_LETTI } from "./messaggi.ts";
 import { componiMolti } from "./personaggi.ts";
+import { proposteDel, SQL_PROPOSTE_ELENCO } from "./proposte.ts";
 
 // Party: il Master lo crea e riceve un codice d'invito; i giocatori entrano con il codice e un loro personaggio.
 // Chi non è membro riceve 404 (non scopre che il party esiste); un giocatore che chiede un'azione del Master 403.
@@ -106,7 +107,7 @@ export const elencoParty = async (db: Esecutore, utenteId: number): Promise<Rias
   (await righe(db, `
     SELECT p.id, p.nome, m.ruolo, m.personaggio_id, pe.nome AS personaggio_nome,
       (SELECT count(*) FROM party_membri x WHERE x.party_id = p.id) AS membri, ${SQL_NON_LETTI} AS non_letti,
-      ${SQL_COMBATTIMENTO_ELENCO} AS combattimento
+      ${SQL_COMBATTIMENTO_ELENCO} AS combattimento, ${SQL_PROPOSTE_ELENCO} AS proposte
     FROM party_membri m JOIN party p ON p.id = m.party_id LEFT JOIN personaggi pe ON pe.id = m.personaggio_id
     WHERE m.utente_id = $1 ORDER BY p.nome, p.id`, [utenteId]))
     .map(r => ({
@@ -114,6 +115,7 @@ export const elencoParty = async (db: Esecutore, utenteId: number): Promise<Rias
       personaggio: r.personaggio_id === null ? null : { id: Number(r.personaggio_id), nome: String(r.personaggio_nome ?? "") },
       membri: Number(r.membri), nonLetti: Number(r.non_letti),
       combattimento: (r.combattimento ?? null) as RiassuntoParty["combattimento"],
+      proposte: ((r.proposte ?? []) as PropostaParty[]).map(x => ({ ...x, creato: new Date(x.creato).toISOString() })),
     }));
 
 // Lo stato in gioco di un personaggio, calcolato dalla scheda: niente valori derivati salvati.
@@ -137,8 +139,12 @@ export async function dettaglioParty(db: Esecutore, partyId: number, utenteId: n
     WHERE p.id = $1 ORDER BY m.ruolo = 'master' DESC, m.entrato, m.utente_id`, [partyId]);
   const io = membri.find(r => Number(r.utente_id) === utenteId);
   if (!io) throw new ErroreRichiesta(404, "Party inesistente");
-  const schede = await componiMolti(db, membri.filter(r => r.personaggio_id !== null).map(r => Number(r.personaggio_id)));
   const ruolo = io.ruolo as RuoloParty;
+  const mioPersonaggio = io.personaggio_id === null ? null : Number(io.personaggio_id);
+  const [schede, proposte] = await Promise.all([
+    componiMolti(db, membri.filter(r => r.personaggio_id !== null).map(r => Number(r.personaggio_id))),
+    proposteDel(db, partyId, ruolo === "master" ? null : mioPersonaggio),
+  ]);
   return {
     id: partyId,
     nome: String(io.party_nome),
@@ -151,9 +157,10 @@ export async function dettaglioParty(db: Esecutore, partyId: number, utenteId: n
         personaggio: pid !== null && scheda ? riepilogoPersonaggio(pid, scheda) : null,
       };
     }),
-    io: { utenteId, ruolo, personaggioId: io.personaggio_id === null ? null : Number(io.personaggio_id) },
+    io: { utenteId, ruolo, personaggioId: mioPersonaggio },
     diarioVersione: String(io.versione_diario),
     combattimento: io.round === null ? null : { round: Number(io.round) },
+    proposte,
   };
 }
 

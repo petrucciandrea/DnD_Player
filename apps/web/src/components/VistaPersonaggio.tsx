@@ -117,7 +117,7 @@ function Contenuto({ c }: { c: CharacterData }) {
         </div>
       )}
 
-      <div className="grid sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Sezione titolo="Caratteristiche e tiri salvezza">
           <div className="grid grid-cols-3 gap-2">
             {CARATTERISTICHE.map(k => (
@@ -173,7 +173,7 @@ function Contenuto({ c }: { c: CharacterData }) {
         </Sezione>
       )}
 
-      <div className="grid sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Sezione titolo={`Zaino (${d.pesoTotale.toFixed(1)}/${d.capacitaCarico} kg)`}>
           <p className="text-xs text-amber-200/80">
             {(["mp", "mo", "me", "ma", "mr"] as const).filter(m => c.monete[m] > 0).map(m => `${c.monete[m]} ${m}`).join(" • ") || "Nessuna moneta"}
